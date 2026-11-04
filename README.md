@@ -24,10 +24,13 @@ go run . --home testdata/sample-home --json                   # print the board 
 
 To open the board on a phone, serve it on an address the phone can reach, for example `--serve 0.0.0.0:7777`. The board has no login, so anyone who can reach that address can read the home's lane names and status lines. Use a private network.
 
+`--serve` answers only the Host names `localhost`, IP addresses, and names given with `--allow-host <name>` (repeatable). Any other Host gets 403, which stops other websites from reading the board through DNS rebinding.
+
 | Key | Action |
 |---|---|
 | `1`-`8`, `tab`, `←` `→` | Change view: All, Alert, Health, Captain, Lanes, Crew, Log, Holo |
 | `↑` `↓` (`k` `j`) | Select a lane |
+| `enter`, `esc` | Below 100 columns: open the selected lane (hologram and log) in the Lanes view, then go back |
 | `f` | Filter the lane board by status |
 | `q` | Quit |
 
@@ -50,7 +53,6 @@ Open decisions follow Firstmate's own fold. `needs-decision` and `blocked` open 
 - `fleet.go`: `BuildFleet`, which turns lanes into the board's panels. Every front end renders this one value.
 - `main.go`, `holo.go`: the terminal board's views and the hologram.
 - `cli.go`: the terminal program, the flags, and `--serve`.
-- `wasm.go`: a browser build of the terminal board (`GOOS=js GOARCH=wasm go build -trimpath`). It exposes `fmTUI(fleetJSON, key, cols, rows, ticks)`, which returns one ANSI frame.
 - `web/`: the web and phone board (React 18.3.1). `web/app.js` is the built bundle that `--serve` embeds. After a change to `web/app.tsx`, run `bun install && bun run build` in `web/`.
 
 ## Test

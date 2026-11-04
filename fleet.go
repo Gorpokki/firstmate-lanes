@@ -27,16 +27,15 @@ type Blocker struct {
 }
 
 type BoardLane struct {
-	ID        string   `json:"id"`
-	Title     string   `json:"title"`
-	Kind      string   `json:"kind"`
-	Status    string   `json:"status"` // blocked, waiting, in-progress, parked, queued, done, failed
-	Note      string   `json:"note"`
-	Age       string   `json:"age"`
-	Decisions int      `json:"decisions"`
-	Mate      bool     `json:"mate"`
-	Links     []string `json:"links"`
-	Log       []Line   `json:"log"`
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Kind      string `json:"kind"`
+	Status    string `json:"status"` // blocked, waiting, in-progress, parked, queued, done, failed
+	Note      string `json:"note"`
+	Age       string `json:"age"`
+	Decisions int    `json:"decisions"`
+	Mate      bool   `json:"mate"`
+	Log       []Line `json:"log"`
 }
 
 type Wait struct {
@@ -55,7 +54,6 @@ type Line struct {
 
 type Fleet struct {
 	UpdatedAt time.Time   `json:"updatedAt"`
-	Home      string      `json:"home"`
 	KPIs      []KPI       `json:"kpis"`
 	Blockers  []Blocker   `json:"blockers"`
 	Waiting   []Wait      `json:"waitingOnCaptain"`
@@ -91,13 +89,13 @@ type timed struct {
 	Line
 }
 
-func BuildFleet(home string, lanes []Lane, at time.Time) Fleet {
-	f := Fleet{UpdatedAt: at, Home: home}
+func BuildFleet(lanes []Lane, at time.Time) Fleet {
+	f := Fleet{UpdatedAt: at}
 	count := map[string]int{}
 	var all []timed
 	for _, l := range lanes {
 		b := BoardLane{ID: l.ID, Title: l.Title, Kind: l.Kind, Status: boardStatus[l.State], Age: age(l.UpdatedAt),
-			Decisions: len(l.Decisions), Mate: l.Kind == "secondmate" || l.Home != "", Links: l.Links, Note: "no status log yet"}
+			Decisions: len(l.Decisions), Mate: l.Kind == "secondmate" || l.Home != "", Note: "no status log yet"}
 		if e, ok := l.Latest(); ok {
 			b.Note = e.Text
 		}
@@ -138,6 +136,7 @@ func BuildFleet(home string, lanes []Lane, at time.Time) Fleet {
 }
 
 func tail[T any](s []T, n int) []T {
+	n = max(n, 0)
 	if len(s) > n {
 		return s[len(s)-n:]
 	}

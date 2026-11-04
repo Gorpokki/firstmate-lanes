@@ -1,5 +1,3 @@
-//go:build !(js && wasm)
-
 package main
 
 import (
@@ -8,13 +6,14 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
 	"os"
+	"slices"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
 )
 
 type fleetMsg struct {
@@ -31,7 +30,7 @@ func anim() tea.Cmd {
 func (m model) read() tea.Cmd {
 	return func() tea.Msg {
 		lanes, err := m.r.Load(m.home)
-		return fleetMsg{BuildFleet("main", lanes, time.Now()), err}
+		return fleetMsg{BuildFleet(lanes, time.Now()), err}
 	}
 }
 
@@ -71,8 +70,12 @@ func main() {
 	once := flag.Bool("once", false, "print one frame to stdout and exit")
 	size := flag.String("size", "120x34", "frame size for --once, as COLSxROWS")
 	asJSON := flag.Bool("json", false, "print the fleet board data as JSON and exit")
-	ships := flag.Bool("ships", false, "print the hologram ship frames as JSON and exit")
 	addr := flag.String("serve", "", "serve the web and phone board at this address (for example 127.0.0.1:7777) and exit only on error")
+	var allow []string
+	flag.Func("allow-host", "extra host name that --serve accepts in the Host header (repeatable)", func(s string) error {
+		allow = append(allow, s)
+		return nil
+	})
 	flag.Parse()
 	if *home == "" {
 		fmt.Fprintln(os.Stderr, "usage: fmlanes --home PATH (or set FM_HOME)")
@@ -86,28 +89,21 @@ func main() {
 	}
 	if *addr != "" {
 		fmt.Fprintf(os.Stderr, "fmlanes: serving the board at http://%s\n", *addr)
-		if err := serve(*addr, *home); err != nil {
+		if err := serve(*addr, *home, allow); err != nil {
 			fmt.Fprintln(os.Stderr, "fmlanes:", err)
 			os.Exit(1)
 		}
 		return
 	}
-	if *once || *asJSON || *ships {
+	if *once || *asJSON {
 		lanes, err := m.r.Load(*home)
-		m.fleet, m.err = BuildFleet("main", lanes, time.Now()), err
+		m.fleet, m.err = BuildFleet(lanes, time.Now()), err
 		m.step()
-		if *ships {
-			json.NewEncoder(os.Stdout).Encode(shipsJSON())
-			return
-		}
 		if *asJSON {
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", " ")
 			enc.Encode(m.fleet)
 			return
-		}
-		if os.Getenv("FMLANES_TRUECOLOR") != "" { // keep truecolor when stdout is not a tty
-			lipgloss.SetColorProfile(termenv.TrueColor)
 		}
 		fmt.Sscanf(*size, "%dx%d", &m.w, &m.h)
 		fmt.Println(m.View())
@@ -134,7 +130,8 @@ var webFiles embed.FS
 
 // serve publishes the board for browsers and phones: the static page, the
 // ship frames, and fleet.json, which re-reads the home on every request.
-func serve(addr, home string) error {
+// Requests whose Host is not allowed get 403.
+func serve(addr, home string, allow []string) error {
 	site, _ := fs.Sub(webFiles, "web")
 	ships, _ := json.Marshal(shipsJSON())
 	r := NewReader()
@@ -152,7 +149,29 @@ func serve(addr, home string) error {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		json.NewEncoder(w).Encode(BuildFleet("main", lanes, time.Now()))
+		json.NewEncoder(w).Encode(BuildFleet(lanes, time.Now()))
 	})
-	return http.ListenAndServe(addr, mux)
+	return http.ListenAndServe(addr, hostGuard(mux, allow))
+}
+
+func hostGuard(next http.Handler, names []string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !hostAllowed(r.Host, names) {
+			http.Error(w, "host not allowed", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func hostAllowed(hostport string, names []string) bool {
+	host, _, err := net.SplitHostPort(hostport)
+	if err != nil {
+		host = hostport
+	}
+	host = strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
+	if net.ParseIP(host) != nil || strings.EqualFold(host, "localhost") {
+		return true
+	}
+	return slices.ContainsFunc(names, func(n string) bool { return strings.EqualFold(n, host) })
 }

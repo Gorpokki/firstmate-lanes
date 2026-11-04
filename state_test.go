@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -63,8 +65,8 @@ func TestSampleHome(t *testing.T) {
 	if len(lanes) != len(want) || lanes[0].State != "needs-decision" || lanes[len(lanes)-1].ID != "cache-research" {
 		t.Errorf("lanes or order wrong: %d lanes, first %s, last %s", len(lanes), lanes[0].ID, lanes[len(lanes)-1].ID)
 	}
-	if l := got["api-retry"]; len(l.Links) != 1 || !strings.HasSuffix(l.Links[0], "/pull/412") || l.Title != "Retry failed API calls with backoff in the widgets service" {
-		t.Errorf("api-retry links %v title %q", l.Links, l.Title)
+	if l := got["api-retry"]; l.Title != "Retry failed API calls with backoff in the widgets service" {
+		t.Errorf("api-retry title %q", l.Title)
 	}
 	if !strings.HasSuffix(got["docs-mate"].Home, "sample-mate") {
 		t.Errorf("docs-mate home %q, want the sample-mate path", got["docs-mate"].Home)
@@ -80,9 +82,9 @@ func TestViewFillsTerminal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := model{fleet: BuildFleet("main", lanes, time.Now())}
+	m := model{fleet: BuildFleet(lanes, time.Now())}
 	m.step()
-	for _, size := range [][2]int{{40, 10}, {79, 24}, {80, 24}, {120, 14}, {120, 15}, {120, 34}, {200, 60}} {
+	for _, size := range [][2]int{{40, 10}, {79, 24}, {80, 24}, {120, 12}, {120, 14}, {120, 15}, {120, 34}, {200, 60}} {
 		for m.view = range views {
 			m.w, m.h = size[0], size[1]
 			rows := strings.Split(m.View(), "\n")
@@ -119,9 +121,53 @@ func TestTimelineOrderAcrossFallBack(t *testing.T) {
 		{ID: "a", Events: []Event{{Verb: "working", At: later, Text: "later"}}},
 		{ID: "b", Events: []Event{{Verb: "working", At: earlier, Text: "earlier"}}},
 	}
-	tl := BuildFleet("main", lanes, time.Now()).Timeline
+	tl := BuildFleet(lanes, time.Now()).Timeline
 	if len(tl) != 2 || tl[0].Text != "earlier" || tl[1].Text != "later" {
 		t.Fatalf("timeline order = %+v, want earlier then later", tl)
+	}
+}
+
+// Below 100 columns, Enter opens the selected lane's log in the Lanes view and Esc returns to the board.
+func TestNarrowLanesEnterOpensLog(t *testing.T) {
+	lanes, err := NewReader().Load("testdata/sample-home")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := model{fleet: BuildFleet(lanes, time.Now()), view: 4, w: 80, h: 24}
+	m.step()
+	for i, l := range m.fleet.Lanes {
+		if l.ID == "api-retry" {
+			m.sel = i
+		}
+	}
+	const title = "RETRY FAILED API CALLS WITH BACKOFF IN THE WIDGETS SERVICE"
+	if strings.Contains(m.View(), title) {
+		t.Fatal("the board shows a lane's log before Enter")
+	}
+	m, _ = m.key("enter")
+	if !strings.Contains(m.View(), title) {
+		t.Fatal("Enter does not open the selected lane")
+	}
+	m, _ = m.key("esc")
+	if strings.Contains(m.View(), title) {
+		t.Fatal("Esc does not return to the board")
+	}
+}
+
+// --serve answers only the Host names the user allows: localhost, IP literals and --allow-host names.
+func TestServeHostGuard(t *testing.T) {
+	ok := hostGuard(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }), []string{"fleet.example"})
+	for host, want := range map[string]int{
+		"127.0.0.1:7777": 200, "localhost:7777": 200, "[::1]:7777": 200, "192.168.1.20:7777": 200,
+		"fleet.example:7777": 200, "evil.example:7777": 403, "127.0.0.1.evil.example:7777": 403, "": 403,
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/fleet.json", nil)
+		req.Host = host
+		rec := httptest.NewRecorder()
+		ok.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Errorf("Host %q: status %d, want %d", host, rec.Code, want)
+		}
 	}
 }
 

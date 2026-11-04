@@ -7,14 +7,14 @@ import type { CSSProperties, ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
 type Fleet = {
-  updatedAt: string; home: string;
+  updatedAt: string;
   kpis: { label: string; value: string; detail: string; tone: string }[];
   blockers: { title: string; detail: string; next: string; age: string }[] | null;
   waitingOnCaptain: { lane: string; key: string; ask: string; age: string }[] | null;
   lanes: Lane[] | null; crew: Lane[] | null;
   timeline: { at: string; lane: string; verb: string; text: string }[] | null;
 };
-type Lane = { id: string; title: string; kind: string; status: string; note: string; age: string; decisions: number; mate: boolean; links: string[] | null; log: { at: string; verb: string; text: string }[] | null };
+type Lane = { id: string; title: string; kind: string; status: string; note: string; age: string; decisions: number; mate: boolean; log: { at: string; verb: string; text: string }[] | null };
 
 const C = {
   bg: "#000000", orange: "#FF9900", peach: "#FFCC99", lav: "#CC99CC", blue: "#9999FF", sky: "#99CCFF",
@@ -190,7 +190,7 @@ function App(props: { initial: Fleet }) {
         <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-end", gap: 10 }}>
           <div style={{ minWidth: 0 }}>
             <h1 style={{ ...lab, margin: 0, fontSize: "clamp(24px, 6vw, 40px)", lineHeight: 1.05, color: C.orange }}>Firstmate fleet ops</h1>
-            <div style={{ ...lab, fontSize: 12, color: C.dim, marginTop: 4 }}>{`Home ${F.home} · read-only · ${stale ? "stale: cannot reach the home" : "live"}`}</div>
+            <div style={{ ...lab, fontSize: 12, color: C.dim, marginTop: 4 }}>{`read-only · ${stale ? "stale: cannot reach the home" : "live"}`}</div>
           </div>
           <div style={{ textAlign: "right" }}>
             <div style={{ ...lab, fontSize: 18, color: C.sky }}>{`Stardate ${ts.stardate}`}</div>

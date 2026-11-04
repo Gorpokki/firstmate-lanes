@@ -51,10 +51,12 @@ type model struct {
 	every     time.Duration
 	tick      int
 	prog      map[string]float64 // hologram build progress per lane
+	open      bool
 }
 
-// key applies one key press; both the terminal and the browser build call it.
+// key applies one key press.
 func (m model) key(k string) (model, bool) {
+	prev := m.view
 	switch k {
 	case "q", "ctrl+c":
 		return m, true
@@ -62,6 +64,10 @@ func (m model) key(k string) (model, bool) {
 		m.view = (m.view + 1) % len(views)
 	case "shift+tab", "left":
 		m.view = (m.view + len(views) - 1) % len(views)
+	case "enter":
+		m.open = true
+	case "esc":
+		m.open = false
 	case "up", "k":
 		m.sel = max(0, m.sel-1)
 	case "down", "j":
@@ -72,6 +78,9 @@ func (m model) key(k string) (model, bool) {
 		if len(k) == 1 && k[0] >= '1' && int(k[0]-'1') < len(views) {
 			m.view = int(k[0] - '1')
 		}
+	}
+	if m.view != prev {
+		m.open = false
 	}
 	return m, false
 }
@@ -150,7 +159,7 @@ func stardate(t time.Time) string {
 func (m model) header() []string {
 	t := m.fleet.UpdatedAt
 	right := lab(cSky).Render(stardate(t)) + "  " + lab(cPeach).Render(strings.ToUpper(t.Format("Mon Jan 2, 3:04 PM")))
-	left := fg(cOrange).Render("██████") + " " + lab(cOrange).Render("FIRSTMATE FLEET OPS") + "  " + dim.Render("HOME "+strings.ToUpper(m.fleet.Home)+" · READ-ONLY")
+	left := fg(cOrange).Render("██████") + " " + lab(cOrange).Render("FIRSTMATE FLEET OPS") + "  " + dim.Render("READ-ONLY")
 	if m.err != nil {
 		left += "  " + lab(cRed).Render("STALE: "+m.err.Error())
 	}
@@ -171,7 +180,7 @@ func (m model) header() []string {
 }
 
 func (m model) footer() string {
-	keys := " 1-8/tab view · ↑↓ select lane · f filter · q quit "
+	keys := " 1-8/tab view · ↑↓ select · enter open · esc back · f filter · q quit "
 	return fit(fg(cOrange).Render(strings.Repeat("▀", 6))+dim.Render(keys)+fg(cOrange).Render(strings.Repeat("▀", max(0, m.w-6-ansi.StringWidth(keys)))), m.w)
 }
 
@@ -191,9 +200,12 @@ func (m model) View() string {
 	case "captain":
 		body = m.captain(m.w, bh)
 	case "lanes":
+		hh := min(24, bh*6/10)
 		if m.w >= 100 {
-			lw, hh := m.w*50/100, min(24, bh*6/10)
+			lw := m.w * 50 / 100
 			body = joinH(m.board(lw, bh), stack(m.holo(m.w-lw-1, hh), m.detail(m.w-lw-1, bh-hh)))
+		} else if m.open {
+			body = stack(m.holo(m.w, hh), m.detail(m.w, bh-hh))
 		} else {
 			body = m.board(m.w, bh)
 		}

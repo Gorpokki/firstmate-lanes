@@ -38,7 +38,6 @@ type Lane struct {
 	UpdatedAt       time.Time
 	Events          []Event
 	Decisions       []Decision
-	Links           []string
 	Hold            string // backlog hold note, if any
 	Home            string // second-mate home, set only when it exists on disk
 }
@@ -177,7 +176,6 @@ var (
 	mateRe    = regexp.MustCompile(`^- (\S+) - (.*)$`)
 	verbRe    = regexp.MustCompile(`^[a-z][a-z0-9-]*`)
 	slugRe    = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
-	linkRe    = regexp.MustCompile(`https://[^\s)>\]"']+/(?:pull|issues|merge_requests)/\d+`)
 )
 
 func lines(path string) []string {
@@ -360,23 +358,7 @@ func (r *Reader) lane(home, id string, b, mate entry) Lane {
 			l.Home = h
 		}
 	}
-	l.Links = links(l.Events)
 	return l
-}
-
-// links returns up to five distinct PR or issue URLs, newest first.
-func links(events []Event) []string {
-	var out []string
-	seen := map[string]bool{}
-	for i := len(events) - 1; i >= 0 && len(out) < 5; i-- {
-		for _, u := range linkRe.FindAllString(events[i].Text, -1) {
-			if !seen[u] {
-				seen[u] = true
-				out = append(out, u)
-			}
-		}
-	}
-	return out
 }
 
 func hasCaptainHold(ds []Decision) bool {
