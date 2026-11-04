@@ -3,7 +3,7 @@ package main
 // Fleet is the one shared primitive both front ends render: the
 // lane board's panels (health, red alert, waiting on captain, lane board,
 // crew, timeline) built from one home's lanes. The TUI draws it; --json hands
-// the same value to the web/mobile board.
+// the same value, as fleet.json, to the web/mobile board.
 
 import (
 	"fmt"
@@ -85,10 +85,16 @@ func stamp(t time.Time) string {
 	return t.Format("15:04")
 }
 
+// timed is one lane event with its instant kept for sorting the timeline.
+type timed struct {
+	at time.Time
+	Line
+}
+
 func BuildFleet(home string, lanes []Lane, at time.Time) Fleet {
 	f := Fleet{UpdatedAt: at, Home: home}
 	count := map[string]int{}
-	var all []Line
+	var all []timed
 	for _, l := range lanes {
 		b := BoardLane{ID: l.ID, Title: l.Title, Kind: l.Kind, Status: boardStatus[l.State], Age: age(l.UpdatedAt),
 			Decisions: len(l.Decisions), Mate: l.Kind == "secondmate" || l.Home != "", Links: l.Links, Note: "no status log yet"}
@@ -99,7 +105,7 @@ func BuildFleet(home string, lanes []Lane, at time.Time) Fleet {
 			b.Log = append(b.Log, Line{At: stamp(e.At), Verb: e.Verb, Text: e.Text})
 		}
 		for _, e := range l.Events {
-			all = append(all, Line{At: e.At.Format(time.RFC3339), Lane: l.ID, Verb: e.Verb, Text: e.Text})
+			all = append(all, timed{e.At, Line{At: stamp(e.At), Lane: l.ID, Verb: e.Verb, Text: e.Text}})
 		}
 		count[b.Status]++
 		for _, d := range l.Decisions {
@@ -117,11 +123,9 @@ func BuildFleet(home string, lanes []Lane, at time.Time) Fleet {
 		}
 		f.Lanes = append(f.Lanes, b)
 	}
-	sort.SliceStable(all, func(i, j int) bool { return all[i].At < all[j].At })
+	sort.SliceStable(all, func(i, j int) bool { return all[i].at.Before(all[j].at) })
 	for _, e := range tail(all, 14) {
-		t, _ := time.Parse(time.RFC3339, e.At)
-		e.At = stamp(t)
-		f.Timeline = append(f.Timeline, e)
+		f.Timeline = append(f.Timeline, e.Line)
 	}
 	f.KPIs = []KPI{
 		{"Lanes", fmt.Sprint(len(lanes)), "in this home", "idle"},

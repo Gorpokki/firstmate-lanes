@@ -65,7 +65,7 @@ func (m model) key(k string) (model, bool) {
 	case "up", "k":
 		m.sel = max(0, m.sel-1)
 	case "down", "j":
-		m.sel = min(len(m.lanes())-1, m.sel+1)
+		m.sel = max(0, min(len(m.lanes())-1, m.sel+1))
 	case "f":
 		m.filter, m.sel = (m.filter+1)%(len(StatusOrder)+1), 0
 	default:
@@ -216,7 +216,7 @@ func (m model) all(w, h int) []string {
 		return stack(m.health(w, hh), m.alert(w, ah), m.board(w, h-hh-ah))
 	}
 	lw := w * 42 / 100
-	hh, ah := 9, min(max(3, 3*len(m.fleet.Blockers)+2), h/4)
+	hh, ah := min(9, h/3), min(max(3, 3*len(m.fleet.Blockers)+2), h/4)
 	left := stack(m.health(lw, hh), m.alert(lw, ah), m.captain(lw, h-hh-ah))
 	th := h * 35 / 100
 	right := stack(m.board(w-lw-1, h-th), m.timeline(w-lw-1, th))

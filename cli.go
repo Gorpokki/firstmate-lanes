@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
-	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -138,7 +137,7 @@ var webFiles embed.FS
 func serve(addr, home string) error {
 	site, _ := fs.Sub(webFiles, "web")
 	ships, _ := json.Marshal(shipsJSON())
-	r, mu := NewReader(), sync.Mutex{} // the reader's log cache is not safe for concurrent use
+	r := NewReader()
 	mux := http.NewServeMux()
 	mux.Handle("GET /", http.FileServerFS(site))
 	mux.HandleFunc("GET /ships.json", func(w http.ResponseWriter, _ *http.Request) {
@@ -146,9 +145,7 @@ func serve(addr, home string) error {
 		w.Write(ships)
 	})
 	mux.HandleFunc("GET /fleet.json", func(w http.ResponseWriter, _ *http.Request) {
-		mu.Lock()
 		lanes, err := r.Load(home)
-		mu.Unlock()
 		if err != nil {
 			http.Error(w, "cannot read the home", http.StatusServiceUnavailable)
 			return

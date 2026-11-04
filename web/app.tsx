@@ -206,8 +206,8 @@ function App(props: { initial: Fleet }) {
         <Frame id="alert" title={blockers.length ? "Red alert · blockers" : "Blockers"} color={blockers.length ? C.red : C.blue} tag={`${blockers.length} active`}>
           {blockers.length === 0 ? <Empty what="blockers" /> : (
             <div style={wrapRow}>
-              {blockers.map((b) => (
-                <div key={b.title} style={{ flex: "1 1 300px", minWidth: 0, border: `2px solid ${C.red}`, borderRadius: 20, padding: "12px 14px" }}>
+              {blockers.map((b, i) => (
+                <div key={i} style={{ flex: "1 1 300px", minWidth: 0, border: `2px solid ${C.red}`, borderRadius: 20, padding: "12px 14px" }}>
                   <div style={{ ...lab, fontSize: 18, color: C.red }}>{b.title}</div>
                   <div style={{ fontSize: 14, lineHeight: 1.5, marginTop: 6 }}>{b.detail}</div>
                   <div style={{ fontSize: 14, marginTop: 10, color: C.peach }}><span style={{ ...lab, color: C.dim, fontSize: 12 }}>Lane · </span>{b.next}</div>
@@ -332,7 +332,7 @@ function App(props: { initial: Fleet }) {
 
       <footer style={{ marginTop: 18, display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
         <div style={{ flex: "1 1 120px", height: 12, background: C.orange, borderRadius: 999 }} />
-        <span style={{ ...lab, fontSize: 11, color: C.dim }}>Source · fmlanes --json (same reader as the TUI)</span>
+        <span style={{ ...lab, fontSize: 11, color: C.dim }}>Source · fmlanes --serve · fleet.json (same reader as the TUI)</span>
       </footer>
     </div>
   );

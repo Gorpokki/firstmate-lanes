@@ -82,7 +82,7 @@ func TestViewFillsTerminal(t *testing.T) {
 	}
 	m := model{fleet: BuildFleet("main", lanes, time.Now())}
 	m.step()
-	for _, size := range [][2]int{{40, 10}, {79, 24}, {80, 24}, {120, 34}, {200, 60}} {
+	for _, size := range [][2]int{{40, 10}, {79, 24}, {80, 24}, {120, 14}, {120, 15}, {120, 34}, {200, 60}} {
 		for m.view = range views {
 			m.w, m.h = size[0], size[1]
 			rows := strings.Split(m.View(), "\n")
@@ -95,6 +95,33 @@ func TestViewFillsTerminal(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// Moving down an empty lane list keeps the selection at zero, so no lane view indexes a missing lane.
+func TestSelectionOnEmptyList(t *testing.T) {
+	m, _ := model{w: 120, h: 34, view: 4}.key("j")
+	if m.sel != 0 {
+		t.Fatalf("sel = %d after j on an empty list, want 0", m.sel)
+	}
+	m.View()
+}
+
+// The timeline orders events by instant: 01:30 CDT comes before 01:10 CST on the fall-back night.
+func TestTimelineOrderAcrossFallBack(t *testing.T) {
+	chicago, err := time.LoadLocation("America/Chicago")
+	if err != nil {
+		t.Fatal(err)
+	}
+	earlier := time.Date(2026, 11, 1, 6, 30, 0, 0, time.UTC).In(chicago)
+	later := time.Date(2026, 11, 1, 7, 10, 0, 0, time.UTC).In(chicago)
+	lanes := []Lane{
+		{ID: "a", Events: []Event{{Verb: "working", At: later, Text: "later"}}},
+		{ID: "b", Events: []Event{{Verb: "working", At: earlier, Text: "earlier"}}},
+	}
+	tl := BuildFleet("main", lanes, time.Now()).Timeline
+	if len(tl) != 2 || tl[0].Text != "earlier" || tl[1].Text != "later" {
+		t.Fatalf("timeline order = %+v, want earlier then later", tl)
 	}
 }
 
