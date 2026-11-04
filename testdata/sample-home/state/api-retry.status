@@ -1,0 +1,3 @@
+working [at=1768212000]: read the client wrapper; retries live in one place
+working [at=1768213800]: added exponential backoff with jitter; unit tests pass locally
+working [at=1768215600]: opened https://github.com/example/widgets/pull/412 and started review

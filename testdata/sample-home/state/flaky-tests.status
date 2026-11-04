@@ -1,0 +1,5 @@
+working [at=1768211000]: reproducing the suite failure in a loop
+paused [at=1768212200]: waiting on 50 loop runs; resume when they finish
+resolved [at=1768214000]: loop runs finished, 6 of 50 failed
+needs-decision [key=fix-scope] [at=1768214600]: the failures come from a shared temp dir. Options: (a) give each test its own dir,
+  (b) run the suite serially, (c) quarantine the two worst tests

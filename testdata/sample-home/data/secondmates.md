@@ -1,0 +1,1 @@
+- docs-mate - Persistent second mate for the documentation site. It owns guides, link checks and doc releases. (home: ../sample-mate; scope: docs site; projects: docs; added 2026-01-02)
