@@ -68,8 +68,8 @@ func TestSampleHome(t *testing.T) {
 	if l := got["api-retry"]; l.Title != "Retry failed API calls with backoff in the widgets service" {
 		t.Errorf("api-retry title %q", l.Title)
 	}
-	if !strings.HasSuffix(got["docs-mate"].Home, "sample-mate") {
-		t.Errorf("docs-mate home %q, want the sample-mate path", got["docs-mate"].Home)
+	if crew := BuildFleet(lanes, time.Now()).Crew; len(crew) != 1 || crew[0].ID != "docs-mate" {
+		t.Errorf("crew = %+v, want only docs-mate", crew)
 	}
 	if got["docs-mate"].Title != "Persistent second mate for the documentation site" {
 		t.Errorf("docs-mate title %q", got["docs-mate"].Title)

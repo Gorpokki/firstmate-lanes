@@ -41,9 +41,9 @@ To open the board on a phone, serve it on an address the phone can reach, for ex
 It reads:
 
 - `state/<id>.status`: one event per line, `verb [key=<slug>] [at=<epoch>]: text`. A line that does not start an event continues the one above it.
-- `state/<id>.meta`: `kind` (ship, scout, secondmate) and `home`.
+- `state/<id>.meta`: `kind` (ship, scout, secondmate).
 - `data/backlog.md`: title, kind and hold of each entry. A `(hold-kind: captain)` hold counts as an open decision.
-- `data/secondmates.md`: registered second mates and their `(home: <path>; ...)`.
+- `data/secondmates.md`: registered second mates.
 
 Open decisions follow Firstmate's own fold. `needs-decision` and `blocked` open a key (`default` when the line has none). `resolved` and `captain-held` close it. A `done` or `failed` line closes all of a task's decisions, but never a second mate's.
 

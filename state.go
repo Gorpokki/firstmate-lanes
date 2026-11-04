@@ -39,7 +39,6 @@ type Lane struct {
 	Events          []Event
 	Decisions       []Decision
 	Hold            string // backlog hold note, if any
-	Home            string // second-mate home, set only when it exists on disk
 }
 
 func (l Lane) Latest() (Event, bool) {
@@ -167,7 +166,7 @@ func laneState(events []Event, open []Decision) string {
 
 var stateRank = map[string]int{"needs-decision": 0, "blocked": 1, "working": 2, "paused": 3, "unknown": 4, "failed": 5, "done": 6}
 
-type entry struct{ Section, Title, Kind, Hold, HoldKind, Home string }
+type entry struct{ Section, Title, Kind, Hold, HoldKind string }
 
 var (
 	backlogRe = regexp.MustCompile(`^- \[[ xX]\] (\S+) - (.*)$`)
@@ -232,11 +231,7 @@ func ReadSecondmates(path string) map[string]entry {
 			continue
 		}
 		e := entry{Kind: "secondmate", Title: m[2]}
-		if i := strings.Index(e.Title, " (home: "); i >= 0 {
-			e.Home, _, _ = strings.Cut(e.Title[i+8:], ";")
-			e.Home = strings.TrimSuffix(strings.TrimSpace(e.Home), ")")
-			e.Title = e.Title[:i]
-		}
+		e.Title, _, _ = strings.Cut(e.Title, " (home: ")
 		if i := strings.Index(e.Title, ". "); i > 0 {
 			e.Title = e.Title[:i]
 		}
@@ -349,14 +344,6 @@ func (r *Reader) lane(home, id string, b, mate entry) Lane {
 	l.State = laneState(l.Events, l.Decisions)
 	if e, ok := l.Latest(); ok && !e.At.IsZero() {
 		l.UpdatedAt = e.At
-	}
-	if h := first(meta["home"], mate.Home); h != "" {
-		if !filepath.IsAbs(h) {
-			h = filepath.Join(home, h)
-		}
-		if fi, err := os.Stat(filepath.Join(h, "state")); err == nil && fi.IsDir() {
-			l.Home = h
-		}
 	}
 	return l
 }

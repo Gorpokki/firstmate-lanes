@@ -95,7 +95,7 @@ func BuildFleet(lanes []Lane, at time.Time) Fleet {
 	var all []timed
 	for _, l := range lanes {
 		b := BoardLane{ID: l.ID, Title: l.Title, Kind: l.Kind, Status: boardStatus[l.State], Age: age(l.UpdatedAt),
-			Decisions: len(l.Decisions), Mate: l.Kind == "secondmate" || l.Home != "", Note: "no status log yet"}
+			Decisions: len(l.Decisions), Mate: l.Kind == "secondmate", Note: "no status log yet"}
 		if e, ok := l.Latest(); ok {
 			b.Note = e.Text
 		}
