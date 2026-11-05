@@ -1,0 +1,4 @@
+working [at=1768180000]: picked up the guide rewrite and the link check
+done [key=child-outcome-link-check] [at=1768200000]: child link-check failed: 3 dead links need owner rewrites
+needs-decision [key=style-guide] [at=1768201000]: keep the old style guide or adopt the new one for rewritten pages?
+paused [at=1768202000]: waiting for the guide rewrite worker to finish its first pass

@@ -1,0 +1,5 @@
+working [at=1768100000]: benchmarking three cache layers
+blocked [key=bench-host] [at=1768103000]: benchmark host has no free memory
+resolved [key=bench-host] [at=1768104000]: host freed
+needs-decision [at=1768110000]: report the in-process cache only, or all three?
+done [at=1768120000]: report written: in-process cache wins for reads under 1 KB
