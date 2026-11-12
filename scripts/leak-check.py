@@ -138,15 +138,19 @@ def self_test():
         result = run()
         assert result.returncode == 0 and not result.stdout and not result.stderr
         owner_login = "Synthetic-Owner"
+        identity_denylist = "Synthetic-Private-Token\n" + owner_login
         for identity, committer, owner_arg, expected in (
-            (("Synthetic-Owner", noreply), None, owner_login, 0),
+            ((owner_login, noreply), None, None, 1),
+            ((owner_login, noreply), None, owner_login, 0),
+            ((owner_login + "-2", noreply), None, owner_login, 1),
+            (("Synthetic", noreply), None, None, 0),
             (("Synthetic", "1+synthetic@" + "fake-users.noreply.github.com"), None, None, 1),
             (("Synthetic", noreply), ("Synthetic", "person@" + "example.invalid"), None, 1),
             (("Synthetic-Private-Token", noreply), None, None, 1),
         ):
             start = git("rev-parse", "HEAD", cwd=directory).strip()
             commit(identity=identity, committer=committer)
-            result = run(base=start, owner=owner_arg)
+            result = run(denylist=identity_denylist, base=start, owner=owner_arg)
             assert result.returncode == expected
             assert not any(value in result.stdout + result.stderr for value in (*identity, *(committer or identity)))
             if expected:
@@ -214,6 +218,7 @@ def self_test():
         commit()
         result = run(event={"pull_request": {"title": "$(touch executed.marker)", "body": "safe"}})
         assert result.returncode == 0 and not result.stdout and not result.stderr
+        assert not Path(directory, "executed.marker").exists()
         result = run(event={"pull_request": {"title": "person@" + "example.invalid", "body": ""}})
         assert result.returncode == 1
         assert "example.invalid" not in result.stdout + result.stderr
