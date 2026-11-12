@@ -1,5 +1,5 @@
 export type Link={id:string;title:string;url:string};
-export type Ask={key:string;form:string;question?:string;topic?:string;must_decide?:string[];reason:string;choices?:{label:string;effect:string}[];pick?:number;pick_reason?:string;no_pick_reason?:string;effort:string;detail?:string;tickets?:Link[];pull_requests?:Link[];grill_pages?:Link[];waits_on_this?:string;asked:string};
+export type Ask={key:string;form:string;question?:string;topic?:string;must_decide?:string[];reason:string;choices?:{label:string;effect:string}[];pick?:number;pick_reason?:string;no_pick_reason?:string;effort:string;detail?:string;tickets?:Link[];pull_requests?:Link[];grill_pages?:Link[];waits_on_this?:string;asked:string;answerable:boolean};
 export type Lane={id:string;name:string;home:string;secondMate:string;state:string;sourceState?:string;now:string;updatedAt?:string;start?:string;ticket?:Link;invalidAsks?:number;progress?:number;history:{at:string;state:string;text:string}[];asks:Ask[]};
 export type Fleet={updatedAt:string;stationLanes:Lane[];hiddenAsks:number;autonomyShare:number;changedLanes:string[]};
 export const states=['needs you','waiting','working','done','holding'];

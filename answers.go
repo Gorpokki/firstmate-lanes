@@ -51,6 +51,17 @@ func (s *AnswerService) Send(ctx context.Context, confirmed bool, answers []Sitt
 	for _, l := range lanes {
 		current[l.ID] = l
 	}
+	openKeys := map[string]int{}
+	for _, l := range lanes {
+		for _, d := range l.Decisions {
+			openKeys[l.OwnerDir+"\x00"+d.Key]++
+		}
+		if l.Record != nil {
+			for _, ask := range l.Record.Asks {
+				openKeys[l.OwnerDir+"\x00"+ask.Key]++
+			}
+		}
+	}
 	results := make([]DeliveryResult, len(answers))
 	batches := map[string][]int{}
 	payloads := make([]string, len(answers))
@@ -77,13 +88,17 @@ func (s *AnswerService) Send(ctx context.Context, confirmed bool, answers []Sitt
 		if ask == nil {
 			continue
 		}
+		if !ask.Answerable {
+			results[i].Reason = "No verifiable task ID for this ask; no answer was sent"
+			continue
+		}
+		if openKeys[lane.OwnerDir+"\x00"+answer.Key] > 1 {
+			results[i].Reason = "Task ID is shared by another open ask in this home; no answer was sent"
+			continue
+		}
 		key := lane.OwnerDir + "\x00" + answer.Key
 		if seen[key] {
 			results[i].Reason = "Duplicate ask in sitting"
-			continue
-		}
-		if !slugRe.MatchString(answer.Key) || len(answer.Key) > 128 {
-			results[i].Reason = "Invalid ask key"
 			continue
 		}
 		var text string
@@ -159,7 +174,7 @@ func (s *AnswerService) Send(ctx context.Context, confirmed bool, answers []Sitt
 			if accepted[answers[i].Key] {
 				results[i].Accepted = true
 				results[i].Reason = "Accepted"
-				if err := s.Reader.acknowledge(home, answers[i].Key, answers[i].Asked); err != nil {
+				if err := s.Reader.acknowledge(home, answers[i].Lane, answers[i].Key, answers[i].Asked); err != nil {
 					results[i].Reason = "Accepted; local receipt could not be saved"
 				}
 				continue

@@ -358,8 +358,8 @@ func (r *Reader) lane(home, id string, b, mate entry) Lane {
 	l := Lane{ID: id, Kind: first(meta["kind"], b.Kind, mate.Kind, "unknown"), Title: first(b.Title, mate.Title, id), Hold: b.Hold}
 	l.Events, l.UpdatedAt = r.events(filepath.Join(home, "state", id+".status"))
 	l.Decisions = OpenDecisions(l.Events, l.Kind)
-	if b.HoldKind == "captain" && b.Section != "Done" && !hasCaptainHold(l.Decisions) {
-		l.Decisions = append(l.Decisions, Decision{Key: "captain-hold", Verb: "captain-hold", Text: b.Hold})
+	if b.HoldKind == "captain" && b.Section != "Done" && !hasHoldAsk(l.Decisions, id) {
+		l.Decisions = append(l.Decisions, Decision{Key: id, Verb: "captain-hold", Text: b.Hold})
 	}
 	l.State = laneState(l.Events, l.Decisions)
 	if e, ok := l.Latest(); ok && !e.At.IsZero() {
@@ -368,9 +368,13 @@ func (r *Reader) lane(home, id string, b, mate entry) Lane {
 	return l
 }
 
-func hasCaptainHold(ds []Decision) bool {
+func nativeTaskKey(key string) bool {
+	return slugRe.MatchString(key) && len(key) <= 128 && key != "default" && key != "captain-hold"
+}
+
+func hasHoldAsk(ds []Decision, id string) bool {
 	for _, d := range ds {
-		if strings.HasPrefix(d.Key, "captain-hold") {
+		if d.Key == id || strings.HasPrefix(d.Key, "captain-hold") {
 			return true
 		}
 	}

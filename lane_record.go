@@ -58,6 +58,7 @@ type LaneRecordAsk struct {
 	GrillPages   []LaneRecordLink   `json:"grill_pages,omitempty"`
 	WaitsOnThis  string             `json:"waits_on_this,omitempty"`
 	Asked        time.Time          `json:"asked"`
+	Answerable   bool               `json:"answerable"`
 }
 
 // ParseLaneRecord validates a lane record. Invalid asks are omitted and counted;

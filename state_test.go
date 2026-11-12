@@ -62,6 +62,9 @@ func TestSampleHome(t *testing.T) {
 			t.Errorf("%s: state %q, want %q", id, got[id].State, state)
 		}
 	}
+	if d := got["deps-bump"].Decisions; len(d) != 1 || d[0].Verb != "captain-hold" || d[0].Key != "deps-bump" {
+		t.Errorf("captain hold decisions %+v, want one keyed by its backlog task ID", d)
+	}
 	if len(lanes) != len(want) || lanes[0].State != "needs-decision" || lanes[len(lanes)-1].ID != "cache-research" {
 		t.Errorf("lanes or order wrong: %d lanes, first %s, last %s", len(lanes), lanes[0].ID, lanes[len(lanes)-1].ID)
 	}

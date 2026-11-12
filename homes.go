@@ -105,7 +105,7 @@ func (r *Reader) removeAccepted(lanes []Lane) {
 		if lane.Record != nil {
 			kept := lane.Record.Asks[:0]
 			for _, ask := range lane.Record.Asks {
-				if at, ok := r.accepted[lane.OwnerDir+"\x00"+ask.Key]; !ok || !at.Equal(ask.Asked) {
+				if at, ok := r.accepted[receiptID(lane.OwnerDir, lane.ID, ask.Key)]; !ok || !at.Equal(ask.Asked) {
 					kept = append(kept, ask)
 				}
 			}
@@ -113,7 +113,7 @@ func (r *Reader) removeAccepted(lanes []Lane) {
 		}
 		kept := lane.Decisions[:0]
 		for _, ask := range lane.Decisions {
-			if at, ok := r.accepted[lane.OwnerDir+"\x00"+ask.Key]; !ok || !at.Equal(ask.At) {
+			if at, ok := r.accepted[receiptID(lane.OwnerDir, lane.ID, ask.Key)]; !ok || !at.Equal(ask.At) {
 				kept = append(kept, ask)
 			}
 		}

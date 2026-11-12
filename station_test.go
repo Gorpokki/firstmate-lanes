@@ -23,6 +23,7 @@ func TestStationStateBoundaries(t *testing.T) {
 		{"done", "done", now, nil, "done", 0},
 		{"seven day ask", "needs-decision", now, []Decision{{Key: "choice", At: now.Add(-7 * 24 * time.Hour)}}, "needs you", 0},
 		{"old ask", "needs-decision", now, []Decision{{Key: "choice", At: now.Add(-7*24*time.Hour - time.Second)}}, "holding", 1},
+		{"undated ask stays visible", "needs-decision", now, []Decision{{Key: "choice"}}, "needs you", 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -37,20 +37,21 @@ func stationLane(l Lane, at time.Time) (StationLane, int) {
 	}
 	hidden := 0
 	for _, d := range l.Decisions {
-		if d.At.IsZero() || d.At.Before(at.Add(-7*24*time.Hour)) {
+		if !d.At.IsZero() && d.At.Before(at.Add(-7*24*time.Hour)) {
 			hidden++
 			continue
 		}
-		out.Asks = append(out.Asks, StationAsk{Key: d.Key, Form: "discussion", Topic: d.Text, Question: d.Text, MustDecide: []string{d.Text}, Reason: "Crew needs your answer", Effort: "read", Asked: d.At})
+		out.Asks = append(out.Asks, StationAsk{Key: d.Key, Form: "discussion", Topic: d.Text, Question: d.Text, MustDecide: []string{d.Text}, Reason: "Crew needs your answer", Effort: "read", Asked: d.At, Answerable: nativeTaskKey(d.Key)})
 	}
 	if l.Record != nil {
 		out.Start, out.Ticket, out.InvalidAsks = l.Record.Start, l.Record.Ticket, l.InvalidAsks
 		out.Now = l.Record.Now
 		for _, ask := range l.Record.Asks {
-			if ask.Asked.Before(at.Add(-7 * 24 * time.Hour)) {
+			if !ask.Asked.IsZero() && ask.Asked.Before(at.Add(-7*24*time.Hour)) {
 				hidden++
 				continue
 			}
+			ask.Answerable = nativeTaskKey(ask.Key)
 			out.Asks = append(out.Asks, ask)
 		}
 	}
@@ -111,8 +112,8 @@ func stationFleet(lanes []Lane, at time.Time) ([]StationLane, int, float64) {
 		}
 		oldest := func(l StationLane) time.Time {
 			var t time.Time
-			for _, ask := range l.Asks {
-				if t.IsZero() || ask.Asked.Before(t) {
+			for i, ask := range l.Asks {
+				if i == 0 || ask.Asked.Before(t) {
 					t = ask.Asked
 				}
 			}
