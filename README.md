@@ -53,11 +53,11 @@ Open decisions follow Firstmate's own fold. `needs-decision` and `blocked` open 
 - `fleet.go`: `BuildFleet`, which turns lanes into the board's panels. Every front end renders this one value.
 - `main.go`, `holo.go`: the terminal board's views and the hologram.
 - `cli.go`: the terminal program, the flags, and `--serve`.
-- `web/`: the web and phone board (React 18.3.1). `web/app.js` is the built bundle that `--serve` embeds. After a change to `web/app.tsx`, run `bun install && bun run build` in `web/`.
+- `web/`: the web and phone board (React 18.3.1). `web/app.js` is the built bundle that `--serve` embeds. After a change to `web/app.tsx`, run `bun install && bun run build` in `web/` with bun 1.3.14, the version CI pins; other versions emit different bytes.
 
 ## Quality checks
 
-Run the Go and web quality commands before opening a pull request:
+Run the Go and web quality commands before opening a pull request. The web commands need bun 1.3.14, the version the quality workflow pins:
 
 ```sh
 test -z "$(gofmt -l .)"
