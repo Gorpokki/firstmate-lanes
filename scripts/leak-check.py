@@ -71,6 +71,15 @@ def report(text, denylist):
     return 0
 
 
+NOREPLY_EMAIL = re.compile(r"\d+\+[A-Za-z0-9-]+@users\.noreply\.github\.com")
+
+
+def identity_leaks(value, owner, denylist):
+    if value == owner or NOREPLY_EMAIL.fullmatch(value):
+        return 0
+    return report(value, denylist)
+
+
 def git(*args, cwd=None):
     return subprocess.run(["git", *args], check=True, capture_output=True, text=True, cwd=cwd).stdout
 
@@ -80,21 +89,29 @@ def self_test():
         subprocess.run(["git", "init", "-q"], cwd=directory, check=True)
         sample = Path(directory) / "sample.txt"
         scanner = str(Path(__file__).resolve())
+        cluster_host = ".".join(("service", "cluster", "internal"))
+        host_forms = tuple(".".join(parts) for parts in (("printer", "local"), ("nas", "home", "arpa"), ("app", "localhost")))
+        noreply = "1+synthetic@" + "users.noreply.github.com"
 
-        def commit(message="Synthetic commit"):
+        def commit(message="Synthetic commit", identity=("Synthetic", noreply), committer=None):
+            committer = committer or identity
+            env = {
+                **os.environ,
+                "GIT_AUTHOR_NAME": identity[0],
+                "GIT_AUTHOR_EMAIL": identity[1],
+                "GIT_COMMITTER_NAME": committer[0],
+                "GIT_COMMITTER_EMAIL": committer[1],
+            }
             subprocess.run(["git", "add", "-A"], cwd=directory, check=True)
             subprocess.run(
-                [
-                    "git", "-c", "user.name=Synthetic", "-c",
-                    "user.email=synthetic@" + "example.invalid", "commit",
-                    "--allow-empty", "-q", "-m", message,
-                ],
+                ["git", "commit", "--allow-empty", "-q", "-m", message],
                 cwd=directory,
+                env=env,
                 check=True,
                 capture_output=True,
             )
 
-        def run(denylist="Synthetic-Private-Token", event=None, base=None):
+        def run(denylist="Synthetic-Private-Token", event=None, base=None, owner=None):
             env = os.environ.copy()
             env.pop("LEAK_DENYLIST", None)
             if denylist is not None:
@@ -102,6 +119,8 @@ def self_test():
             args = [sys.executable, scanner, "--tree", "HEAD"]
             if base is not None:
                 args.extend(["--base", base])
+            if owner is not None:
+                args.extend(["--owner-login", owner])
             if event is not None:
                 event_path = Path(directory) / "event.json"
                 event_path.write_text(json.dumps(event))
@@ -118,9 +137,33 @@ def self_test():
         commit()
         result = run()
         assert result.returncode == 0 and not result.stdout and not result.stderr
+        owner_login = "Synthetic-Owner"
+        for identity, committer, owner_arg, expected in (
+            (("Synthetic-Owner", noreply), None, owner_login, 0),
+            (("Synthetic", "1+synthetic@" + "fake-users.noreply.github.com"), None, None, 1),
+            (("Synthetic", noreply), ("Synthetic", "person@" + "example.invalid"), None, 1),
+            (("Synthetic-Private-Token", noreply), None, None, 1),
+        ):
+            start = git("rev-parse", "HEAD", cwd=directory).strip()
+            commit(identity=identity, committer=committer)
+            result = run(base=start, owner=owner_arg)
+            assert result.returncode == expected
+            assert not any(value in result.stdout + result.stderr for value in (*identity, *(committer or identity)))
+            if expected:
+                assert "leak detected (content redacted)" in result.stderr
+            else:
+                assert not result.stdout and not result.stderr
+        sample.write_text(noreply)
+        commit()
+        result = run()
+        assert result.returncode == 1
+        assert "leak detected (content redacted)" in result.stderr
+        assert noreply not in result.stdout + result.stderr
+        sample.write_text("safe synthetic content")
+        commit()
         for name, content in (
             ("intermediate.txt", "synthetic-private-token"),
-            ("service.cluster." + PRIVATE_SUFFIXES[0], "safe"),
+            (cluster_host, "safe"),
         ):
             start = git("rev-parse", "HEAD", cwd=directory).strip()
             Path(directory, name).write_text(content)
@@ -139,7 +182,7 @@ def self_test():
         assert "leak detected (content redacted)" in result.stderr
         assert "synthetic-private-token" not in result.stdout + result.stderr
         sample.write_text("safe synthetic content")
-        private_name = Path(directory) / ("service.cluster." + PRIVATE_SUFFIXES[0])
+        private_name = Path(directory) / cluster_host
         private_name.write_text("safe")
         commit()
         result = run()
@@ -149,7 +192,7 @@ def self_test():
         for content in (
             "path " + HOME_MARKERS[0] + "sample/file",
             "path " + HOME_MARKERS[1] + "sample/file",
-            "service.cluster." + PRIVATE_SUFFIXES[0],
+            cluster_host,
             "192" + ".168.4.5",
             "person@" + "example.invalid",
             "synthetic-private-token",
@@ -160,7 +203,7 @@ def self_test():
             assert result.returncode == 1
             assert "leak detected (content redacted)" in result.stderr
             assert content not in result.stdout + result.stderr
-        for host in (".".join(("printer", "local")), ".".join(("nas", "home", "arpa")), ".".join(("app", "localhost"))):
+        for host in host_forms:
             sample.write_text(host)
             commit()
             result = run()
@@ -174,7 +217,7 @@ def self_test():
         result = run(event={"pull_request": {"title": "person@" + "example.invalid", "body": ""}})
         assert result.returncode == 1
         assert "example.invalid" not in result.stdout + result.stderr
-        result = run(event={"issue": {"title": "safe", "body": "service.cluster." + PRIVATE_SUFFIXES[0]}})
+        result = run(event={"issue": {"title": "safe", "body": cluster_host}})
         assert result.returncode == 1
         assert "cluster" not in result.stdout + result.stderr
         result = run(event={"title": "safe", "body": "person@" + "example.invalid"})
@@ -187,6 +230,7 @@ def main():
     parser.add_argument("--head", default="HEAD", help="outgoing commit head")
     parser.add_argument("--tree", help="Git tree to scan without checking it out")
     parser.add_argument("--event-file", help="GitHub event JSON with issue or PR text")
+    parser.add_argument("--owner-login", help="repository owner login, allowed as an exact commit identity value")
     args = parser.parse_args()
     denylist_value = os.environ.pop("LEAK_DENYLIST", None)
     if args.self_test:
@@ -202,6 +246,8 @@ def main():
         for commit in git("rev-list", f"{args.base}..{args.head}").split():
             failed |= scan_tree(commit, denylist, seen)
         failed |= report(git("log", "--format=%B", f"{args.base}..{args.head}"), denylist)
+        for identity in set(git("log", "--format=%an%n%ae%n%cn%n%ce", f"{args.base}..{args.head}").splitlines()):
+            failed |= identity_leaks(identity, args.owner_login, denylist)
     if args.event_file:
         event = json.loads(Path(args.event_file).read_text())
         payloads = [event[key] for key in ("issue", "pull_request") if isinstance(event.get(key), dict)]

@@ -72,16 +72,23 @@ python3 scripts/doc-slop-check.py
 
 The Actions workflow runs these checks on pull requests and pushes to `main`.
 The required no-leak scan checks every outgoing commit in the PR (its file
-paths, file contents and commit message), the PR head tree, and the PR title
-and body. Local prepublication scans can also check an issue's title and body
-by passing `--event-file` a JSON file shaped `{"issue": {"title": ..., "body": ...}}`;
-a file with no `issue` or `pull_request` object fails the scan. CI does not
-scan issues. Its
+paths, file contents, commit message, and author and committer names and
+emails), the PR head tree, and the PR title and body. A commit identity may
+only be the GitHub noreply address `<id>+<login>@users.noreply.github.com` or
+the repository owner's login (`--owner-login`, which CI takes from the
+repository owner); every other identity value goes through the denylist and
+the generic shape checks. Identity allowances never apply to file content,
+paths, messages, or issue and PR text. Local prepublication scans can also
+check an issue's title and body by passing `--event-file` a JSON file shaped
+`{"issue": {"title": ..., "body": ...}}`; a file with no `issue` or
+`pull_request` object fails the scan. CI does not scan issues. The
 secret-bearing job runs only the trusted default-branch scanner and reads PR
-Git objects as data; it never executes PR code. Maintainers pipe the private
-local denylist file to `gh-axi secret set LEAK_DENYLIST` using stdin. The
-secret must never be printed, committed, encoded in artifacts, or passed as a
-command-line argument. The scan fails when the secret is missing or blank.
+Git objects as data; it never executes PR code. Set the secret with the
+official GitHub CLI by piping the private local denylist file on stdin:
+`gh secret set LEAK_DENYLIST < <denylist-file>`. Or paste the file's contents
+into the repository's Actions secrets settings. The secret must never be
+printed, committed, encoded in artifacts, or passed as a command-line argument.
+The scan fails when the secret is missing or blank.
 
 ## Ship models
 

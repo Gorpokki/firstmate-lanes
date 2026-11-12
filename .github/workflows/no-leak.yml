@@ -33,5 +33,6 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           EVENT_FILE: ${{ github.event_path }}
+          OWNER_LOGIN: ${{ github.repository_owner }}
         run: |
-          python3 scripts/leak-check.py --tree "$HEAD_SHA" --base "$BASE_SHA" --head "$HEAD_SHA" --event-file "$EVENT_FILE"
+          python3 scripts/leak-check.py --tree "$HEAD_SHA" --base "$BASE_SHA" --head "$HEAD_SHA" --event-file "$EVENT_FILE" --owner-login "$OWNER_LOGIN"
