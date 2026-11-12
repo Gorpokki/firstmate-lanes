@@ -55,11 +55,29 @@ Open decisions follow Firstmate's own fold. `needs-decision` and `blocked` open 
 - `cli.go`: the terminal program, the flags, and `--serve`.
 - `web/`: the web and phone board (React 18.3.1). `web/app.js` is the built bundle that `--serve` embeds. After a change to `web/app.tsx`, run `bun install && bun run build` in `web/`.
 
-## Test
+## Quality checks
+
+Run the Go and web quality commands before opening a pull request:
 
 ```sh
+test -z "$(gofmt -l .)"
+go vet ./...
+go build .
 go test ./...
+cd web && bun install --frozen-lockfile
+python3 scripts/slop-check.py
+python3 scripts/doc-slop-check.py
+cd web && bun run format:check && bun run lint && bun run typecheck && bun test && bun run build
 ```
+
+The Actions workflow runs these checks on pull requests and pushes to `main`.
+The required no-leak scan checks the full PR tree (file contents and paths),
+all outgoing commit messages, and public issue/PR titles and bodies. Its
+secret-bearing job runs only the trusted default-branch scanner and reads PR
+Git objects as data; it never executes PR code. Maintainers pipe the private
+local denylist file to `gh-axi secret set LEAK_DENYLIST` using stdin. The
+secret must never be printed, committed, encoded in artifacts, or passed as a
+command-line argument. The scan fails when the secret is missing or blank.
 
 ## Ship models
 
