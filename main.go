@@ -66,10 +66,7 @@ func (m model) key(k string) (model, bool) {
 	case "q":
 		return m, true
 	case "a":
-		m.view = 0
-		if len(m.sitting.items) == 0 || m.sitting.finished {
-			m.openSitting()
-		}
+		m.enterView(0)
 	case "l":
 		m.view = 1
 	case "f":
@@ -77,9 +74,9 @@ func (m model) key(k string) (model, bool) {
 	case "enter":
 		m.view = 3
 	case "tab", "right":
-		m.view = (m.view + 1) % len(views)
+		m.enterView((m.view + 1) % len(views))
 	case "shift+tab", "left":
-		m.view = (m.view + len(views) - 1) % len(views)
+		m.enterView((m.view + len(views) - 1) % len(views))
 	case "o":
 		if m.view == 0 {
 			if len(m.sitting.items) == 0 {
@@ -187,6 +184,12 @@ func (m *model) toggleSelected() {
 	}
 }
 func (m *model) openSitting() { m.sitting = sitting{}; m.sitting.load(m.askLanes()) }
+func (m *model) enterView(v int) {
+	m.view = v
+	if v == 0 && (m.sitting.finished || m.sitting.untouched()) {
+		m.openSitting()
+	}
+}
 func (m model) askLanes() []StationLane {
 	var out []StationLane
 	for _, l := range m.lanes() {

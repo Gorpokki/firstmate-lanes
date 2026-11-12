@@ -27,6 +27,8 @@ type answerResultMsg struct {
 	err     error
 }
 
+func (s *sitting) untouched() bool { return len(s.answers) == 0 && len(s.deferred) == 0 }
+
 func (s *sitting) load(lanes []StationLane) {
 	*s = sitting{deferred: map[string]bool{}}
 	for _, lane := range lanes {
