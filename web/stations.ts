@@ -5,8 +5,7 @@ export type Fleet={updatedAt:string;stationLanes:Lane[];hiddenAsks:number;autono
 export const states=['needs you','waiting','working','done','holding'];
 export type Station='ask'|'list'|'fleet'|'lane';
 export function deriveBoard(fleet:Fleet,mate='') {
- const oldest=(lane:Lane)=>Math.min(...lane.asks.map(a=>Date.parse(a.asked)));
- const rows=fleet.stationLanes.filter(l=>!mate||l.secondMate===mate).toSorted((a,b)=>states.indexOf(a.state)-states.indexOf(b.state)||(a.state==='needs you'?oldest(a)-oldest(b):0)||a.id.localeCompare(b.id));
+ const rows=fleet.stationLanes.filter(l=>!mate||l.secondMate===mate);
  const needs=fleet.stationLanes.filter(l=>l.state==='needs you').length;
  const asks=fleet.stationLanes.reduce((n,l)=>n+l.asks.length,0);
  return {rows,summary:`${needs} lanes need you · ${asks} asks · ${Math.round(fleet.autonomyShare*100)}% autonomy · ${(fleet.changedLanes||[]).length} changed`,mates:[...new Set(fleet.stationLanes.map(l=>l.secondMate).filter(Boolean))].sort()};

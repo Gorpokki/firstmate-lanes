@@ -39,7 +39,7 @@ func TestOnlyOwnedNativeAsksAreAnswerable(t *testing.T) {
 	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
 	ask := LaneRecordAsk{Form: "choice", Key: "route", Question: "Route?", Reason: "Pick", Effort: "quick", Asked: now, Choices: []LaneRecordChoice{{Label: "A", Effect: "a"}, {Label: "B", Effect: "b"}}}
 	owned, _ := stationLane(Lane{ID: "owned", OwnerDir: "/home", State: "needs-decision", Decisions: []Decision{{Key: "route", Verb: "needs-decision", At: now}}, Record: &LaneRecord{Asks: []LaneRecordAsk{ask}}}, now)
-	local, _ := stationLane(Lane{ID: "local/dropin", OwnerDir: "", State: "needs-decision", Decisions: []Decision{{Key: "route", Verb: "needs-decision", At: now}}, Record: &LaneRecord{Asks: []LaneRecordAsk{ask}}}, now)
+	local, _ := stationLane(Lane{ID: "local/dropin", Home: "local", OwnerDir: "", State: "needs-decision", Decisions: []Decision{{Key: "route", Verb: "needs-decision", At: now}}, Record: &LaneRecord{Asks: []LaneRecordAsk{ask}}}, now)
 	if len(owned.Asks) != 2 || len(local.Asks) != 2 {
 		t.Fatalf("asks owned=%d local=%d, want 2 each", len(owned.Asks), len(local.Asks))
 	}
@@ -52,6 +52,18 @@ func TestOnlyOwnedNativeAsksAreAnswerable(t *testing.T) {
 		if a.Answerable {
 			t.Fatalf("drop-in ask %q answerable without an owning home", a.Key)
 		}
+	}
+}
+
+func TestUndatedAsksAreReadOnlyAndDoNotAcceptZeroTimeReceipts(t *testing.T) {
+	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	row, _ := stationLane(Lane{ID: "owned", OwnerDir: "/home", State: "needs-decision", Decisions: []Decision{{Key: "route", Verb: "needs-decision"}}}, now)
+	if len(row.Asks) != 1 || row.Asks[0].Answerable {
+		t.Fatalf("undated ask should stay visible and read-only: %+v", row.Asks)
+	}
+	r := &Reader{accepted: map[string]time.Time{receiptID("/home", "owned", "route"): {}}}
+	if r.isAccepted("/home", "owned", "route", time.Time{}) {
+		t.Fatal("zero-time receipt hid an undated ask")
 	}
 }
 

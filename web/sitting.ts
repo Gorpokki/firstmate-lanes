@@ -8,11 +8,12 @@ export type ReviewRow={lane:string;key:string;question:string;answer:string};
 const refFor=(lane:string,key:string)=>`${lane}\0${key}`;
 const effortRank=(ask:Ask)=>ask.effort==='quick'?0:1;
 const askedAt=(ask:Ask)=>{const time=Date.parse(ask.asked);return Number.isFinite(time)?time:0;};
+export const readOnlyReason=(lane:Fleet['stationLanes'][number],ask:Ask)=>ask.answerable?'':lane.home==='local'?'Local drop-in lanes have no owning home, so this ask is read-only here.':'This ask has no verifiable task ID or recorded time, so it is read-only here.';
 
 export function buildSitting(fleet:Fleet,selectedLaneIds?:string[],deferred:ReadonlySet<string>=new Set()):SittingItem[]{
  const selected=selectedLaneIds?new Set(selectedLaneIds):undefined;
  const lanes=fleet.stationLanes.filter(lane=>!selected||selected.has(lane.id)).toSorted((a,b)=>a.secondMate.localeCompare(b.secondMate)||a.name.localeCompare(b.name)||a.id.localeCompare(b.id));
- const ordered=lanes.map(lane=>({lane,asks:lane.asks.filter(ask=>!deferred.has(refFor(lane.id,ask.key))).toSorted((a,b)=>effortRank(a)-effortRank(b)||askedAt(a)-askedAt(b))}));
+ const ordered=lanes.map(lane=>({lane,asks:lane.asks.filter(ask=>ask.answerable&&!deferred.has(refFor(lane.id,ask.key))).toSorted((a,b)=>effortRank(a)-effortRank(b)||askedAt(a)-askedAt(b))}));
  const result:SittingItem[]=[];
  for(let round=0;round<4;round++)for(const {lane,asks} of ordered){
   const ask=asks[round];
