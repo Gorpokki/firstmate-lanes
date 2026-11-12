@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
@@ -28,11 +30,11 @@ func (s *lastLook) apply(f *Fleet) error {
 		return nil
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("last look %s: %w", filepath.Base(s.path), err)
 	}
 	var old savedLook
 	if err = json.Unmarshal(data, &old); err != nil {
-		return err
+		return fmt.Errorf("last look %s: %w", filepath.Base(s.path), err)
 	}
 	f.ChangedLanes = []string{}
 	for _, l := range f.Stations {

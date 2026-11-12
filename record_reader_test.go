@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -39,6 +40,34 @@ func TestRecordPreferredAndMissingRecordFallsBack(t *testing.T) {
 	}
 	if found["fallback"].Now != "Status example" {
 		t.Fatalf("fallback lost: %#v", found["fallback"])
+	}
+}
+
+func TestSidecarFailureIdentifiesFileAndCauseOverHTTP(t *testing.T) {
+	cause := json.Unmarshal([]byte(`{`), new(any)).Error()
+	for _, file := range []string{"last-look.json", "accepted-asks.json"} {
+		t.Run(file, func(t *testing.T) {
+			home := t.TempDir()
+			if err := os.Mkdir(filepath.Join(home, "state"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			stateDir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(stateDir, file), []byte(`{`), 0600); err != nil {
+				t.Fatal(err)
+			}
+			reader := NewReader()
+			reader.receiptPath = filepath.Join(stateDir, "accepted-asks.json")
+			handler, err := boardHandler(home, runtimeConfig{}, reader, newLastLook(filepath.Join(stateDir, "last-look.json")), &AnswerService{Reader: reader, Home: home}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "http://localhost/fleet.json", nil))
+			body := response.Body.String()
+			if response.Code != http.StatusServiceUnavailable || !strings.Contains(body, file) || !strings.Contains(body, cause) {
+				t.Fatalf("status=%d, want %s and %q in %q", response.Code, file, cause, body)
+			}
+		})
 	}
 }
 
