@@ -37,6 +37,24 @@ Other Host values receive 403, including on answer and asset routes.
 It exercises every state, blocked flicker, finite failure breakup, ASCII/quadrant output and every admitted model in the loaded pool.
 It uses synthetic lane data and never answers a real ask.
 
+The simulation keeps idle and hidden performance budgets, recorded in `web/perf/budget.json`:
+
+- **Hidden:** while the page is hidden, it draws no ship frames, steps no states and makes no requests. Spin and steps resume where they stopped once the page is visible again.
+- **Idle:** with the simulation paused or its breakup settled and the spin stopped, it draws no frames and makes no requests.
+- **Active:** spin redraws stay at 24 frames a second or fewer, within a main-thread script budget.
+- **Fleet:** the simulation never reads `/fleet.json`.
+
+Lane and Ask ships also stop spinning while the page is hidden.
+`web/perf/simulation-budget.mjs` serves `testdata/sample-home` with a built `fmlanes` and runs `/simulation` in headless Chromium.
+It counts ship redraws, requests, simulation steps and Chromium script time over fixed windows, and fails when any budget is exceeded:
+
+```sh
+(cd web && bun run build) && go build -o fmlanes .
+node web/perf/simulation-budget.mjs --binary ./fmlanes --report simulation-budget.json
+```
+
+The **Simulation budget** GitHub workflow builds the web bundle from source, runs this check on every pull request and push to `main`, and posts the measurements to the job summary.
+
 ### Keys
 
 | Key | Action |
