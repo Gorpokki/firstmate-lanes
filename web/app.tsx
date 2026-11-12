@@ -74,7 +74,7 @@ function App(){
   </section>}
   {station==='lane'&&(lane?<LaneStation lane={lane} mesh={ship?.mesh} shipName={ship?.name}/>:<p>No lanes.</p>)}
   {station==='fleet'&&<FleetStation fleet={fleet} meshes={meshes} onSelect={row=>setSelected(row.id)}/>}
-  <AskStation active={station==='ask'} fleet={fleet} meshes={meshes} selectedLaneIds={checked.size?[...checked]:undefined} onBack={()=>setStation('list')} onConfirm={async answers=>{
+  <AskStation active={station==='ask'} fleet={fleet} meshes={meshes} selectedLaneIds={checked.size?[...checked]:undefined} hiddenSelected={fleet.stationLanes.filter(l=>checked.has(l.id)&&!board.rows.includes(l)).length} onBack={()=>setStation('list')} onConfirm={async answers=>{
    const response=await fetch('/answers',{method:'POST',headers:{'Content-Type':'application/json','X-Fleet-Action':'confirm'},body:JSON.stringify({confirmed:true,answers})});
    if(!response.ok)throw Error(await response.text());
    const results=await response.json();

@@ -93,6 +93,31 @@ func TestTerminalMultipleSelectionKeepsUncheckedLanesVisible(t *testing.T) {
 	}
 }
 
+func TestTerminalMateFilterScopesListOnlyNotSitting(t *testing.T) {
+	asked := time.Date(2026, 11, 12, 9, 0, 0, 0, time.UTC)
+	ask := func(key string) []StationAsk {
+		return []StationAsk{{Form: "discussion", Key: key, Topic: key, MustDecide: []string{"Plan"}, Effort: "read", Asked: asked, Answerable: true}}
+	}
+	lanes := []StationLane{
+		{ID: "design-lane", Name: "Design Lane", SecondMate: "design", State: "needs you", Asks: ask("design")},
+		{ID: "build-lane", Name: "Build Lane", SecondMate: "build", State: "needs you", Asks: ask("build")},
+	}
+	m := model{fleet: Fleet{Stations: lanes}, view: 1, w: 120, h: 40, selected: map[string]bool{}, mateFilter: "design"}
+	m.openSitting()
+	if len(m.sitting.items) != 2 {
+		t.Fatalf("unticked sitting under mate filter has %d asks, want both mates", len(m.sitting.items))
+	}
+	m.selected["build-lane"] = true
+	m.openSitting()
+	if len(m.sitting.items) != 1 || m.sitting.items[0].lane.ID != "build-lane" {
+		t.Fatalf("ticked lane hidden by filter dropped from sitting: %+v", m.sitting.items)
+	}
+	m.view = 0
+	if !strings.Contains(m.View(), "1 ticked lane(s) hidden by the mate filter are included") {
+		t.Fatal("Ask did not count the hidden ticked lane")
+	}
+}
+
 func TestTerminalListSelectionStartsUntouchedSittingOnEveryAskEntry(t *testing.T) {
 	for _, entry := range []string{"a", "shift+tab"} {
 		m := model{fleet: Fleet{Stations: terminalFixture()}, view: 1, w: 100, h: 30}
