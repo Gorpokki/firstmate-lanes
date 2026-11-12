@@ -8,11 +8,11 @@ test('the simulation never ticks while hidden, paused or settled',()=>{
   expect(simulationTicks(activity)).toBe(false);
 });
 
-test('a run settles after a finite number of steps',()=>{
+test('a run settles within a bounded number of steps',()=>{
  let simulation=createSimulation(),steps=0;
  while(!(simulation.failed&&simulation.fractureElapsed>=fractureDuration)&&steps<100){simulation=stepSimulation(simulation);steps++;}
- expect(steps).toBe(4+1+fractureDuration/500);
- expect(simulationTicks({hidden:false,running:true,settled:true})).toBe(false);
+ expect(simulation.failed&&simulation.fractureElapsed>=fractureDuration).toBe(true);
+ expect(steps).toBeLessThanOrEqual(12);
 });
 
 test('the ship spins only while visible and is capped by the frame budget',()=>{

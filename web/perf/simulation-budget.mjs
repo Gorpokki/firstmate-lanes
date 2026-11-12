@@ -30,13 +30,13 @@ const sleep=ms=>new Promise(ok=>setTimeout(ok,ms));
 async function startServer(){
  const port=await freePort(),state=mkdtempSync(join(tmpdir(),'fmlanes-budget-'));
  const child=spawn(binary,['--home',join(root,'testdata/sample-home'),'--serve',`127.0.0.1:${port}`],{env:{...process.env,XDG_STATE_HOME:state,FM_LANES_CONFIG:''},stdio:['ignore','inherit','inherit']});
- const base=`http://127.0.0.1:${port}`;
+ const base=`http://127.0.0.1:${port}`,stop=()=>{child.kill();rmSync(state,{recursive:true,force:true});};
  for(let i=0;i<100;i++){
-  if(child.exitCode!==null)throw Error(`server exited with ${child.exitCode}`);
-  try{if((await fetch(`${base}/meshes.json`)).ok)return {base,stop:()=>{child.kill();rmSync(state,{recursive:true,force:true});}};}catch{}
+  if(child.exitCode!==null){stop();throw Error(`server exited with ${child.exitCode}`);}
+  try{if((await fetch(`${base}/meshes.json`)).ok)return {base,stop};}catch{}
   await sleep(100);
  }
- child.kill();throw Error('server did not start');
+ stop();throw Error('server did not start');
 }
 
 // Lets the check hide and show the page as a background tab would.
@@ -69,10 +69,11 @@ async function measure(page,cdp,requests,ms,act){
 
 const results=[],check=(name,ok,detail)=>{results.push({name,ok,detail});console.log(`${ok?'pass':'FAIL'}  ${name}  ${JSON.stringify(detail)}`);};
 
-const server=await startServer();
-const browser=await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM?{executablePath:process.env.PLAYWRIGHT_CHROMIUM,args:['--headless','--no-sandbox']}:{});
 const report={limits,windowMs,results,measurements:{}};
+let server,browser;
 try{
+ server=await startServer();
+ browser=await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM?{executablePath:process.env.PLAYWRIGHT_CHROMIUM,args:['--headless','--no-sandbox']}:{});
  const page=await browser.newPage({viewport:{width:1000,height:800}});
  await page.addInitScript(visibilityControl);
  const requests=[];page.on('request',request=>requests.push(new URL(request.url()).pathname));
@@ -121,7 +122,7 @@ try{
  const fleetReads=requests.filter(path=>path==='/fleet.json').length;
  check('simulation never reads the fleet',fleetReads<=limits.simulationFleetRequests,{fleetReads});
 }finally{
- await browser.close();server.stop();
+ await browser?.close();server?.stop();
 }
 if(reportPath)writeFileSync(reportPath,JSON.stringify(report,null,1)+'\n');
 const failed=results.filter(result=>!result.ok);
