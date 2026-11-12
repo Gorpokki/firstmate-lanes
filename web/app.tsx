@@ -31,7 +31,7 @@ function App(){
  },[]);
  useEffect(()=>{
   const key=(e:KeyboardEvent)=>{
-   if(simulation||(e.target as HTMLElement).closest('input,textarea,select,[contenteditable=true]'))return;
+   if(simulation||e.metaKey||e.ctrlKey||e.altKey||(e.target as HTMLElement).closest('input,textarea,select,[contenteditable=true]'))return;
    if((e.key==='Enter'||e.code==='Space')&&(e.target as HTMLElement).closest('button,a,summary'))return;
    const keys:Record<string,Station>={a:'ask',l:'list',f:'fleet',Enter:'lane'};
    if(keys[e.key]){e.preventDefault();setStation(keys[e.key]);}
@@ -74,7 +74,7 @@ function App(){
   </section>}
   {station==='lane'&&(lane?<LaneStation lane={lane} mesh={ship?.mesh} shipName={ship?.name}/>:<p>No lanes.</p>)}
   {station==='fleet'&&<FleetStation fleet={fleet} meshes={meshes} onSelect={row=>setSelected(row.id)}/>}
-  {station==='ask'&&<AskStation fleet={fleet} meshes={meshes} selectedLaneIds={checked.size?[...checked]:undefined} onBack={()=>setStation('list')} onConfirm={async answers=>{
+  <AskStation active={station==='ask'} fleet={fleet} meshes={meshes} selectedLaneIds={checked.size?[...checked]:undefined} onBack={()=>setStation('list')} onConfirm={async answers=>{
    const response=await fetch('/answers',{method:'POST',headers:{'Content-Type':'application/json','X-Fleet-Action':'confirm'},body:JSON.stringify({confirmed:true,answers})});
    if(!response.ok)throw Error(await response.text());
    const results=await response.json();

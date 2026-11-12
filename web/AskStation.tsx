@@ -5,22 +5,23 @@ import {Holo} from './Holo';
 import {answerFor,buildSitting,deferForLater,reviewAnswers,undoAnswer,type DeliveryResult,type SittingAnswer,type SittingItem} from './sitting';
 
 export type {DeliveryResult,SittingAnswer} from './sitting';
-type AskStationProps={fleet:Fleet;selectedLaneIds?:string[];meshes?:ShipMesh[];onBack:()=>void;onConfirm?:(answers:SittingAnswer[])=>Promise<DeliveryResult[]>};
+type AskStationProps={fleet:Fleet;active:boolean;selectedLaneIds?:string[];meshes?:ShipMesh[];onBack:()=>void;onConfirm?:(answers:SittingAnswer[])=>Promise<DeliveryResult[]>};
 const askQuestion=(item:SittingItem)=>item.ask.question||item.ask.topic||item.ask.key;
 const isEditing=(target:EventTarget|null)=>target instanceof HTMLElement&&!!target.closest('input,textarea,select,[contenteditable=true]');
 
-export function AskStation({fleet,selectedLaneIds,meshes,onBack,onConfirm}:AskStationProps){
- const initial=buildSitting(fleet,selectedLaneIds),[items,setItems]=useState(initial),[index,setIndex]=useState(0),[answers,setAnswers]=useState<Record<string,SittingAnswer>>({}),[ownText,setOwnText]=useState<Record<string,string>>({}),[later,setLater]=useState<SittingItem[]>([]),[delivery,setDelivery]=useState<DeliveryResult[]|null>(null),[sending,setSending]=useState(false),[error,setError]=useState(''),ownRef=useRef<HTMLTextAreaElement>(null);
+export function AskStation({fleet,active,selectedLaneIds,meshes,onBack,onConfirm}:AskStationProps){
+ const [items,setItems]=useState<SittingItem[]>([]),[index,setIndex]=useState(0),[answers,setAnswers]=useState<Record<string,SittingAnswer>>({}),[ownText,setOwnText]=useState<Record<string,string>>({}),[later,setLater]=useState<SittingItem[]>([]),[delivery,setDelivery]=useState<DeliveryResult[]|null>(null),[sending,setSending]=useState(false),[error,setError]=useState(''),ownRef=useRef<HTMLTextAreaElement>(null);
  const item=items[index],answerList=Object.values(answers),reviews=reviewAnswers(fleet,answerList),linkGroups:[string,Link[]][]=item?[['Tickets',item.ask.tickets||[]],['Pull requests',item.ask.pull_requests||[]],['Grill pages',item.ask.grill_pages||[]]]:[];
  const ship=item?assignedShip(item.lane.id,meshes):undefined;
- useEffect(()=>{if(!item)return;const key=(event:KeyboardEvent)=>{if(event.key.toLowerCase()==='o'&&!event.repeat&&!isEditing(event.target)){event.preventDefault();ownRef.current?.focus();}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[item?.ref]);
+ useEffect(()=>{if(active&&!answerList.length&&!later.length&&!delivery&&!Object.values(ownText).some(Boolean)){setItems(buildSitting(fleet,selectedLaneIds));setIndex(0);}},[active]);
+ useEffect(()=>{if(!item||!active)return;const key=(event:KeyboardEvent)=>{if(event.key.toLowerCase()==='o'&&!event.repeat&&!event.metaKey&&!event.ctrlKey&&!event.altKey&&!isEditing(event.target)){event.preventDefault();ownRef.current?.focus();}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[item?.ref,active]);
  const save=(value:SittingAnswer)=>{if(sending||delivery)return;setAnswers(old=>({...old,[item!.ref]:value}));setDelivery(null);};
  const defer=()=>{if(sending||delivery||later.some(entry=>entry.ref===item!.ref))return;setAnswers(old=>{const next={...old};delete next[item!.ref];return next;});setLater(old=>[...old,...deferForLater(fleet,[item!.ref])]);setItems(old=>old.filter(entry=>entry.ref!==item!.ref));setIndex(value=>Math.max(0,Math.min(value,items.length-2)));};
  const startLater=()=>{setItems(later);setLater([]);setIndex(0);setAnswers({});setOwnText({});setDelivery(null);setError('');};
  const startNext=()=>{setItems(buildSitting(fleet,selectedLaneIds));setLater([]);setIndex(0);setAnswers({});setOwnText({});setDelivery(null);setError('');};
  const confirm=async()=>{if(!onConfirm||sending||!answerList.length)return;setSending(true);setError('');try{setDelivery(await onConfirm(answerList));}catch(e){setError(e instanceof Error?e.message:'Could not send answers.');}finally{setSending(false);}};
  const startTime=Date.parse(item?.ask.asked||''),waited=Number.isFinite(startTime)?Math.max(0,Date.now()-startTime):0,waitText=waited<3600000?`${Math.floor(waited/60000)} minutes`:waited<86400000?`${Math.floor(waited/3600000)} hours`:`${Math.floor(waited/86400000)} days`;
- return <section aria-label="Ask sitting" style={{maxWidth:900,margin:'auto'}}>
+ return <section aria-label="Ask sitting" hidden={!active} style={{maxWidth:900,margin:'auto'}}>
   <header style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h1>Ask</h1><button onClick={onBack}>Back</button></header>
   {item?<>
    <p>Ask {index+1} of {items.length} · {item.lane.secondMate}</p>
@@ -34,7 +35,7 @@ export function AskStation({fleet,selectedLaneIds,meshes,onBack,onConfirm}:AskSt
     <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:12}}><button onClick={()=>save(answerFor(item,'skip'))}>Skip — crew decides and reports in its next status line</button>{item.ask.form!=='discussion'&&<button onClick={()=>save(answerFor(item,'grill'))}>Ask for grill</button>}<button onClick={defer}>Defer</button>{answers[item.ref]&&<button onClick={()=>{if(!sending&&!delivery)setAnswers(old=>undoAnswer(old,item.ref));}}>Undo answer</button>}</div>
     <details><summary>Details, links and waiting impact</summary>{item.ask.detail&&<p>{item.ask.detail}</p>}<p>Waiting on {item.ask.waits_on_this||'no dependency stated'} · asked {waitText} ago</p>{linkGroups.map(([label,links])=><div key={label}><strong>{label}</strong><ul>{links.map(link=><li key={link.id}><a href={link.url} target="_blank" rel="noreferrer">{link.title}</a></li>)}</ul></div>)}</details>
    </article>
-   <Holo mesh={ship?.mesh} state={item.lane.state} progress={item.lane.progress} name={ship?.name||'No admitted ship'} options={{blocks:/block/i.test(item.lane.sourceState||''),fragments:/failed|error/i.test(item.lane.sourceState||'')?1:0}}/>
+   {active&&<Holo mesh={ship?.mesh} state={item.lane.state} progress={item.lane.progress} name={ship?.name||'No admitted ship'} options={{blocks:/block/i.test(item.lane.sourceState||''),fragments:/failed|error/i.test(item.lane.sourceState||'')?1:0}}/>}
    </div>
    <nav aria-label="Sitting navigation" style={{display:'flex',gap:8,margin:'16px 0'}}><button disabled={!index} onClick={()=>setIndex(value=>value-1)}>Previous ask</button><button disabled={index+1>=items.length} onClick={()=>setIndex(value=>value+1)}>Next ask</button></nav>
    </>:<p>{later.length?'No more asks in this sitting.':'No asks in this sitting.'}</p>}

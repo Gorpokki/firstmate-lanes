@@ -6,6 +6,34 @@ import (
 	"testing"
 )
 
+func TestRelativeFlagPathsResolveAgainstWorkingDirectory(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", filepath.Join(root, "state"))
+	t.Setenv("FM_LANES_CONFIG", "")
+	work := filepath.Join(root, "work")
+	if err := os.MkdirAll(work, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(work)
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := loadRuntimeConfig("drop", filepath.Join("models", "converted"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(cwd, "drop"); config.DropIn != want {
+		t.Fatalf("drop-in resolved to %q, want %q", config.DropIn, want)
+	}
+	if want := filepath.Join(cwd, "models", "converted"); config.Ships != want {
+		t.Fatalf("ships resolved to %q, want %q", config.Ships, want)
+	}
+	if want := filepath.Join(cwd, "models"); config.Models != want {
+		t.Fatalf("models resolved to %q, want %q", config.Models, want)
+	}
+}
+
 func TestDropInDirectoriesCannotWriteIntoHomes(t *testing.T) {
 	root := t.TempDir()
 	home := filepath.Join(root, "home")
