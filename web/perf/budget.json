@@ -1,0 +1,15 @@
+{
+ "spinFrameMs": 45,
+ "simulationStepMs": 900,
+ "maxActiveFramesPerSecond": 24,
+ "minActiveFramesPerSecond": 8,
+ "activeScriptMsPerSecond": 150,
+ "hiddenFrames": 0,
+ "hiddenRequests": 0,
+ "hiddenScriptMs": 20,
+ "idleFrames": 0,
+ "idleRequests": 0,
+ "idleScriptMs": 20,
+ "settledFrames": 0,
+ "simulationFleetRequests": 0
+}

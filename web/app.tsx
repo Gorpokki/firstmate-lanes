@@ -20,6 +20,7 @@ function App(){
   return()=>controller.abort();
  },[]);
  useEffect(()=>{
+  if(simulation)return;
   const controller=new AbortController();
   const load=async()=>{try{
    const response=await fetch('/fleet.json',{cache:'no-store',signal:controller.signal});
@@ -28,7 +29,7 @@ function App(){
   }catch(e){if(!controller.signal.aborted)setError(String(e));}};
   load();const timer=setInterval(load,3000);
   return()=>{controller.abort();clearInterval(timer);};
- },[]);
+ },[simulation]);
  useEffect(()=>{
   const key=(e:KeyboardEvent)=>{
    if(simulation||e.metaKey||e.ctrlKey||e.altKey||(e.target as HTMLElement).closest('input,textarea,select,[contenteditable=true]'))return;
