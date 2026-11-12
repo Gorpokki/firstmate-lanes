@@ -29,16 +29,11 @@ type StationChange struct {
 }
 type StationAsk = LaneRecordAsk
 
-func readOnlyReason(lane StationLane, ask StationAsk) string {
-	switch {
-	case lane.Home == "local":
+func readOnlyReason(lane StationLane) string {
+	if lane.Home == "local" && lane.SecondMate == "" {
 		return "Local drop-in lanes have no owning home to receive answers."
-	case !nativeTaskKey(ask.Key):
-		return "This ask has no verifiable task ID."
-	case ask.Asked.IsZero():
-		return "This ask has no recorded time, so a receipt cannot tell it from a later occurrence."
 	}
-	return ""
+	return "This ask has no verifiable task ID, so it cannot be answered here."
 }
 
 func stationLane(l Lane, at time.Time) (StationLane, int) {
@@ -54,7 +49,7 @@ func stationLane(l Lane, at time.Time) (StationLane, int) {
 			continue
 		}
 		ask := StationAsk{Key: d.Key, Form: "discussion", Topic: d.Text, Question: d.Text, MustDecide: []string{d.Text}, Reason: "Crew needs your answer", Effort: "read", Asked: d.At}
-		ask.Answerable = readOnlyReason(out, ask) == ""
+		ask.Answerable = l.OwnerDir != "" && nativeTaskKey(ask.Key)
 		out.Asks = append(out.Asks, ask)
 	}
 	if l.Record != nil {
@@ -65,7 +60,7 @@ func stationLane(l Lane, at time.Time) (StationLane, int) {
 				hidden++
 				continue
 			}
-			ask.Answerable = readOnlyReason(out, ask) == ""
+			ask.Answerable = l.OwnerDir != "" && nativeTaskKey(ask.Key)
 			out.Asks = append(out.Asks, ask)
 		}
 	}

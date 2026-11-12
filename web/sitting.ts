@@ -8,7 +8,7 @@ export type ReviewRow={lane:string;key:string;question:string;answer:string};
 const refFor=(lane:string,key:string)=>`${lane}\0${key}`;
 const effortRank=(ask:Ask)=>ask.effort==='quick'?0:1;
 const askedAt=(ask:Ask)=>{const time=Date.parse(ask.asked);return Number.isFinite(time)?time:0;};
-export const readOnlyReason=(lane:Fleet['stationLanes'][number],ask:Ask)=>ask.answerable?'':lane.home==='local'?'Local drop-in lanes have no owning home, so this ask is read-only here.':'This ask has no verifiable task ID or recorded time, so it is read-only here.';
+export const readOnlyReason=(lane:Fleet['stationLanes'][number],ask:Ask)=>ask.answerable?'':lane.home==='local'&&!lane.secondMate?'Local drop-in lanes have no owning home, so this ask cannot be answered here.':'This ask has no verifiable task ID, so it cannot be answered here.';
 
 export function buildSitting(fleet:Fleet,selectedLaneIds?:string[],deferred:ReadonlySet<string>=new Set()):SittingItem[]{
  const selected=selectedLaneIds?new Set(selectedLaneIds):undefined;

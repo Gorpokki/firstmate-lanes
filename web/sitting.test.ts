@@ -19,6 +19,7 @@ test('read-only asks never take sitting slots and drop-in lanes get their own re
  expect(readOnlyReason(local,{...ask('x'),answerable:false})).toContain('drop-in');
  expect(readOnlyReason(lane('a','Mate',[]),{...ask('x'),answerable:false})).not.toContain('drop-in');
  expect(readOnlyReason(lane('a','Mate',[]),ask('x'))).toBe('');
+ expect(readOnlyReason({...lane('local/build','build',[]),home:'local'},{...ask('x'),answerable:false})).not.toContain('drop-in');
 });
 
 test('answers support choice, own, skip, grill, undo, and defer into a later sitting',()=>{

@@ -43,6 +43,9 @@ func receiptID(home, lane, key string) string {
 	return home + "\x00" + lane + "\x00" + key
 }
 func (r *Reader) acknowledge(home, lane, key string, asked time.Time) error {
+	if asked.IsZero() {
+		return nil
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	id := receiptID(home, lane, key)
