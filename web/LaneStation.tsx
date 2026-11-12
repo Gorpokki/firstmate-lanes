@@ -23,7 +23,7 @@ export function LaneStation({lane,mesh,shipName}:{lane:Lane;mesh?:TriangleMesh;s
   <h2>Status log</h2><ol>{history.toReversed().map((item,index)=><li key={`${item.at}-${index}`}>{Date.parse(item.at)>0?<time dateTime={item.at}>{new Date(item.at).toLocaleString()}</time>:'time unknown'} · {item.state} · {duration(item.duration)} · {item.text}</li>)}</ol>
   <h2>Asks</h2>{lane.asks.length?<ul>{lane.asks.map(ask=>{
    const details=ask as typeof ask&AskDetails,asked=Date.parse(ask.asked),known=Number.isFinite(asked)&&asked>0;
-   return <li key={ask.key}><strong>{details.question||details.topic||ask.form}</strong>{ask.reason&&<p>{ask.reason}</p>}{!ask.answerable&&<p>{readOnlyReason(lane,ask)}</p>}{details.must_decide?.length>0&&<ul>{details.must_decide.map(decision=><li key={decision}>{decision}</li>)}</ul>}{details.choices?.length>0&&<ul>{details.choices.map((choice,index)=><li key={`${index}-${choice.label}`}><strong>{choice.label}</strong> — {choice.effect}</li>)}</ul>}{known?<time dateTime={ask.asked}>{new Date(ask.asked).toLocaleString()}</time>:<p>asked time unknown</p>}</li>;
+   return <li key={ask.key}><strong>{details.question||details.topic||ask.form}</strong>{ask.reason&&<p>{ask.reason}</p>}{!ask.answerable&&<p>{readOnlyReason(lane,ask)}</p>}{details.must_decide?.length?<ul>{details.must_decide.map(decision=><li key={decision}>{decision}</li>)}</ul>:null}{details.choices?.length?<ul>{details.choices.map((choice,index)=><li key={`${index}-${choice.label}`}><strong>{choice.label}</strong> — {choice.effect}</li>)}</ul>:null}{known?<time dateTime={ask.asked}>{new Date(ask.asked).toLocaleString()}</time>:<p>asked time unknown</p>}</li>;
   })}</ul>:<p>No asks.</p>}
  </section>;
 }
