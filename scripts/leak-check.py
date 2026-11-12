@@ -11,12 +11,14 @@ import sys
 
 SCANNER_PATH = "scripts/leak-check.py"
 SAFE_FIXTURE = 'for safe_text in ("https://github.com/users/synthetic/projects/1", "https://github.com/home/synthetic", "time.Local"):'
+FIXTURE_ASSIGNMENT = 'fixture_denylist = "' + SAFE_FIXTURE.split('"')[1] + '"'
 
 
 def scanned_text(name, text):
-    if name == SCANNER_PATH:
-        return text.replace(SAFE_FIXTURE, "")
-    return text
+    if name != SCANNER_PATH:
+        return text
+    text = text.replace(SAFE_FIXTURE, "")
+    return "\n".join(line for line in text.split("\n") if line.strip() != FIXTURE_ASSIGNMENT)
 
 
 def scan_tree(tree, denylist, seen):
@@ -251,6 +253,11 @@ def self_test():
             (SAFE_FIXTURE + "\n" + fixture_denylist, "scripts/leak-check.py", 1),
             (SAFE_FIXTURE.replace("for safe_text", "for safe_texts"), "scripts/leak-check.py", 1),
             (SAFE_FIXTURE, "notes.txt", 1),
+            (FIXTURE_ASSIGNMENT, "scripts/leak-check.py", 0),
+            (FIXTURE_ASSIGNMENT.replace("fixture_denylist", "fixture_denylists"), "scripts/leak-check.py", 1),
+            (FIXTURE_ASSIGNMENT + " + ''", "scripts/leak-check.py", 1),
+            (FIXTURE_ASSIGNMENT + "\n" + fixture_denylist, "scripts/leak-check.py", 1),
+            (FIXTURE_ASSIGNMENT, "notes.txt", 1),
         ):
             Path(directory, name).write_text(content)
             commit()
