@@ -102,15 +102,15 @@ def run_checks():
         repro.export(bad_dir / "model.glb")
         (bad_dir / "manifest.json").write_text('{"orient": []}')
 
-        output = Path(directory) / "generated"
-        nested = output / "ignored" / "nested"
-        nested.mkdir(parents=True)
-        repro.export(nested / "model.glb")
+        output = root / "generated"
+        generated_source = output / "ignored"
+        generated_source.mkdir(parents=True)
+        repro.export(generated_source / "model.glb")
         entries = main(root, output)
         index_bytes = (output / "meshes.json").read_bytes()
         assert index_bytes.endswith(b"\n")
         index = json.loads(index_bytes)
-        assert len(entries) == len(index) == 2
+        assert sorted(entries) == sorted(index) == ["synthetic/bad", "synthetic/tetra"]
         entry = index["synthetic/tetra"]
         assert entry["validation_version"] == 1
         assert entry["validation"]["algorithm_version"] == VERSION
