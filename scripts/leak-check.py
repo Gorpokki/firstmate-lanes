@@ -45,8 +45,8 @@ def scan_worktree(denylist):
 
 HOME_MARKERS = ("/" + "Us" + "ers/", "/" + "ho" + "me/")
 PRIVATE_SUFFIXES = ("internal", "local", "lan", "corp", "private", "localhost", "intranet", "home.arpa")
-PATTERNS = tuple(re.compile(re.escape(root) + r"[^/\s]+(?:/|\b)", re.I) for root in HOME_MARKERS) + (
-    re.compile(r"\b(?:[a-z0-9-]+\.)+(?:" + "|".join(map(re.escape, PRIVATE_SUFFIXES)) + r")\b", re.I),
+PATTERNS = tuple(re.compile(r"(?<![\w.-])" + re.escape(root) + r"[^/\s]+(?:/|\b)") for root in HOME_MARKERS) + (
+    re.compile(r"\b(?:[a-z0-9-]+\.)+(?:" + "|".join(map(re.escape, PRIVATE_SUFFIXES)) + r")\b"),
     re.compile(r"\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b"),
     re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I),
 )
@@ -214,6 +214,13 @@ def self_test():
             assert result.returncode == 1
             assert "leak detected (content redacted)" in result.stderr
             assert host not in result.stdout + result.stderr
+        sample.write_text("safe synthetic content")
+        commit()
+        for safe_text in ("https://github.com/users/synthetic/projects/1", "https://github.com/home/synthetic", "time.Local"):
+            sample.write_text(safe_text)
+            commit()
+            result = run()
+            assert result.returncode == 0 and not result.stdout and not result.stderr
         sample.write_text("safe synthetic content")
         commit()
         result = run(event={"pull_request": {"title": "$(touch executed.marker)", "body": "safe"}})
