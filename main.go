@@ -404,7 +404,11 @@ func (m model) laneView(w, h int) []string {
 	}
 	rows = append(rows, lab(cPeach).Render(fmt.Sprintf("ASKS %d · a starts sitting", len(l.Asks))))
 	for _, ask := range l.Asks {
-		rows = append(rows, pill(ask.Effort, cGold)+" "+oneLine(askQuestion(ask)))
+		line := pill(ask.Effort, cGold) + " " + oneLine(askQuestion(ask))
+		if !ask.Answerable {
+			line += dim.Render(" · " + readOnlyReason(l, ask))
+		}
+		rows = append(rows, line)
 	}
 	return frame("Lane", stateColor(l.State), "space spins / pauses", rows, w, h)
 }

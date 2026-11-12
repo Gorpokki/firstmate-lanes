@@ -90,7 +90,7 @@ Five station states:
 | done | Completed without a recent open ask |
 
 Asks exactly seven days old remain visible; older asks are hidden and counted.
-Asks with no recorded time stay visible with unknown age and sort first.
+Asks with no recorded time stay visible but are read-only, so they cannot be answered or take a sitting slot.
 Working becomes holding at exactly two hours.
 Autonomy share counts lanes without recorded human involvement, including structured asks and history.
 The board also shows freshness and lane-state changes since the explicit last look.
@@ -107,13 +107,13 @@ Keep this configuration and all personal model inputs outside version control.
 `last-look.json` is one server-owned reading shared by devices and the terminal.
 `accepted-asks.json` stores exact confirmed-answer receipts; its companion lock prevents concurrent writers losing receipts.
 Both use atomic owner-only files.
-A receipt hides only the accepted key and asked timestamp, not a later ask reusing that key.
+A receipt hides only the accepted key and asked timestamp, not a later ask reusing that key; a receipt with no timestamp hides nothing.
 State, drop-in creation and configured conversion output are rejected inside known homes, including through symlinks.
 
 **No home is written by the reader.** Confirmed answers are the sole home-writing path:
 
 1. Re-read the current fleet and validate every answer against a current, recent, open ask.
-2. Reject stale timestamps, invalid choices, duplicate keys and read-only drop-in lanes. Asks without a task ID (a status line with no `[key=]`) are shown read-only. A task ID shared by two open asks in one home is refused before any delivery, even when only one of them is selected.
+2. Reject stale timestamps, invalid choices, duplicate keys and read-only drop-in lanes. Asks without a task ID (a status line with no `[key=]`), asks with no recorded time, and asks on drop-in lanes are shown read-only and never take a sitting slot. A task ID shared by two open asks in one home is refused before any delivery, even when only one of them is selected.
 3. Invoke the installed `bin/fm-captain-hold.sh answers --source fm-lanes` once per owning home, setting `FM_HOME` for that batch.
 4. Send the existing tab-separated key/answer/label contract on stdin; never invoke a shell with answer text.
 5. Report actual `closed`, `skipped` and `refused` command results. Exit success alone is not acceptance. There is no automatic retry.

@@ -132,13 +132,22 @@ func TestTerminalBoardSuggestionIsAttributedAndKeylessAskIsReadOnly(t *testing.T
 	if !strings.Contains(view, "Crew gave no pick: both carry equal risk") || strings.Contains(lineWith(view, "North — go"), "both carry equal risk") {
 		t.Fatalf("crew's no-pick reason not shown separately:\n%s", view)
 	}
-	m, _ = m.key("down")
-	if !strings.Contains(m.View(), "read-only here") {
-		t.Fatalf("keyless ask not marked read-only:\n%s", m.View())
+	if len(m.sitting.items) != 1 || m.sitting.items[0].lane.ID != "north-lane" {
+		t.Fatalf("read-only keyless ask took a sitting slot: %+v", m.sitting.items)
 	}
-	m, _ = m.key("1")
-	if len(m.sitting.answers) != 0 {
-		t.Fatalf("keyless ask recorded an answer: %+v", m.sitting.answers)
+}
+
+func TestTerminalReadOnlyAsksDoNotTakeSittingSlots(t *testing.T) {
+	asked := time.Date(2026, 11, 12, 9, 0, 0, 0, time.UTC)
+	var asks []StationAsk
+	for i, key := range []string{"read-1", "read-2", "read-3", "read-4"} {
+		asks = append(asks, StationAsk{Form: "discussion", Key: key, Topic: "Read only?", MustDecide: []string{"Plan"}, Effort: "quick", Asked: asked.Add(time.Duration(i) * time.Minute)})
+	}
+	asks = append(asks, StationAsk{Form: "discussion", Key: "answerable", Topic: "Answer me?", MustDecide: []string{"Plan"}, Effort: "read", Asked: asked.Add(time.Hour), Answerable: true})
+	m := model{fleet: Fleet{Stations: []StationLane{{ID: "lane-c", Name: "Lane C", State: "needs you", Asks: asks}}}, view: 0, w: 120, h: 40, selected: map[string]bool{}}
+	m.openSitting()
+	if len(m.sitting.items) != 1 || m.sitting.items[0].ask.Key != "answerable" {
+		t.Fatalf("read-only asks took sitting slots: %+v", m.sitting.items)
 	}
 }
 

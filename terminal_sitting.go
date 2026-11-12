@@ -32,7 +32,12 @@ func (s *sitting) untouched() bool { return len(s.answers) == 0 && len(s.deferre
 func (s *sitting) load(lanes []StationLane) {
 	*s = sitting{deferred: map[string]bool{}}
 	for _, lane := range lanes {
-		asks := append([]StationAsk(nil), lane.Asks...)
+		var asks []StationAsk
+		for _, ask := range lane.Asks {
+			if ask.Answerable {
+				asks = append(asks, ask)
+			}
+		}
 		sort.SliceStable(asks, func(i, j int) bool {
 			if asks[i].Effort != asks[j].Effort {
 				return asks[i].Effort == "quick"
@@ -226,10 +231,6 @@ func (s *sitting) commit(kind, txt string, choice int) {
 	if !ok {
 		return
 	}
-	if !it.ask.Answerable {
-		s.message = "No verifiable task ID; this ask is read-only here"
-		return
-	}
 	answer := SittingAnswer{Lane: it.lane.ID, Key: it.ask.Key, Kind: kind, Text: txt, Choice: choice, Asked: it.ask.Asked}
 	delete(s.deferred, itemKey(it))
 	for i, a := range s.answers {
@@ -391,9 +392,6 @@ func (s sitting) view(w, h int, lanes []StationLane) []string {
 		if a.Pick == nil && a.NoPickReason != "" {
 			rows = append(rows, dim.Render("Crew gave no pick: "+oneLine(a.NoPickReason)))
 		}
-	}
-	if !a.Answerable {
-		rows = append(rows, dim.Render("No verifiable task ID: read-only here; d defers."))
 	}
 	if s.details {
 		asked := "time unknown"

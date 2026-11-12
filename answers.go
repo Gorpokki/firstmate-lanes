@@ -89,7 +89,7 @@ func (s *AnswerService) Send(ctx context.Context, confirmed bool, answers []Sitt
 			continue
 		}
 		if !ask.Answerable {
-			results[i].Reason = "No verifiable task ID for this ask; no answer was sent"
+			results[i].Reason = readOnlyReason(row, *ask) + " No answer was sent."
 			continue
 		}
 		if openKeys[lane.OwnerDir+"\x00"+answer.Key] > 1 {

@@ -2,7 +2,7 @@ import React,{useEffect,useRef,useState} from 'react';
 import type {Fleet,Link} from './stations';
 import {assignedShip,type ShipMesh} from './mesh-catalog';
 import {Holo} from './Holo';
-import {answerFor,buildSitting,deferForLater,reviewAnswers,undoAnswer,type DeliveryResult,type SittingAnswer,type SittingItem} from './sitting';
+import {answerFor,buildSitting,deferForLater,readOnlyReason,reviewAnswers,undoAnswer,type DeliveryResult,type SittingAnswer,type SittingItem} from './sitting';
 
 export type {DeliveryResult,SittingAnswer} from './sitting';
 type AskStationProps={fleet:Fleet;active:boolean;selectedLaneIds?:string[];meshes?:ShipMesh[];onBack:()=>void;onConfirm?:(answers:SittingAnswer[])=>Promise<DeliveryResult[]>};
@@ -28,7 +28,7 @@ export function AskStation({fleet,active,selectedLaneIds,meshes,onBack,onConfirm
    <style>{'.ask-layout{display:grid;gap:20px}@media(min-width:800px){.ask-layout{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);align-items:start}}'}</style>
    <div className="ask-layout">
    <article aria-label={`${item.lane.name}: ${askQuestion(item)}`}>
-    <p>{item.lane.name} · {item.lane.secondMate}</p><h2>{askQuestion(item)}</h2><p>{item.ask.reason}</p>{readOnly&&<p role="status">No verifiable task ID for this ask, so it cannot be answered here. Defer it or read its details.</p>}
+    <p>{item.lane.name} · {item.lane.secondMate}</p><h2>{askQuestion(item)}</h2><p>{item.ask.reason}</p>{readOnly&&<p role="status">{readOnlyReason(item.lane,item.ask)} You can defer it or read its details.</p>}
     {item.ask.form==='discussion'&&<><h3>Must decide</h3><ul aria-label="Must decide">{item.ask.must_decide?.map((decision,index)=><li key={`${index}-${decision}`}>{decision}</li>)}</ul><button disabled={readOnly} onClick={()=>save(answerFor(item,'grill'))}>Ask for grill</button></>}
     {item.ask.choices?.map((choice,choiceIndex)=>{const pick=item.ask.pick===choiceIndex,suggestion=item.ask.pick===undefined&&choiceIndex===0;return <div key={`${choiceIndex}-${choice.label}`} style={{border:'1px solid #596171',padding:10,margin:'8px 0',borderRadius:8}}><button disabled={readOnly} aria-pressed={answers[item.ref]?.kind==='choice'&&answers[item.ref]?.choice===choiceIndex} onClick={()=>save(answerFor(item,'choice',choiceIndex))}>{choice.label} — {choice.effect}</button>{pick&&<p>Crew pick{item.ask.pick_reason?` — ${item.ask.pick_reason}`:''}</p>}{suggestion&&<p>Board suggestion: first listed (board ordering fallback)</p>}</div>;})}{item.ask.pick===undefined&&item.ask.no_pick_reason&&<p>Crew gave no pick: {item.ask.no_pick_reason}</p>}
     <label>Own answer <textarea ref={ownRef} value={ownText[item.ref]||''} onChange={event=>setOwnText(old=>({...old,[item.ref]:event.target.value}))}/></label><button disabled={readOnly||!ownText[item.ref]?.trim()} onClick={()=>save(answerFor(item,'own',undefined,ownText[item.ref]))}>Use own answer</button>

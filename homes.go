@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 type homeSource struct{ Alias, Path string }
@@ -97,6 +98,11 @@ func (r *Reader) LoadFleet(home string) ([]Lane, error) {
 	return out, nil
 }
 
+func (r *Reader) isAccepted(owner, lane, key string, asked time.Time) bool {
+	at, ok := r.accepted[receiptID(owner, lane, key)]
+	return ok && !asked.IsZero() && at.Equal(asked)
+}
+
 func (r *Reader) removeAccepted(lanes []Lane) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -105,7 +111,7 @@ func (r *Reader) removeAccepted(lanes []Lane) {
 		if lane.Record != nil {
 			kept := lane.Record.Asks[:0]
 			for _, ask := range lane.Record.Asks {
-				if at, ok := r.accepted[receiptID(lane.OwnerDir, lane.ID, ask.Key)]; !ok || !at.Equal(ask.Asked) {
+				if !r.isAccepted(lane.OwnerDir, lane.ID, ask.Key, ask.Asked) {
 					kept = append(kept, ask)
 				}
 			}
@@ -113,7 +119,7 @@ func (r *Reader) removeAccepted(lanes []Lane) {
 		}
 		kept := lane.Decisions[:0]
 		for _, ask := range lane.Decisions {
-			if at, ok := r.accepted[receiptID(lane.OwnerDir, lane.ID, ask.Key)]; !ok || !at.Equal(ask.At) {
+			if !r.isAccepted(lane.OwnerDir, lane.ID, ask.Key, ask.At) {
 				kept = append(kept, ask)
 			}
 		}
