@@ -117,7 +117,6 @@ def self_test():
             assert "leak denylist required" in result.stderr
         sample.write_text("safe synthetic content")
         commit()
-        base = git("rev-parse", "HEAD", cwd=directory).strip()
         result = run()
         assert result.returncode == 0 and not result.stdout and not result.stderr
         for name, content in (
@@ -134,6 +133,7 @@ def self_test():
             assert "leak detected (content redacted)" in result.stderr
             assert name not in result.stdout + result.stderr
             assert content not in result.stdout + result.stderr
+        base = git("rev-parse", "HEAD", cwd=directory).strip()
         commit("synthetic-private-token")
         result = run(base=base)
         assert result.returncode == 1

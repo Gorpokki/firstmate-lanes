@@ -2,7 +2,7 @@
   "name": "fmlanes-board",
   "private": true,
   "scripts": {
-    "build": "bun build app.tsx --outfile app.js --minify --define process.env.NODE_ENV='\"production\"'",
+    "build": "bun build app.tsx --outfile app.js --production",
     "format": "biome format --write app.tsx time.ts time.test.js",
     "format:check": "biome check --formatter-enabled=true --linter-enabled=false --assist-enabled=false app.tsx time.ts time.test.js",
     "lint": "biome lint --only correctness/noUnusedImports --only correctness/noUnusedVariables --only suspicious/noRedeclare app.tsx time.ts time.test.js",
