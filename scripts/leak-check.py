@@ -49,7 +49,7 @@ PRIVATE_SUFFIX_FORMS = "|".join(re.escape(form) for suffix in PRIVATE_SUFFIXES f
 PATTERNS = (
     re.compile(re.escape(HOME_MARKERS[0]) + r"[^/\s]+(?:/|\b)"),
     re.compile(r"\b[A-Za-z]:\\+Users\\+[^\\\s]+", re.I),
-    re.compile(r"(?:(?<![\w.:/-])|(?<=file://))(?:/[\w.-]+)*" + re.escape(HOME_MARKERS[1]) + r"[^/\s]+(?:/|\b)"),
+    re.compile(r"(?:(?<![\w./-])|(?<=file://))(?:/[\w.-]+)*" + re.escape(HOME_MARKERS[1]) + r"[^/\s]+(?:/|\b)"),
     re.compile(r"\b(?:[A-Za-z0-9-]+\.)+(?:" + PRIVATE_SUFFIX_FORMS + r")\b"),
     re.compile(r"\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b"),
     re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I),
@@ -206,6 +206,7 @@ def self_test():
             "path /mnt" + HOME_MARKERS[1] + "sample/file",
             "path /export" + HOME_MARKERS[1] + "sample/file",
             "file://" + HOME_MARKERS[1] + "sample/file",
+            "PATH=x:" + HOME_MARKERS[1] + "sample/bin",
             "path C:" + "\\" + "Users" + "\\" + "sample\\file",
             "path c:" + "\\" + "users" + "\\" + "sample\\file",
             cluster_host,
