@@ -244,7 +244,7 @@ def self_test():
             commit()
             result = run()
             assert result.returncode == 0 and not result.stdout and not result.stderr
-        fixture_denylist = "https://github.com/users/synthetic/projects/1"
+        fixture_denylist = SAFE_FIXTURE.split('"')[1]
         Path(directory, "scripts").mkdir()
         for content, name, expected in (
             (SAFE_FIXTURE, "scripts/leak-check.py", 0),
