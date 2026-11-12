@@ -74,7 +74,9 @@ The Actions workflow runs these checks on pull requests and pushes to `main`.
 The required no-leak scan checks every outgoing commit in the PR (its file
 paths, file contents and commit message), the PR head tree, and the PR title
 and body. Local prepublication scans can also check an issue's title and body
-by passing its JSON with `--event-file`; CI does not scan issues. Its
+by passing `--event-file` a JSON file shaped `{"issue": {"title": ..., "body": ...}}`;
+a file with no `issue` or `pull_request` object fails the scan. CI does not
+scan issues. Its
 secret-bearing job runs only the trusted default-branch scanner and reads PR
 Git objects as data; it never executes PR code. Maintainers pipe the private
 local denylist file to `gh-axi secret set LEAK_DENYLIST` using stdin. The

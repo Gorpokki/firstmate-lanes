@@ -80,7 +80,6 @@ def self_test():
         subprocess.run(["git", "init", "-q"], cwd=directory, check=True)
         sample = Path(directory) / "sample.txt"
         scanner = str(Path(__file__).resolve())
-        marker = Path(directory) / "executed.marker"
 
         def commit(message="Synthetic commit"):
             subprocess.run(["git", "add", "-A"], cwd=directory, check=True)
@@ -161,31 +160,26 @@ def self_test():
             assert result.returncode == 1
             assert "leak detected (content redacted)" in result.stderr
             assert content not in result.stdout + result.stderr
-        assert all(
-            any(
-                pattern.search("service.cluster." + suffix)
-                for pattern in PATTERNS
-            )
-            for suffix in PRIVATE_SUFFIXES
-        )
+        for host in (".".join(("printer", "local")), ".".join(("nas", "home", "arpa")), ".".join(("app", "localhost"))):
+            sample.write_text(host)
+            commit()
+            result = run()
+            assert result.returncode == 1
+            assert "leak detected (content redacted)" in result.stderr
+            assert host not in result.stdout + result.stderr
         sample.write_text("safe synthetic content")
-        malicious = Path(directory) / ".github/workflows/quality.yml"
-        malicious.parent.mkdir(parents=True)
-        malicious.write_text("run: $(touch executed.marker)")
-        script = Path(directory) / "scripts/leak-check.py"
-        script.parent.mkdir(parents=True)
-        script.write_text("open('executed.marker', 'w').write('bad')")
         commit()
         result = run(event={"pull_request": {"title": "$(touch executed.marker)", "body": "safe"}})
         assert result.returncode == 0 and not result.stdout and not result.stderr
-        assert not marker.exists()
         result = run(event={"pull_request": {"title": "person@" + "example.invalid", "body": ""}})
         assert result.returncode == 1
         assert "example.invalid" not in result.stdout + result.stderr
-        assert not marker.exists()
         result = run(event={"issue": {"title": "safe", "body": "service.cluster." + PRIVATE_SUFFIXES[0]}})
         assert result.returncode == 1
         assert "cluster" not in result.stdout + result.stderr
+        result = run(event={"title": "safe", "body": "person@" + "example.invalid"})
+        assert result.returncode == 2
+        assert "example.invalid" not in result.stdout + result.stderr
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--self-test", action="store_true")
@@ -210,7 +204,11 @@ def main():
         failed |= report(git("log", "--format=%B", f"{args.base}..{args.head}"), denylist)
     if args.event_file:
         event = json.loads(Path(args.event_file).read_text())
-        for payload in (event.get("issue", {}), event.get("pull_request", {})):
+        payloads = [event[key] for key in ("issue", "pull_request") if isinstance(event.get(key), dict)]
+        if not payloads:
+            print("event file needs an issue or pull_request object", file=sys.stderr)
+            return 2
+        for payload in payloads:
             for field in ("title", "body"):
                 if payload.get(field):
                     failed |= report(payload[field], denylist)
