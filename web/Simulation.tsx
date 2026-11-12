@@ -30,7 +30,7 @@ export function Simulation({meshes}:SimulationProps){
    <label>Output <select aria-label="Output mode" value={mode} onChange={event=>setMode(event.target.value as 'ascii'|'quadrant')}><option value="ascii">ASCII</option><option value="quadrant">Quadrant</option></select></label>
   </div>
   <div style={{border:'1px solid #596171',borderRadius:12,padding:16,background:'radial-gradient(ellipse at center,#1d2a39,#10151d 75%)',minHeight:300,display:'grid',placeItems:'center'}}>
-   <Holo mesh={selected?.mesh} name={selected?.name??'No ships loaded'} state={simulation.failed?'done':simulation.state} progress={simulation.failed?1:undefined} options={{mode:mode==='ascii'?'lit':'blocks',blocks:simulation.sourceState==='blocked',fractureElapsed:simulation.failed?simulation.fractureElapsed:undefined}} />
+   <Holo mesh={selected?.mesh} name={selected?.name??'No ships loaded'} idle={settled} state={simulation.failed?'done':simulation.state} progress={simulation.failed?1:undefined} options={{mode:mode==='ascii'?'lit':'blocks',blocks:simulation.sourceState==='blocked',fractureElapsed:simulation.failed?simulation.fractureElapsed:undefined}} />
   </div>
   {simulation.failed&&<div aria-live="polite" style={{marginTop:12}}>Failure breakup · stress {Math.round(fracture!.stress*100)}% · separation {Math.round(fracture!.separation*100)}% · particles {Math.round(fracture!.particles*100)}%</div>}
  </section>;

@@ -3,8 +3,7 @@
 //
 //   node web/perf/simulation-budget.mjs --binary ./fmlanes [--report out.json]
 //
-// Needs Playwright with a Chromium build. PLAYWRIGHT_CHROMIUM may name a
-// Chromium executable when the installed Playwright has no matching browser.
+// Needs Playwright with a Chromium build on NODE_PATH.
 import {spawn} from 'node:child_process';
 import {mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
@@ -18,10 +17,10 @@ const {chromium}=require('playwright');
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
 
 const limits=JSON.parse(readFileSync(join(root,'web/perf/budget.json'),'utf8'));
-const windowMs=Number(process.env.BUDGET_WINDOW_MS||4000);
+const windowMs=4000;
 
 const args=process.argv.slice(2),option=name=>{const i=args.indexOf(name);return i<0?undefined:args[i+1];};
-const binary=resolve(option('--binary')||process.env.FMLANES_BINARY||join(root,'fmlanes'));
+const binary=resolve(option('--binary')||join(root,'fmlanes'));
 const reportPath=option('--report');
 
 const freePort=()=>new Promise((ok,fail)=>{const server=createServer();server.unref();server.on('error',fail);server.listen(0,'127.0.0.1',()=>{const {port}=server.address();server.close(()=>ok(port));});});
@@ -73,7 +72,7 @@ const report={limits,windowMs,results,measurements:{}};
 let server,browser;
 try{
  server=await startServer();
- browser=await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM?{executablePath:process.env.PLAYWRIGHT_CHROMIUM,args:['--headless','--no-sandbox']}:{});
+ browser=await chromium.launch();
  const page=await browser.newPage({viewport:{width:1000,height:800}});
  await page.addInitScript(visibilityControl);
  const requests=[];page.on('request',request=>requests.push(new URL(request.url()).pathname));
@@ -88,6 +87,14 @@ try{
  check('active spin stays within the frame budget',fps<=limits.maxActiveFramesPerSecond&&fps>=limits.minActiveFramesPerSecond,{framesPerSecond:+fps.toFixed(1),min:limits.minActiveFramesPerSecond,max:limits.maxActiveFramesPerSecond});
  check('active spin stays within the script budget',scriptPerSecond<=limits.activeScriptMsPerSecond,{scriptMsPerSecond:Math.round(scriptPerSecond),max:limits.activeScriptMsPerSecond});
  check('active simulation advances',active.labelBefore!==active.labelAfter,{from:active.labelBefore,to:active.labelAfter});
+
+ const untouched=await measure(page,cdp,requests,windowMs,async()=>{
+  await page.getByText('Failure breakup · stress 100% · separation 100% · particles 0%').waitFor({timeout:20000});
+  await sleep(200);
+ });
+ report.measurements.untouchedSettled=untouched;
+ check('untouched settled page draws no ship frames',untouched.frames<=limits.settledFrames,{frames:untouched.frames});
+ check('untouched settled page makes no requests',untouched.requests.length<=limits.idleRequests,{requests:untouched.requests});
 
  const restart=()=>page.getByRole('button',{name:'Restart',exact:true}).click();
  const hidden=await measure(page,cdp,requests,windowMs,async()=>{await restart();await page.evaluate(()=>window.__setHidden(true));});
