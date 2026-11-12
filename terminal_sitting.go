@@ -108,86 +108,113 @@ func (s *sitting) key(m *model, k string, lanes []StationLane) {
 		return
 	}
 	s.offset = 0
-	if s.ownMode {
-		switch k {
-		case "enter":
-			if s.searchMode {
-				needle := strings.ToLower(strings.TrimSpace(s.own))
-				for i, it := range s.items {
-					if needle != "" && strings.Contains(strings.ToLower(it.lane.Name+" "+it.ask.Question+" "+it.ask.Topic), needle) {
-						s.index = i
-						break
-					}
-				}
-			} else if strings.TrimSpace(s.own) != "" {
-				s.commit("own", s.own, 0)
-			} else {
-				s.message = "An own answer cannot be empty"
-				return
-			}
-			s.ownMode = false
-			s.searchMode = false
-			s.own = ""
-		case "esc":
-			s.ownMode = false
-			s.searchMode = false
-			s.own = ""
-		case "backspace", "ctrl+h":
-			if r := []rune(s.own); len(r) > 0 {
-				s.own = string(r[:len(r)-1])
-			}
-		default:
-			if k == "space" {
-				k = " "
-			}
-			if len([]rune(k)) == 1 && !unicode.IsControl([]rune(k)[0]) {
-				s.own += k
-			}
-		}
-		return
-	}
-	if s.finished {
+	switch {
+	case s.ownMode:
+		s.ownModeKey(k)
+	case s.finished:
 		if k == "n" {
 			s.load(lanes)
 		}
-		return
+	case s.review:
+		s.reviewModeKey(m, k)
+	default:
+		s.askModeKey(k, lanes)
 	}
-	if s.review {
-		switch k {
-		case "up", "k":
-			s.reviewIndex = max(0, s.reviewIndex-1)
-		case "down", "j":
-			s.reviewIndex = min(max(0, len(s.answers)-1), s.reviewIndex+1)
-		case "y":
-			if len(s.answers) > 0 {
-				m.answers = append([]SittingAnswer(nil), s.answers...)
-				m.pendingSend = true
-				s.message = "Sending confirmed sitting…"
-			}
-		case "n", "esc":
-			s.review = false
-		case "u":
-			s.undo()
-		case "c":
-			s.editAnswer(s.reviewIndex)
-		case "o":
-			s.editAnswer(s.reviewIndex)
-			s.beginOwn()
+}
+
+func (s *sitting) closeOwnInput() {
+	s.ownMode = false
+	s.searchMode = false
+	s.own = ""
+}
+
+func (s *sitting) findAskByOwnText() {
+	needle := strings.ToLower(strings.TrimSpace(s.own))
+	for i, it := range s.items {
+		if needle != "" && strings.Contains(strings.ToLower(it.lane.Name+" "+it.ask.Question+" "+it.ask.Topic), needle) {
+			s.index = i
+			break
 		}
-		return
 	}
+}
+
+func (s *sitting) ownModeKey(k string) {
+	switch k {
+	case "enter":
+		if s.searchMode {
+			s.findAskByOwnText()
+		} else if strings.TrimSpace(s.own) != "" {
+			s.commit("own", s.own, 0)
+		} else {
+			s.message = "An own answer cannot be empty"
+			return
+		}
+		s.closeOwnInput()
+	case "esc":
+		s.closeOwnInput()
+	case "backspace", "ctrl+h":
+		if r := []rune(s.own); len(r) > 0 {
+			s.own = string(r[:len(r)-1])
+		}
+	default:
+		if k == "space" {
+			k = " "
+		}
+		if len([]rune(k)) == 1 && !unicode.IsControl([]rune(k)[0]) {
+			s.own += k
+		}
+	}
+}
+
+func (s *sitting) reviewModeKey(m *model, k string) {
+	switch k {
+	case "up", "k":
+		s.reviewIndex = max(0, s.reviewIndex-1)
+	case "down", "j":
+		s.reviewIndex = min(max(0, len(s.answers)-1), s.reviewIndex+1)
+	case "y":
+		if len(s.answers) > 0 {
+			m.answers = append([]SittingAnswer(nil), s.answers...)
+			m.pendingSend = true
+			s.message = "Sending confirmed sitting…"
+		}
+	case "n", "esc":
+		s.review = false
+	case "u":
+		s.undo()
+	case "c":
+		s.editAnswer(s.reviewIndex)
+	case "o":
+		s.editAnswer(s.reviewIndex)
+		s.beginOwn()
+	}
+}
+
+func (s *sitting) chooseByKey(k string) {
+	if it, ok := s.current(); ok && it.ask.Form == "choice" {
+		choice := int(k[0] - '1')
+		if choice < len(it.ask.Choices) {
+			s.commit("choice", "", choice)
+		}
+	}
+}
+
+func (s *sitting) deferCurrent() {
+	if it, ok := s.current(); ok {
+		s.deferred[itemKey(it)] = true
+		s.advance()
+		s.message = "Deferred; it returns in a later sitting"
+	}
+}
+
+func (s *sitting) askModeKey(k string, lanes []StationLane) {
 	switch k {
 	case "up", "k":
 		s.index = max(0, s.index-1)
 	case "down", "j":
 		s.index = min(max(0, len(s.items)-1), s.index+1)
 	case "1", "2", "3", "4":
-		if it, ok := s.current(); ok && it.ask.Form == "choice" {
-			choice := int(k[0] - '1')
-			if choice < len(it.ask.Choices) {
-				s.commit("choice", "", choice)
-			}
-		}
+		s.chooseByKey(k)
 	case "o":
 		s.beginOwn()
 	case "s":
@@ -195,11 +222,7 @@ func (s *sitting) key(m *model, k string, lanes []StationLane) {
 	case "g":
 		s.commit("grill", "", 0)
 	case "d":
-		if it, ok := s.current(); ok {
-			s.deferred[itemKey(it)] = true
-			s.advance()
-			s.message = "Deferred; it returns in a later sitting"
-		}
+		s.deferCurrent()
 	case "u":
 		s.undo()
 	case "r":
@@ -318,103 +341,125 @@ func askQuestion(ask StationAsk) string {
 	}
 	return ask.Topic
 }
+func sittingFrame(rows []string, tag string, offsetWanted, w, h int) []string {
+	var wrapped []string
+	for _, row := range rows {
+		wrapped = append(wrapped, wrap(row, w-4)...)
+	}
+	offset := min(offsetWanted, max(0, len(wrapped)-(h-1)))
+	return frame("Ask", cPeach, tag+" · pgup/pgdn", wrapped[offset:], w, h)
+}
+
 func (s sitting) view(w, h, hidden int) []string {
 	rows := []string{}
-	render := func(tag string) []string {
-		var wrapped []string
-		for _, row := range rows {
-			wrapped = append(wrapped, wrap(row, w-4)...)
-		}
-		offset := min(s.offset, max(0, len(wrapped)-(h-1)))
-		return frame("Ask", cPeach, tag+" · pgup/pgdn", wrapped[offset:], w, h)
-	}
 	if s.message != "" {
 		rows = append(rows, dim.Render(clean(s.message)), "")
 	}
 	if hidden > 0 {
 		rows = append(rows, dim.Render(fmt.Sprintf("%d ticked lane(s) hidden by the mate filter are included", hidden)), "")
 	}
-	if s.finished {
-		rows = append(rows, text.Render("n NEXT SITTING · l List · f Fleet · enter Lane"))
-		return render("delivery")
-	}
-	if len(s.items) == 0 {
-		if s.readOnly > 0 {
-			rows = append(rows, text.Render(fmt.Sprintf("%d read-only asks cannot be answered here. Lane shows why. l List · f Fleet · enter Lane", s.readOnly)))
-			return render("read-only")
-		}
-		rows = append(rows, dim.Render("NO OPEN ASKS"), text.Render("Select lanes in List; a opens their sitting. l List · f Fleet · enter Lane"))
-		return render("0 asks")
-	}
-	if s.ownMode {
+	body, tag := s.viewBodyRows()
+	return sittingFrame(append(rows, body...), tag, s.offset, w, h)
+}
+
+func (s sitting) viewBodyRows() ([]string, string) {
+	switch {
+	case s.finished:
+		return []string{text.Render("n NEXT SITTING · l List · f Fleet · enter Lane")}, "delivery"
+	case len(s.items) == 0:
+		return s.viewNoItemsRows()
+	case s.ownMode:
 		label := "OWN ANSWER"
 		if s.searchMode {
 			label = "FIND ASK"
 		}
-		rows = append(rows, lab(cPeach).Render(label), text.Render(s.own+"▌"), dim.Render("enter keeps draft · esc cancels; nothing sent"))
-		return render(label)
+		return []string{lab(cPeach).Render(label), text.Render(s.own + "▌"), dim.Render("enter keeps draft · esc cancels; nothing sent")}, label
+	case s.review:
+		return s.viewReviewRows()
 	}
-	if s.review {
-		rows = append(rows, lab(cPeach).Render("REVIEW BEFORE SEND"), "")
-		for i, a := range s.answers {
-			name, question, answer := a.Lane, a.Key, a.Text
-			for _, it := range s.items {
-				if itemKey(it) == answerKey(a) {
-					name = it.lane.Name
-					question = askQuestion(it.ask)
-					if a.Kind == "choice" && a.Choice < len(it.ask.Choices) {
-						answer = it.ask.Choices[a.Choice].Label
-					}
+	return s.viewAskRows()
+}
+
+func (s sitting) viewNoItemsRows() ([]string, string) {
+	if s.readOnly > 0 {
+		return []string{text.Render(fmt.Sprintf("%d read-only asks cannot be answered here. Lane shows why. l List · f Fleet · enter Lane", s.readOnly))}, "read-only"
+	}
+	return []string{dim.Render("NO OPEN ASKS"), text.Render("Select lanes in List; a opens their sitting. l List · f Fleet · enter Lane")}, "0 asks"
+}
+
+func (s sitting) viewReviewRows() ([]string, string) {
+	rows := []string{lab(cPeach).Render("REVIEW BEFORE SEND"), ""}
+	for i, a := range s.answers {
+		name, question, answer := a.Lane, a.Key, a.Text
+		for _, it := range s.items {
+			if itemKey(it) == answerKey(a) {
+				name = it.lane.Name
+				question = askQuestion(it.ask)
+				if a.Kind == "choice" && a.Choice < len(it.ask.Choices) {
+					answer = it.ask.Choices[a.Choice].Label
 				}
 			}
-			mark := " "
-			if i == s.reviewIndex {
-				mark = "›"
-			}
-			rows = append(rows, text.Render(mark+" "+name+" — "+oneLine(question)), dim.Render("  "+a.Kind+" · "+oneLine(answer)))
 		}
-		rows = append(rows, "", text.Render("↑↓ select · c change · o own · u undo · n return"), lab(cPeach).Render("y CONFIRM AND SEND ONCE"))
-		return render(fmt.Sprintf("%d / 4", len(s.answers)))
+		mark := " "
+		if i == s.reviewIndex {
+			mark = "›"
+		}
+		rows = append(rows, text.Render(mark+" "+name+" — "+oneLine(question)), dim.Render("  "+a.Kind+" · "+oneLine(answer)))
 	}
+	rows = append(rows, "", text.Render("↑↓ select · c change · o own · u undo · n return"), lab(cPeach).Render("y CONFIRM AND SEND ONCE"))
+	return rows, fmt.Sprintf("%d / 4", len(s.answers))
+}
+
+func (s sitting) viewAskRows() ([]string, string) {
 	it, ok := s.current()
 	if !ok {
-		rows = append(rows, text.Render("All asks deferred. n starts another sitting; l opens List."))
-		return render("deferred")
+		return []string{text.Render("All asks deferred. n starts another sitting; l opens List.")}, "deferred"
 	}
 	a := it.ask
-	rows = append(rows, pill(a.Effort, cGold)+" "+lab(cPeach).Render(it.lane.Name)+dim.Render(" · "+it.lane.SecondMate), "", text.Render(oneLine(askQuestion(a))), dim.Render(oneLine(a.Reason)), "")
+	rows := []string{pill(a.Effort, cGold) + " " + lab(cPeach).Render(it.lane.Name) + dim.Render(" · "+it.lane.SecondMate), "", text.Render(oneLine(askQuestion(a))), dim.Render(oneLine(a.Reason)), ""}
 	if a.Form == "discussion" {
 		rows = append(rows, lab(cGold).Render("g ASK FOR GRILL"))
 		for _, item := range a.MustDecide {
 			rows = append(rows, "• "+oneLine(item))
 		}
 	} else {
-		for i, c := range a.Choices {
-			mark := ""
-			if a.Pick != nil && *a.Pick == i {
-				mark = " · crew pick: " + a.PickReason
-			}
-			if a.Pick == nil && i == 0 {
-				mark = " · board suggestion: first listed (board ordering fallback)"
-			}
-			rows = append(rows, fmt.Sprintf("%d  %s — %s%s", i+1, c.Label, oneLine(c.Effect), mark))
-		}
-		if a.Pick == nil && a.NoPickReason != "" {
-			rows = append(rows, dim.Render("Crew gave no pick: "+oneLine(a.NoPickReason)))
-		}
+		rows = append(rows, viewChoiceRows(a)...)
 	}
 	if s.details {
-		asked := "time unknown"
-		if !a.Asked.IsZero() {
-			asked = a.Asked.Format(time.RFC3339)
-		}
-		rows = append(rows, "", text.Render(oneLine(a.Detail)), dim.Render("Asked "+asked+" · waiting impact: "+oneLine(a.WaitsOnThis)))
-		for _, group := range [][]LaneRecordLink{a.Tickets, a.PullRequests, a.GrillPages} {
-			for _, link := range group {
-				rows = append(rows, oneLine(link.Title)+" "+link.URL)
-			}
-		}
+		rows = append(rows, viewDetailRows(a)...)
 	}
 	rows = append(rows, "", text.Render("1–4 choose · o own · s crew decides · g grill · d defer"), dim.Render("u undo · r review · v details · / find · space spin · l List · f Fleet · enter Lane"))
-	return render(fmt.Sprintf("%d of %d", s.index+1, len(s.items)))
+	return rows, fmt.Sprintf("%d of %d", s.index+1, len(s.items))
+}
+
+func viewChoiceRows(a StationAsk) []string {
+	var rows []string
+	for i, c := range a.Choices {
+		mark := ""
+		if a.Pick != nil && *a.Pick == i {
+			mark = " · crew pick: " + a.PickReason
+		}
+		if a.Pick == nil && i == 0 {
+			mark = " · board suggestion: first listed (board ordering fallback)"
+		}
+		rows = append(rows, fmt.Sprintf("%d  %s — %s%s", i+1, c.Label, oneLine(c.Effect), mark))
+	}
+	if a.Pick == nil && a.NoPickReason != "" {
+		rows = append(rows, dim.Render("Crew gave no pick: "+oneLine(a.NoPickReason)))
+	}
+	return rows
+}
+
+func viewDetailRows(a StationAsk) []string {
+	asked := "time unknown"
+	if !a.Asked.IsZero() {
+		asked = a.Asked.Format(time.RFC3339)
+	}
+	rows := []string{"", text.Render(oneLine(a.Detail)), dim.Render("Asked " + asked + " · waiting impact: " + oneLine(a.WaitsOnThis))}
+	for _, group := range [][]LaneRecordLink{a.Tickets, a.PullRequests, a.GrillPages} {
+		for _, link := range group {
+			rows = append(rows, oneLine(link.Title)+" "+link.URL)
+		}
+	}
+	return rows
 }

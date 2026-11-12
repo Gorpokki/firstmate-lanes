@@ -93,58 +93,76 @@ func LoadModelPool(modelsRoot, convertedRoot, converterDigest string) ([]ModelAs
 }
 
 func admitModel(modelsRoot, convertedRoot, key string, c modelCertificate, converterDigest string) (ModelAsset, error) {
-	if c.Skip != "" {
-		return ModelAsset{}, fmt.Errorf("skipped: %s", c.Skip)
-	}
-	if c.ValidationVersion != 1 || !c.Validation.Pass || c.Validation.AlgorithmVersion != 2 || !c.Validation.ReferenceChecked {
-		return ModelAsset{}, errors.New("missing, stale or failed reference validation certificate")
-	}
-	if c.Validation.RendererSHA256 != rendererFingerprint || c.Validation.CheckerSHA256 != checkerFingerprint {
-		return ModelAsset{}, errors.New("stale renderer or checker fingerprint")
-	}
-	if c.Format != "int16-triangles" {
-		return ModelAsset{}, errors.New("unsupported mesh format")
-	}
-	if c.Stamp.Overrides != nil {
-		return ModelAsset{}, errors.New("overrides are not admitted")
-	}
-	if !modelSlugPattern.MatchString(c.Slug) {
-		return ModelAsset{}, errors.New("unsafe slug")
-	}
-	if strings.TrimSpace(key) == "" || strings.TrimSpace(c.Name) == "" {
-		return ModelAsset{}, errors.New("missing stable key or display name")
-	}
-	if !validOrientation(c.Orient.Forward, c.Orient.Up) {
-		return ModelAsset{}, errors.New("invalid orientation")
-	}
-	if c.Stamp.Converter != converterDigest {
-		return ModelAsset{}, errors.New("stale converter digest")
+	if err := admitCertificateRules(key, c, converterDigest); err != nil {
+		return ModelAsset{}, err
 	}
 	rel := filepath.Clean(filepath.FromSlash(c.Dir))
 	if rel == "." || filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return ModelAsset{}, errors.New("unsafe source directory")
 	}
+	if err := admitSourceManifest(modelsRoot, rel, key, c); err != nil {
+		return ModelAsset{}, err
+	}
+	hi, lo, err := admitMeshOutputs(convertedRoot, c)
+	if err != nil {
+		return ModelAsset{}, err
+	}
+	return ModelAsset{ID: key, Name: c.Name, Hi: hi, Lo: lo}, nil
+}
+
+func admitCertificateRules(key string, c modelCertificate, converterDigest string) error {
+	if c.Skip != "" {
+		return fmt.Errorf("skipped: %s", c.Skip)
+	}
+	if c.ValidationVersion != 1 || !c.Validation.Pass || c.Validation.AlgorithmVersion != 2 || !c.Validation.ReferenceChecked {
+		return errors.New("missing, stale or failed reference validation certificate")
+	}
+	if c.Validation.RendererSHA256 != rendererFingerprint || c.Validation.CheckerSHA256 != checkerFingerprint {
+		return errors.New("stale renderer or checker fingerprint")
+	}
+	if c.Format != "int16-triangles" {
+		return errors.New("unsupported mesh format")
+	}
+	if c.Stamp.Overrides != nil {
+		return errors.New("overrides are not admitted")
+	}
+	if !modelSlugPattern.MatchString(c.Slug) {
+		return errors.New("unsafe slug")
+	}
+	if strings.TrimSpace(key) == "" || strings.TrimSpace(c.Name) == "" {
+		return errors.New("missing stable key or display name")
+	}
+	if !validOrientation(c.Orient.Forward, c.Orient.Up) {
+		return errors.New("invalid orientation")
+	}
+	if c.Stamp.Converter != converterDigest {
+		return errors.New("stale converter digest")
+	}
+	return nil
+}
+
+func admitSourceManifest(modelsRoot, rel, key string, c modelCertificate) error {
 	sourceDir, err := containedPath(modelsRoot, filepath.Join(modelsRoot, rel))
 	if err != nil {
-		return ModelAsset{}, fmt.Errorf("source directory: %w", err)
+		return fmt.Errorf("source directory: %w", err)
 	}
 	modelPath, err := containedFile(modelsRoot, filepath.Join(sourceDir, "model.glb"))
 	if err != nil {
-		return ModelAsset{}, fmt.Errorf("source model: %w", err)
+		return fmt.Errorf("source model: %w", err)
 	}
 	manifestPath, err := containedFile(modelsRoot, filepath.Join(sourceDir, "manifest.json"))
 	if err != nil {
-		return ModelAsset{}, fmt.Errorf("manifest: %w", err)
+		return fmt.Errorf("manifest: %w", err)
 	}
 	if err := hashMatches(modelPath, c.Stamp.Input); err != nil {
-		return ModelAsset{}, fmt.Errorf("source model: %w", err)
+		return fmt.Errorf("source model: %w", err)
 	}
 	if err := hashMatches(manifestPath, c.Stamp.Manifest); err != nil {
-		return ModelAsset{}, fmt.Errorf("manifest: %w", err)
+		return fmt.Errorf("manifest: %w", err)
 	}
 	manifestBytes, err := os.ReadFile(manifestPath)
 	if err != nil {
-		return ModelAsset{}, err
+		return err
 	}
 	var manifest struct {
 		Name   string `json:"name"`
@@ -155,7 +173,7 @@ func admitModel(modelsRoot, convertedRoot, key string, c modelCertificate, conve
 		} `json:"orient"`
 	}
 	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
-		return ModelAsset{}, fmt.Errorf("decode manifest: %w", err)
+		return fmt.Errorf("decode manifest: %w", err)
 	}
 	if manifest.Key == "" {
 		manifest.Key = filepath.ToSlash(rel)
@@ -164,38 +182,42 @@ func admitModel(modelsRoot, convertedRoot, key string, c modelCertificate, conve
 		manifest.Name = manifest.Key
 	}
 	if manifest.Key != key || manifest.Name != c.Name || manifest.Orient.Forward != c.Orient.Forward || manifest.Orient.Up != c.Orient.Up {
-		return ModelAsset{}, errors.New("manifest metadata differs from certificate")
+		return errors.New("manifest metadata differs from certificate")
 	}
+	return nil
+}
+
+func admitMeshOutputs(convertedRoot string, c modelCertificate) ([]byte, []byte, error) {
 	hiName, loName := c.Slug+".hi.bin", c.Slug+".lo.bin"
 	hiPath, err := containedFile(convertedRoot, filepath.Join(convertedRoot, "mesh", hiName))
 	if err != nil {
-		return ModelAsset{}, fmt.Errorf("high mesh: %w", err)
+		return nil, nil, fmt.Errorf("high mesh: %w", err)
 	}
 	loPath, err := containedFile(convertedRoot, filepath.Join(convertedRoot, "mesh", loName))
 	if err != nil {
-		return ModelAsset{}, fmt.Errorf("low mesh: %w", err)
+		return nil, nil, fmt.Errorf("low mesh: %w", err)
 	}
 	hi, err := os.ReadFile(hiPath)
 	if err != nil {
-		return ModelAsset{}, err
+		return nil, nil, err
 	}
 	lo, err := os.ReadFile(loPath)
 	if err != nil {
-		return ModelAsset{}, err
+		return nil, nil, err
 	}
 	if err := hashBytesMatch(hi, c.OutputSHA256[hiName]); err != nil {
-		return ModelAsset{}, fmt.Errorf("high mesh: %w", err)
+		return nil, nil, fmt.Errorf("high mesh: %w", err)
 	}
 	if err := hashBytesMatch(lo, c.OutputSHA256[loName]); err != nil {
-		return ModelAsset{}, fmt.Errorf("low mesh: %w", err)
+		return nil, nil, fmt.Errorf("low mesh: %w", err)
 	}
 	if err := validInt16Mesh(hi); err != nil {
-		return ModelAsset{}, fmt.Errorf("high mesh: %w", err)
+		return nil, nil, fmt.Errorf("high mesh: %w", err)
 	}
 	if err := validInt16Mesh(lo); err != nil {
-		return ModelAsset{}, fmt.Errorf("low mesh: %w", err)
+		return nil, nil, fmt.Errorf("low mesh: %w", err)
 	}
-	return ModelAsset{ID: key, Name: c.Name, Hi: hi, Lo: lo}, nil
+	return hi, lo, nil
 }
 
 func containedPath(root, path string) (string, error) {

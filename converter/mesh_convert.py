@@ -77,6 +77,33 @@ def _encode(mesh):
     return data, _decode(data)
 
 
+def _decimate(normalized, budget):
+    if len(normalized.faces) <= budget:
+        return normalized
+    try:
+        candidate = normalized.simplify_quadric_decimation(face_count=budget)
+        if candidate is None:
+            candidate = normalized
+        _clean(candidate)
+        if not len(candidate.faces):
+            candidate = normalized
+    except (ValueError, RuntimeError):
+        candidate = normalized
+    return candidate
+
+
+def _summary_certificate(certificates, transform):
+    first = next(iter(certificates.values()))
+    return {"pass": all(c["pass"] and c["reference_checked"]
+                        for c in certificates.values()),
+            "reference_checked": all(c["reference_checked"]
+                                     for c in certificates.values()),
+            "algorithm_version": VERSION, "encoding": "int16-triangles",
+            "renderer_sha256": first["renderer_sha256"],
+            "checker_sha256": first["checker_sha256"],
+            "transform": transform, "validation": certificates}
+
+
 def convert(mesh, forward, up, budgets=None):
     budgets = budgets or {"hi": 4000, "lo": 900}
     normalized, transform = normalize(mesh, forward, up)
@@ -84,17 +111,7 @@ def convert(mesh, forward, up, budgets=None):
     outputs, certificates = {}, {}
     full = None
     for lod, budget in budgets.items():
-        candidate = normalized
-        if len(normalized.faces) > budget:
-            try:
-                candidate = normalized.simplify_quadric_decimation(face_count=budget)
-                if candidate is None:
-                    candidate = normalized
-                _clean(candidate)
-                if not len(candidate.faces):
-                    candidate = normalized
-            except (ValueError, RuntimeError):
-                candidate = normalized
+        candidate = _decimate(normalized, budget)
         data, decoded = _encode(candidate)
         certificate = validate(decoded, normalized, TOLERANCE, prerequisites=prerequisites)
         if candidate is normalized:
@@ -111,12 +128,4 @@ def convert(mesh, forward, up, budgets=None):
                              "; ".join(certificate.get("errors", ["reference not checked"])))
         outputs[lod] = data
         certificates[lod] = certificate
-    first = next(iter(certificates.values()))
-    return outputs, {"pass": all(c["pass"] and c["reference_checked"]
-                                 for c in certificates.values()),
-                     "reference_checked": all(c["reference_checked"]
-                                              for c in certificates.values()),
-                     "algorithm_version": VERSION, "encoding": "int16-triangles",
-                     "renderer_sha256": first["renderer_sha256"],
-                     "checker_sha256": first["checker_sha256"],
-                     "transform": transform, "validation": certificates}
+    return outputs, _summary_certificate(certificates, transform)

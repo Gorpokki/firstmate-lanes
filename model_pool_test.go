@@ -61,85 +61,91 @@ func TestLoadModelPoolAdmitsHealthyAndReturnsQuarantineDiagnostics(t *testing.T)
 
 func TestLoadModelPoolAdmissionBoundaries(t *testing.T) {
 	for _, mode := range []string{"source", "output", "traversal", "symlink", "algorithm", "reference", "renderer", "checker", "format", "optional-identity"} {
-		t.Run(mode, func(t *testing.T) {
-			root := t.TempDir()
-			models := filepath.Join(root, "models")
-			converted := filepath.Join(models, "converted")
-			source := filepath.Join(models, "group", "ship")
-			if err := os.MkdirAll(source, 0755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.MkdirAll(filepath.Join(converted, "mesh"), 0755); err != nil {
-				t.Fatal(err)
-			}
-			model := []byte("source")
-			manifest := []byte(`{"key":"ship.one","name":"One","orient":{"forward":"+x","up":"+y"}}`)
-			mesh := make([]byte, 18)
-			writeTestFile(t, filepath.Join(source, "model.glb"), model)
-			writeTestFile(t, filepath.Join(source, "manifest.json"), manifest)
-			writeTestFile(t, filepath.Join(converted, "mesh", "one.hi.bin"), mesh)
-			writeTestFile(t, filepath.Join(converted, "mesh", "one.lo.bin"), mesh)
-			cert := modelCertificate{Name: "One", Slug: "one", Dir: "group/ship", Format: "int16-triangles", OutputSHA256: map[string]string{"one.hi.bin": testDigest(mesh), "one.lo.bin": testDigest(mesh)}, ValidationVersion: 1}
-			cert.Orient.Forward = "+x"
-			cert.Orient.Up = "+y"
-			cert.Stamp.Input = testDigest(model)
-			cert.Stamp.Manifest = testDigest(manifest)
-			cert.Stamp.Converter = strings.Repeat("b", 64)
-			cert.Validation.Pass = true
-			cert.Validation.AlgorithmVersion = 2
-			cert.Validation.ReferenceChecked = true
-			cert.Validation.RendererSHA256 = rendererFingerprint
-			cert.Validation.CheckerSHA256 = checkerFingerprint
-			switch mode {
-			case "algorithm":
-				cert.Validation.AlgorithmVersion = 1
-			case "reference":
-				cert.Validation.ReferenceChecked = false
-			case "renderer":
-				cert.Validation.RendererSHA256 = strings.Repeat("c", 64)
-			case "checker":
-				cert.Validation.CheckerSHA256 = strings.Repeat("c", 64)
-			case "format":
-				cert.Format = "float32-triangles"
-			case "optional-identity":
-				manifest = []byte(`{"orient":{"forward":"+x","up":"+y"}}`)
-				writeTestFile(t, filepath.Join(source, "manifest.json"), manifest)
-				cert.Stamp.Manifest = testDigest(manifest)
-				cert.Name = "group/ship"
-			case "source":
-				writeTestFile(t, filepath.Join(source, "model.glb"), []byte("changed"))
-			case "output":
-				writeTestFile(t, filepath.Join(converted, "mesh", "one.hi.bin"), []byte("changed"))
-			case "traversal":
-				cert.Slug = "../escape"
-			case "symlink":
-				outside := filepath.Join(root, "outside.bin")
-				writeTestFile(t, outside, mesh)
-				if err := os.Remove(filepath.Join(converted, "mesh", "one.hi.bin")); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.Symlink(outside, filepath.Join(converted, "mesh", "one.hi.bin")); err != nil {
-					t.Fatal(err)
-				}
-			}
-			key := "ship.one"
-			if mode == "optional-identity" {
-				key = "group/ship"
-			}
-			index, err := json.Marshal(map[string]modelCertificate{key: cert})
-			if err != nil {
-				t.Fatal(err)
-			}
-			writeTestFile(t, filepath.Join(converted, "meshes.json"), index)
-			assets, err := LoadModelPool(models, converted, strings.Repeat("b", 64))
-			if mode == "optional-identity" {
-				if err != nil || len(assets) != 1 || assets[0].ID != key || assets[0].Name != key {
-					t.Fatalf("default identity was not admitted: %#v, %v", assets, err)
-				}
-			} else if err == nil {
-				t.Fatal("expected admission diagnostic")
-			}
-		})
+		t.Run(mode, func(t *testing.T) { runAdmissionBoundaryMode(t, mode) })
+	}
+}
+
+func runAdmissionBoundaryMode(t *testing.T, mode string) {
+	root := t.TempDir()
+	models := filepath.Join(root, "models")
+	converted := filepath.Join(models, "converted")
+	source := filepath.Join(models, "group", "ship")
+	if err := os.MkdirAll(source, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(converted, "mesh"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	model := []byte("source")
+	manifest := []byte(`{"key":"ship.one","name":"One","orient":{"forward":"+x","up":"+y"}}`)
+	mesh := make([]byte, 18)
+	writeTestFile(t, filepath.Join(source, "model.glb"), model)
+	writeTestFile(t, filepath.Join(source, "manifest.json"), manifest)
+	writeTestFile(t, filepath.Join(converted, "mesh", "one.hi.bin"), mesh)
+	writeTestFile(t, filepath.Join(converted, "mesh", "one.lo.bin"), mesh)
+	cert := modelCertificate{Name: "One", Slug: "one", Dir: "group/ship", Format: "int16-triangles", OutputSHA256: map[string]string{"one.hi.bin": testDigest(mesh), "one.lo.bin": testDigest(mesh)}, ValidationVersion: 1}
+	cert.Orient.Forward = "+x"
+	cert.Orient.Up = "+y"
+	cert.Stamp.Input = testDigest(model)
+	cert.Stamp.Manifest = testDigest(manifest)
+	cert.Stamp.Converter = strings.Repeat("b", 64)
+	cert.Validation.Pass = true
+	cert.Validation.AlgorithmVersion = 2
+	cert.Validation.ReferenceChecked = true
+	cert.Validation.RendererSHA256 = rendererFingerprint
+	cert.Validation.CheckerSHA256 = checkerFingerprint
+	applyAdmissionBoundaryMode(t, mode, root, source, converted, mesh, &cert)
+	key := "ship.one"
+	if mode == "optional-identity" {
+		key = "group/ship"
+	}
+	index, err := json.Marshal(map[string]modelCertificate{key: cert})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(converted, "meshes.json"), index)
+	assets, err := LoadModelPool(models, converted, strings.Repeat("b", 64))
+	if mode == "optional-identity" {
+		if err != nil || len(assets) != 1 || assets[0].ID != key || assets[0].Name != key {
+			t.Fatalf("default identity was not admitted: %#v, %v", assets, err)
+		}
+	} else if err == nil {
+		t.Fatal("expected admission diagnostic")
+	}
+}
+
+func applyAdmissionBoundaryMode(t *testing.T, mode, root, source, converted string, mesh []byte, cert *modelCertificate) {
+	switch mode {
+	case "algorithm":
+		cert.Validation.AlgorithmVersion = 1
+	case "reference":
+		cert.Validation.ReferenceChecked = false
+	case "renderer":
+		cert.Validation.RendererSHA256 = strings.Repeat("c", 64)
+	case "checker":
+		cert.Validation.CheckerSHA256 = strings.Repeat("c", 64)
+	case "format":
+		cert.Format = "float32-triangles"
+	case "optional-identity":
+		manifest := []byte(`{"orient":{"forward":"+x","up":"+y"}}`)
+		writeTestFile(t, filepath.Join(source, "manifest.json"), manifest)
+		cert.Stamp.Manifest = testDigest(manifest)
+		cert.Name = "group/ship"
+	case "source":
+		writeTestFile(t, filepath.Join(source, "model.glb"), []byte("changed"))
+	case "output":
+		writeTestFile(t, filepath.Join(converted, "mesh", "one.hi.bin"), []byte("changed"))
+	case "traversal":
+		cert.Slug = "../escape"
+	case "symlink":
+		outside := filepath.Join(root, "outside.bin")
+		writeTestFile(t, outside, mesh)
+		if err := os.Remove(filepath.Join(converted, "mesh", "one.hi.bin")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, filepath.Join(converted, "mesh", "one.hi.bin")); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

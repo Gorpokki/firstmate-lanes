@@ -22,15 +22,24 @@ func TestParseLaneRecordFixedAskForms(t *testing.T) {
 	if invalid != 0 || len(record.Asks) != 2 {
 		t.Fatalf("invalid=%d asks=%d", invalid, len(record.Asks))
 	}
-	choice, discussion := record.Asks[0], record.Asks[1]
+	checkFixedChoiceAsk(t, record.Asks[0])
+	checkFixedDiscussionAsk(t, record.Asks[1])
+	if record.Name != "Synthetic lane" || record.State != "needs you" || len(record.History) != 1 || record.Ticket == nil {
+		t.Fatalf("record lost fields: %#v", record)
+	}
+}
+
+func checkFixedChoiceAsk(t *testing.T, choice LaneRecordAsk) {
+	t.Helper()
 	if choice.Form != "choice" || choice.Key != "stable-choice-1" || len(choice.Choices) != 2 || choice.Pick == nil || *choice.Pick != 0 || choice.PickReason == "" {
 		t.Fatalf("choice ask lost fields: %#v", choice)
 	}
+}
+
+func checkFixedDiscussionAsk(t *testing.T, discussion LaneRecordAsk) {
+	t.Helper()
 	if discussion.Form != "discussion" || discussion.Topic != "Release timing" || len(discussion.MustDecide) != 2 || discussion.WaitsOnThis == "" || len(discussion.Tickets) != 1 {
 		t.Fatalf("discussion ask lost fields: %#v", discussion)
-	}
-	if record.Name != "Synthetic lane" || record.State != "needs you" || len(record.History) != 1 || record.Ticket == nil {
-		t.Fatalf("record lost fields: %#v", record)
 	}
 }
 

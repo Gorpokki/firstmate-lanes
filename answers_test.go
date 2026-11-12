@@ -12,14 +12,15 @@ import (
 	"time"
 )
 
-func TestConfirmedAnswersBatchByHomeAndRefuseStale(t *testing.T) {
-	home := t.TempDir()
+// answersTestBatchHome builds a main home plus one secondmate home and a stub intake command.
+func answersTestBatchHome(t *testing.T, asked time.Time) (home, log, command string) {
+	t.Helper()
+	home = t.TempDir()
 	for _, dir := range []string{"state", "data", "mate/state", "mate/data"} {
 		if err := os.MkdirAll(filepath.Join(home, dir), 0700); err != nil {
 			t.Fatal(err)
 		}
 	}
-	asked := time.Now().UTC().Truncate(time.Second)
 	record := func(key string) []byte {
 		return []byte(`{"name":"Example","state":"waiting","now":"Awaiting route","start":"2026-01-01T00:00:00Z","asks":[{"form":"choice","key":"` + key + `","question":"Choose route?","reason":"Route required","effort":"quick","asked":"` + asked.Format(time.RFC3339) + `","choices":[{"label":"North","effect":"Travel north"},{"label":"South","effect":"Travel south"}]}]}`)
 	}
@@ -28,12 +29,18 @@ func TestConfirmedAnswersBatchByHomeAndRefuseStale(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	log := filepath.Join(home, "command-log")
-	command := filepath.Join(home, "answer-command")
+	log = filepath.Join(home, "command-log")
+	command = filepath.Join(home, "answer-command")
 	script := "#!/bin/sh\nprintf 'CALL %s\\n' \"$FM_HOME\" >> '" + log + "'\nwhile IFS=\"$(printf '\\t')\" read -r key answer label; do printf 'closed: %s\\n' \"$key\"; done\n"
 	if err := os.WriteFile(command, []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
+	return home, log, command
+}
+
+func TestConfirmedAnswersBatchByHomeAndRefuseStale(t *testing.T) {
+	asked := time.Now().UTC().Truncate(time.Second)
+	home, log, command := answersTestBatchHome(t, asked)
 	service := AnswerService{Reader: NewReader(), Home: home, Command: command}
 	answers := []SittingAnswer{{Lane: "alpha", Key: "alpha", Kind: "choice", Choice: 0, Asked: asked}, {Lane: "beta", Key: "beta", Kind: "own", Text: "Use the coastal route", Asked: asked}, {Lane: "design/gamma", Key: "gamma", Kind: "skip", Asked: asked}, {Lane: "missing", Key: "stale", Kind: "choice", Asked: asked}}
 	if _, err := service.Send(context.Background(), false, answers); err == nil {

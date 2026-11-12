@@ -68,31 +68,39 @@ func stationLane(l Lane, at time.Time) (StationLane, int) {
 		out.History = append(out.History, StationChange{At: e.At, State: e.Verb, Text: e.Text})
 	}
 	sort.SliceStable(out.History, func(i, j int) bool { return out.History[i].At.Before(out.History[j].At) })
+	out.State = stationLaneState(l, len(out.Asks), at)
+	out.Progress = stationLaneProgress(out)
+	return out, hidden
+}
+
+func stationLaneState(l Lane, asks int, at time.Time) string {
 	switch {
-	case len(out.Asks) > 0:
-		out.State = "needs you"
+	case asks > 0:
+		return "needs you"
 	case l.State == "needs you" && l.Record != nil && !l.HadRecordAsks && len(l.Record.Asks) == 0 && !l.UpdatedAt.IsZero() && !l.UpdatedAt.Before(at.Add(-7*24*time.Hour)):
-		out.State = "needs you"
+		return "needs you"
 	case l.State == "done":
-		out.State = "done"
+		return "done"
 	case l.State == "working" && !l.UpdatedAt.IsZero() && at.Sub(l.UpdatedAt) < 2*time.Hour:
-		out.State = "working"
+		return "working"
 	case l.State == "waiting":
-		out.State = "waiting"
+		return "waiting"
 	default:
-		out.State = "holding"
+		return "holding"
 	}
+}
+
+func stationLaneProgress(out StationLane) float64 {
 	switch {
 	case out.SourceState == "failed" || out.State == "done":
-		out.Progress = 1
+		return 1
 	case out.State == "working" || out.State == "needs you":
-		out.Progress = .72
+		return .72
 	case out.State == "waiting":
-		out.Progress = .48
+		return .48
 	default:
-		out.Progress = .35
+		return .35
 	}
-	return out, hidden
 }
 
 func stationFleet(lanes []Lane, at time.Time) ([]StationLane, int, float64) {

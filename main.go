@@ -63,9 +63,23 @@ func (m model) key(k string) (model, bool) {
 		m.sitting.key(&m, k, m.askLanes())
 		return m, false
 	}
-	switch k {
-	case "q":
+	if k == "q" {
 		return m, true
+	}
+	m.keyApply(k)
+	m.clampSelection()
+	return m, false
+}
+
+// keySitting forwards a key to the sitting when the Ask station is showing.
+func (m *model) keySitting(k string) {
+	if m.view == 0 {
+		m.sitting.key(m, k, m.askLanes())
+	}
+}
+
+func (m *model) keyApply(k string) {
+	switch k {
 	case "a":
 		m.enterView(0)
 	case "l":
@@ -79,65 +93,83 @@ func (m model) key(k string) (model, bool) {
 	case "shift+tab", "left":
 		m.enterView((m.view + len(views) - 1) % len(views))
 	case "o":
-		if m.view == 0 {
-			if len(m.sitting.items) == 0 {
-				m.openSitting()
-			}
-			m.sitting.key(&m, "o", m.askLanes())
-		}
+		m.keyOpenAnswer()
 	case " ", "space":
-		if m.view == 1 {
-			m.toggleSelected()
-		} else if m.view == 0 || m.view == 3 {
-			m.spinPaused = !m.spinPaused
-		}
+		m.keySpace()
 	case "m":
 		m.cycleMate()
 	case "s":
-		if m.view == 2 {
-			m.fleetShipyard = !m.fleetShipyard
-		} else if m.view == 0 {
-			m.sitting.key(&m, k, m.askLanes())
-		}
+		m.keyShipyard(k)
 	case "1", "2", "3", "4", "5":
-		if m.view == 2 {
-			states := []string{"needs you", "waiting", "working", "holding", "done"}
-			state := states[int(k[0]-'1')]
-			if m.fleetFilter == state {
-				m.fleetFilter = ""
-			} else {
-				m.fleetFilter = state
-			}
-			m.setSel(0)
-		} else if m.view == 0 {
-			m.sitting.key(&m, k, m.askLanes())
-		}
+		m.keyFleetFilter(k)
 	case "b":
-		if m.look != nil {
-			m.err = m.look.save(m.fleet)
-			if m.err == nil {
-				m.fleet.ChangedLanes = nil
-			}
-		}
+		m.keySaveLook()
 	case "up", "k":
-		if m.view == 0 {
-			m.sitting.key(&m, k, m.askLanes())
-		} else {
-			m.setSel(m.selIndex() - 1)
-		}
+		m.keyMove(k, -1)
 	case "down", "j":
-		if m.view == 0 {
-			m.sitting.key(&m, k, m.askLanes())
-		} else {
-			m.setSel(m.selIndex() + 1)
-		}
+		m.keyMove(k, 1)
 	default:
-		if m.view == 0 {
-			m.sitting.key(&m, k, m.askLanes())
-		}
+		m.keySitting(k)
 	}
-	m.clampSelection()
-	return m, false
+}
+
+func (m *model) keyOpenAnswer() {
+	if m.view != 0 {
+		return
+	}
+	if len(m.sitting.items) == 0 {
+		m.openSitting()
+	}
+	m.sitting.key(m, "o", m.askLanes())
+}
+
+func (m *model) keySpace() {
+	if m.view == 1 {
+		m.toggleSelected()
+	} else if m.view == 0 || m.view == 3 {
+		m.spinPaused = !m.spinPaused
+	}
+}
+
+func (m *model) keyShipyard(k string) {
+	if m.view == 2 {
+		m.fleetShipyard = !m.fleetShipyard
+	} else {
+		m.keySitting(k)
+	}
+}
+
+func (m *model) keyFleetFilter(k string) {
+	if m.view != 2 {
+		m.keySitting(k)
+		return
+	}
+	states := []string{"needs you", "waiting", "working", "holding", "done"}
+	state := states[int(k[0]-'1')]
+	if m.fleetFilter == state {
+		m.fleetFilter = ""
+	} else {
+		m.fleetFilter = state
+	}
+	m.setSel(0)
+}
+
+func (m *model) keySaveLook() {
+	if m.look == nil {
+		return
+	}
+	m.err = m.look.save(m.fleet)
+	if m.err == nil {
+		m.fleet.ChangedLanes = nil
+	}
+}
+
+func (m *model) keyMove(k string, delta int) {
+	if m.view == 0 {
+		m.sitting.key(m, k, m.askLanes())
+	} else {
+		m.setSel(m.selIndex() + delta)
+	}
 }
 func (m *model) clampSelection() { m.setSel(m.selIndex()) }
 func (m model) selIndex() int {

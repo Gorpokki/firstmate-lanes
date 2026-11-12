@@ -56,41 +56,128 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		return m, m.poll()
 	case fleetMsg:
-		m.err = msg.err
-		if msg.err == nil {
-			m.fleet = msg.f
-			if m.view == 0 && len(m.sitting.items) == 0 {
-				m.openSitting()
-			}
-		}
+		m.cliApplyFleet(msg)
 	case answerResultMsg:
 		m.applyAnswerResult(msg)
 		return m, m.read()
 	case tea.KeyMsg:
-		if m.view == 0 && m.sitting.ownMode && msg.Type == tea.KeyRunes && !msg.Alt {
-			for _, r := range msg.Runes {
-				m, _ = m.key(string(r))
-			}
-			return m, nil
-		}
-		next, quit := m.key(msg.String())
-		if quit {
-			return next, tea.Quit
-		}
-		if next.pendingSend && !m.pendingSend {
-			service := next.answerService
-			answers := append([]SittingAnswer(nil), next.answers...)
-			return next, func() tea.Msg {
-				if service == nil {
-					return answerResultMsg{err: fmt.Errorf("answer command is unavailable")}
-				}
-				results, err := service.Send(context.Background(), true, answers)
-				return answerResultMsg{results: results, err: err}
-			}
-		}
-		return next, nil
+		return m.cliUpdateKey(msg)
 	}
 	return m, nil
+}
+
+func (m *model) cliApplyFleet(msg fleetMsg) {
+	m.err = msg.err
+	if msg.err == nil {
+		m.fleet = msg.f
+		if m.view == 0 && len(m.sitting.items) == 0 {
+			m.openSitting()
+		}
+	}
+}
+
+func (m model) cliUpdateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.view == 0 && m.sitting.ownMode && msg.Type == tea.KeyRunes && !msg.Alt {
+		for _, r := range msg.Runes {
+			m, _ = m.key(string(r))
+		}
+		return m, nil
+	}
+	next, quit := m.key(msg.String())
+	if quit {
+		return next, tea.Quit
+	}
+	if next.pendingSend && !m.pendingSend {
+		service := next.answerService
+		answers := append([]SittingAnswer(nil), next.answers...)
+		return next, func() tea.Msg {
+			if service == nil {
+				return answerResultMsg{err: fmt.Errorf("answer command is unavailable")}
+			}
+			results, err := service.Send(context.Background(), true, answers)
+			return answerResultMsg{results: results, err: err}
+		}
+	}
+	return next, nil
+}
+
+func cliFail(err error) {
+	fmt.Fprintln(os.Stderr, "fmlanes:", err)
+	os.Exit(1)
+}
+
+func cliConvertShips(home, convert, output string) error {
+	destination := output
+	if destination == "" {
+		destination = filepath.Join(convert, "converted")
+	}
+	if home != "" {
+		if err := (runtimeConfig{StateDir: destination}).protectHomes(home); err != nil {
+			return err
+		}
+	}
+	return convertShips(convert, destination)
+}
+
+func cliCheckArgs(home string, every time.Duration) error {
+	if home == "" {
+		fmt.Fprintln(os.Stderr, "usage: fmlanes --home PATH (or set FM_HOME)")
+		os.Exit(2)
+	}
+	if every <= 0 {
+		return fmt.Errorf("--every must be positive")
+	}
+	return nil
+}
+
+func cliPrepareDirs(config runtimeConfig, home string) error {
+	if err := config.protectHomes(home); err != nil {
+		return err
+	}
+	for _, directory := range []string{filepath.Join(config.DropIn, "models"), filepath.Join(config.DropIn, "lanes")} {
+		if err := os.MkdirAll(directory, 0700); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func cliSelectView(m *model, name string) error {
+	for i, station := range views {
+		if station.key == name {
+			m.view = i
+			return nil
+		}
+	}
+	return fmt.Errorf("unknown station %q", name)
+}
+
+func cliServe(address, home string, config runtimeConfig, reader *Reader, look *lastLook, service *AnswerService, allow []string) error {
+	handler, err := boardHandler(home, config, reader, look, service, allow)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "fmlanes: serving the board at http://%s\n", address)
+	return http.ListenAndServe(address, handler)
+}
+
+func cliPrintOnce(m *model, home string, reader *Reader, look *lastLook, asJSON bool, size string) error {
+	var err error
+	if m.fleet, err = readFleet(reader, home, look); err != nil {
+		return err
+	}
+	if asJSON {
+		return json.NewEncoder(os.Stdout).Encode(m.fleet)
+	}
+	if _, err = fmt.Sscanf(size, "%dx%d", &m.w, &m.h); err != nil || m.w < 1 || m.h < 1 {
+		return fmt.Errorf("invalid --size")
+	}
+	m.step()
+	if m.view == 0 {
+		m.openSitting()
+	}
+	fmt.Println(m.View())
+	return nil
 }
 
 func main() {
@@ -108,40 +195,21 @@ func main() {
 	var allow []string
 	flag.Func("allow-host", "additional accepted Host name (repeatable)", func(value string) error { allow = append(allow, value); return nil })
 	flag.Parse()
-	fail := func(err error) { fmt.Fprintln(os.Stderr, "fmlanes:", err); os.Exit(1) }
 	if *convert != "" {
-		destination := *output
-		if destination == "" {
-			destination = filepath.Join(*convert, "converted")
-		}
-		if *home != "" {
-			if err := (runtimeConfig{StateDir: destination}).protectHomes(*home); err != nil {
-				fail(err)
-			}
-		}
-		if err := convertShips(*convert, destination); err != nil {
-			fail(err)
+		if err := cliConvertShips(*home, *convert, *output); err != nil {
+			cliFail(err)
 		}
 		return
 	}
-	if *home == "" {
-		fmt.Fprintln(os.Stderr, "usage: fmlanes --home PATH (or set FM_HOME)")
-		os.Exit(2)
-	}
-	if *every <= 0 {
-		fail(fmt.Errorf("--every must be positive"))
+	if err := cliCheckArgs(*home, *every); err != nil {
+		cliFail(err)
 	}
 	config, err := loadRuntimeConfig(*dropIn, *ships)
+	if err == nil {
+		err = cliPrepareDirs(config, *home)
+	}
 	if err != nil {
-		fail(err)
-	}
-	if err = config.protectHomes(*home); err != nil {
-		fail(err)
-	}
-	for _, directory := range []string{filepath.Join(config.DropIn, "models"), filepath.Join(config.DropIn, "lanes")} {
-		if err = os.MkdirAll(directory, 0700); err != nil {
-			fail(err)
-		}
+		cliFail(err)
 	}
 	reader := NewReader()
 	reader.DropIn = config.DropIn
@@ -149,50 +217,23 @@ func main() {
 	look := newLastLook(filepath.Join(config.StateDir, "last-look.json"))
 	service := &AnswerService{Reader: reader, Home: *home, Command: os.Getenv("FM_LANES_ANSWER_COMMAND")}
 	m := model{r: reader, home: *home, every: *every, view: 1, answerService: service, look: look}
-	found := false
-	for i, station := range views {
-		if station.key == *view {
-			m.view = i
-			found = true
-		}
-	}
-	if !found {
-		fail(fmt.Errorf("unknown station %q", *view))
+	if err = cliSelectView(&m, *view); err != nil {
+		cliFail(err)
 	}
 	if *address != "" {
-		handler, err := boardHandler(*home, config, reader, look, service, allow)
-		if err != nil {
-			fail(err)
-		}
-		fmt.Fprintf(os.Stderr, "fmlanes: serving the board at http://%s\n", *address)
-		if err = http.ListenAndServe(*address, handler); err != nil {
-			fail(err)
+		if err = cliServe(*address, *home, config, reader, look, service, allow); err != nil {
+			cliFail(err)
 		}
 		return
 	}
 	if *once || *asJSON {
-		m.fleet, err = readFleet(reader, *home, look)
-		if err != nil {
-			fail(err)
+		if err = cliPrintOnce(&m, *home, reader, look, *asJSON, *size); err != nil {
+			cliFail(err)
 		}
-		if *asJSON {
-			if err = json.NewEncoder(os.Stdout).Encode(m.fleet); err != nil {
-				fail(err)
-			}
-			return
-		}
-		if _, err = fmt.Sscanf(*size, "%dx%d", &m.w, &m.h); err != nil || m.w < 1 || m.h < 1 {
-			fail(fmt.Errorf("invalid --size"))
-		}
-		m.step()
-		if m.view == 0 {
-			m.openSitting()
-		}
-		fmt.Println(m.View())
 		return
 	}
 	if _, err = tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
-		fail(err)
+		cliFail(err)
 	}
 }
 

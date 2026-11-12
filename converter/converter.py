@@ -78,6 +78,64 @@ def _complete_certificate(certificate):
         for check in checks.values()))
 
 
+def _load_previous(index_path):
+    try:
+        return json.loads(index_path.read_text()) if index_path.exists() else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _source_stamp(source, manifest_path, token):
+    manifest_raw = manifest_path.read_bytes() if manifest_path.exists() else b"{}"
+    stamp = {"input": sha256(source.read_bytes()),
+             "manifest": sha256(manifest_raw) if manifest_path.exists() else None,
+             "converter": token}
+    return manifest_raw, stamp
+
+
+def _cache_valid(old, stamp, mesh_dir):
+    return (old.get("stamp") == stamp and old.get("validation_version") == VALIDATION_VERSION and
+            _complete_certificate(old.get("validation")) and all(
+                (mesh_dir / filename).is_file() and
+                sha256((mesh_dir / filename).read_bytes()) == digest
+                for filename, digest in old.get("output_sha256", {}).items()))
+
+
+def _convert_and_write(source, key, name, rel, orientation, stamp, mesh_dir):
+    model = trimesh.load(source, force="mesh")
+    if isinstance(model, trimesh.Scene):
+        model = model.to_geometry()
+    outputs, certificate = convert(model, orientation["forward"], orientation["up"])
+    readable = re.sub(r"[^a-z0-9]+", "-", key.lower()).strip("-")[:48] or "model"
+    slug = f"{readable}-{sha256(key.encode())[:12]}"
+    output_hashes = {}
+    for lod, data in outputs.items():
+        filename = f"{slug}.{lod}.bin"
+        atomic_write(mesh_dir / filename, data)
+        output_hashes[filename] = sha256(data)
+    return {"name": name, "slug": slug, "dir": rel,
+            "format": "int16-triangles", "orient": orientation,
+            "checked": True, "stamp": stamp, "output_sha256": output_hashes,
+            "validation_version": VALIDATION_VERSION, "validation": certificate}
+
+
+def _convert_source(source, rel, token, previous, mesh_dir, ident):
+    """Return the entry for one source; ident carries key/name/stamp for failure reports."""
+    manifest_path = source.parent / "manifest.json"
+    manifest_raw, stamp = _source_stamp(source, manifest_path, token)
+    ident["stamp"] = stamp
+    manifest = _read_manifest(manifest_raw)
+    key = ident["key"] = manifest.get("key", rel)
+    name = ident["name"] = manifest.get("name", key)
+    orientation = manifest.get("orient", {})
+    if not all(isinstance(orientation.get(axis), str) for axis in ("forward", "up")):
+        raise ValueError("manifest orient requires explicit forward and up axes")
+    old = previous.get(key, {})
+    if _cache_valid(old, stamp, mesh_dir):
+        return old
+    return _convert_and_write(source, key, name, rel, orientation, stamp, mesh_dir)
+
+
 def main(models_root, output_dir):
     models_root = Path(models_root).expanduser().resolve()
     output_dir = Path(output_dir).expanduser().resolve()
@@ -87,54 +145,19 @@ def main(models_root, output_dir):
     token = converter_hash(renderer)
     mesh_dir = output_dir / "mesh"
     index_path = output_dir / "meshes.json"
-    try:
-        previous = json.loads(index_path.read_text()) if index_path.exists() else {}
-    except (OSError, ValueError):
-        previous = {}
+    previous = _load_previous(index_path)
     entries = {}
     for source in sorted(models_root.glob("*/*/model.glb")):
         if source.resolve().is_relative_to(output_dir):
             continue
         rel = source.parent.relative_to(models_root).as_posix()
-        manifest_path = source.parent / "manifest.json"
-        key, name, stamp = rel, rel, {}
+        ident = {"key": rel, "name": rel, "stamp": {}}
         try:
-            manifest_raw = manifest_path.read_bytes() if manifest_path.exists() else b"{}"
-            stamp = {"input": sha256(source.read_bytes()),
-                     "manifest": sha256(manifest_raw) if manifest_path.exists() else None,
-                     "converter": token}
-            manifest = _read_manifest(manifest_raw)
-            key = manifest.get("key", rel)
-            name = manifest.get("name", key)
-            orientation = manifest.get("orient", {})
-            if not all(isinstance(orientation.get(axis), str) for axis in ("forward", "up")):
-                raise ValueError("manifest orient requires explicit forward and up axes")
-            old = previous.get(key, {})
-            if (old.get("stamp") == stamp and old.get("validation_version") == VALIDATION_VERSION and
-                    _complete_certificate(old.get("validation")) and all(
-                        (mesh_dir / filename).is_file() and
-                        sha256((mesh_dir / filename).read_bytes()) == digest
-                        for filename, digest in old.get("output_sha256", {}).items())):
-                entries[key] = old
-                continue
-            model = trimesh.load(source, force="mesh")
-            if isinstance(model, trimesh.Scene):
-                model = model.to_geometry()
-            outputs, certificate = convert(model, orientation["forward"], orientation["up"])
-            readable = re.sub(r"[^a-z0-9]+", "-", key.lower()).strip("-")[:48] or "model"
-            slug = f"{readable}-{sha256(key.encode())[:12]}"
-            output_hashes = {}
-            for lod, data in outputs.items():
-                filename = f"{slug}.{lod}.bin"
-                atomic_write(mesh_dir / filename, data)
-                output_hashes[filename] = sha256(data)
-            entries[key] = {"name": name, "slug": slug, "dir": rel,
-                            "format": "int16-triangles", "orient": orientation,
-                            "checked": True, "stamp": stamp, "output_sha256": output_hashes,
-                            "validation_version": VALIDATION_VERSION, "validation": certificate}
+            entries[ident["key"]] = _convert_source(source, rel, token, previous, mesh_dir, ident)
         except Exception as error:
-            entries[key] = _entry_failure(
-                key, rel, name, stamp, f"{type(error).__name__}: {error}")
+            entries[ident["key"]] = _entry_failure(
+                ident["key"], rel, ident["name"], ident["stamp"],
+                f"{type(error).__name__}: {error}")
     encoded = (json.dumps(entries, indent=2, sort_keys=True) + "\n").encode()
     atomic_write(index_path, encoded)
     return entries

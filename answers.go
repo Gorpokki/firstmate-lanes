@@ -51,6 +51,43 @@ func (s *AnswerService) Send(ctx context.Context, confirmed bool, answers []Sitt
 	for _, l := range lanes {
 		current[l.ID] = l
 	}
+	openKeys := answersOpenKeys(lanes)
+	results := make([]DeliveryResult, len(answers))
+	batches := map[string][]int{}
+	payloads := make([]string, len(answers))
+	seen := map[string]bool{}
+	for i, answer := range answers {
+		results[i] = DeliveryResult{Lane: answer.Lane, Key: answer.Key}
+		lane, text, reason := answersPrepare(answer, current, openKeys, seen)
+		if reason != "" {
+			results[i].Reason = reason
+			continue
+		}
+		seen[lane.OwnerDir+"\x00"+answer.Key] = true
+		payloads[i] = answer.Key + "\t" + text + "\t" + answer.Kind + "\n"
+		batches[lane.OwnerDir] = append(batches[lane.OwnerDir], i)
+	}
+	homes := make([]string, 0, len(batches))
+	for home := range batches {
+		homes = append(homes, home)
+	}
+	sort.Strings(homes)
+	for _, home := range homes {
+		indices := batches[home]
+		var input strings.Builder
+		for _, i := range indices {
+			input.WriteString(payloads[i])
+		}
+		output, callErr := s.answersRunHome(ctx, home, input.String())
+		accepted, refused := answersParseOutput(string(output))
+		for _, i := range indices {
+			s.answersRecord(&results[i], home, answers[i], accepted, refused, callErr)
+		}
+	}
+	return results, nil
+}
+
+func answersOpenKeys(lanes []Lane) map[string]int {
 	openKeys := map[string]int{}
 	for _, l := range lanes {
 		for _, d := range l.Decisions {
@@ -62,131 +99,123 @@ func (s *AnswerService) Send(ctx context.Context, confirmed bool, answers []Sitt
 			}
 		}
 	}
-	results := make([]DeliveryResult, len(answers))
-	batches := map[string][]int{}
-	payloads := make([]string, len(answers))
-	seen := map[string]bool{}
-	for i, answer := range answers {
-		result := DeliveryResult{Lane: answer.Lane, Key: answer.Key, Reason: "Ask is no longer open"}
-		results[i] = result
-		lane, ok := current[answer.Lane]
-		if !ok {
-			continue
+	return openKeys
+}
+
+func answersFindAsk(row StationLane, answer SittingAnswer) *StationAsk {
+	for j := range row.Asks {
+		if row.Asks[j].Key == answer.Key && row.Asks[j].Asked.Equal(answer.Asked) {
+			return &row.Asks[j]
 		}
-		if lane.OwnerDir == "" {
-			results[i].Reason = "Local lane has no owning home; no answer was sent"
-			continue
-		}
-		row, _ := stationLane(lane, time.Now())
-		var ask *StationAsk
-		for j := range row.Asks {
-			if row.Asks[j].Key == answer.Key && row.Asks[j].Asked.Equal(answer.Asked) {
-				ask = &row.Asks[j]
-				break
-			}
-		}
-		if ask == nil {
-			continue
-		}
-		if !ask.Answerable {
-			results[i].Reason = readOnlyReason(row) + " No answer was sent."
-			continue
-		}
-		if openKeys[lane.OwnerDir+"\x00"+answer.Key] > 1 {
-			results[i].Reason = "Task ID is shared by another open ask in this home; no answer was sent"
-			continue
-		}
-		key := lane.OwnerDir + "\x00" + answer.Key
-		if seen[key] {
-			results[i].Reason = "Duplicate ask in sitting"
-			continue
-		}
-		var text string
-		switch answer.Kind {
-		case "choice":
-			if ask.Form != "choice" || answer.Choice < 0 || answer.Choice >= len(ask.Choices) {
-				results[i].Reason = "Choice is no longer available"
-				continue
-			}
-			choice := ask.Choices[answer.Choice]
-			text = choice.Label + ": " + choice.Effect
-		case "own":
-			text = strings.TrimSpace(answer.Text)
-		case "skip":
-			text = "Skipped: the crew chooses and reports its choice in its next status line."
-		case "grill":
-			text = "Grill requested: discuss this ask with the crew before choosing."
-		default:
-			results[i].Reason = "Invalid answer kind"
-			continue
-		}
-		// The installed intake is a TSV protocol, not a shell or a multiline transport.
-		if text == "" || len(text) > 8192 || strings.ContainsAny(text, "\r\n\t\x00") {
-			results[i].Reason = "Answer must be a single non-empty line without control separators"
-			continue
-		}
-		seen[key] = true
-		payloads[i] = answer.Key + "\t" + text + "\t" + answer.Kind + "\n"
-		batches[lane.OwnerDir] = append(batches[lane.OwnerDir], i)
 	}
-	homes := make([]string, 0, len(batches))
-	for home := range batches {
-		homes = append(homes, home)
+	return nil
+}
+
+// answersPrepare returns the lane and TSV text for an answer, or a non-empty refusal reason.
+func answersPrepare(answer SittingAnswer, current map[string]Lane, openKeys map[string]int, seen map[string]bool) (Lane, string, string) {
+	const closed = "Ask is no longer open"
+	lane, ok := current[answer.Lane]
+	if !ok {
+		return lane, "", closed
 	}
-	sort.Strings(homes)
-	for _, home := range homes {
-		command := s.Command
-		if command == "" {
-			command = filepath.Join(s.Home, "bin", "fm-captain-hold.sh")
+	if lane.OwnerDir == "" {
+		return lane, "", "Local lane has no owning home; no answer was sent"
+	}
+	row, _ := stationLane(lane, time.Now())
+	ask := answersFindAsk(row, answer)
+	if ask == nil {
+		return lane, "", closed
+	}
+	if !ask.Answerable {
+		return lane, "", readOnlyReason(row) + " No answer was sent."
+	}
+	key := lane.OwnerDir + "\x00" + answer.Key
+	if openKeys[key] > 1 {
+		return lane, "", "Task ID is shared by another open ask in this home; no answer was sent"
+	}
+	if seen[key] {
+		return lane, "", "Duplicate ask in sitting"
+	}
+	text, reason := answersText(answer, ask)
+	if reason != "" {
+		return lane, "", reason
+	}
+	// The installed intake is a TSV protocol, not a shell or a multiline transport.
+	if text == "" || len(text) > 8192 || strings.ContainsAny(text, "\r\n\t\x00") {
+		return lane, "", "Answer must be a single non-empty line without control separators"
+	}
+	return lane, text, ""
+}
+
+func answersText(answer SittingAnswer, ask *StationAsk) (string, string) {
+	switch answer.Kind {
+	case "choice":
+		if ask.Form != "choice" || answer.Choice < 0 || answer.Choice >= len(ask.Choices) {
+			return "", "Choice is no longer available"
 		}
-		indices := batches[home]
-		var input strings.Builder
-		for _, i := range indices {
-			input.WriteString(payloads[i])
+		choice := ask.Choices[answer.Choice]
+		return choice.Label + ": " + choice.Effect, ""
+	case "own":
+		return strings.TrimSpace(answer.Text), ""
+	case "skip":
+		return "Skipped: the crew chooses and reports its choice in its next status line.", ""
+	case "grill":
+		return "Grill requested: discuss this ask with the crew before choosing.", ""
+	}
+	return "", "Invalid answer kind"
+}
+
+func (s *AnswerService) answersRunHome(ctx context.Context, home, input string) ([]byte, error) {
+	command := s.Command
+	if command == "" {
+		command = filepath.Join(s.Home, "bin", "fm-captain-hold.sh")
+	}
+	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(callCtx, command, "answers", "--source", "fm-lanes")
+	cmd.Stdin = strings.NewReader(input)
+	env := []string{}
+	for _, v := range os.Environ() {
+		name, _, _ := strings.Cut(v, "=")
+		if name != "FM_HOME" && name != "FM_ROOT_OVERRIDE" && name != "FM_STATE_OVERRIDE" && name != "FM_DATA_OVERRIDE" {
+			env = append(env, v)
 		}
-		callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-		cmd := exec.CommandContext(callCtx, command, "answers", "--source", "fm-lanes")
-		cmd.Stdin = strings.NewReader(input.String())
-		env := []string{}
-		for _, v := range os.Environ() {
-			name, _, _ := strings.Cut(v, "=")
-			if name != "FM_HOME" && name != "FM_ROOT_OVERRIDE" && name != "FM_STATE_OVERRIDE" && name != "FM_DATA_OVERRIDE" {
-				env = append(env, v)
-			}
+	}
+	cmd.Env = append(env, "FM_HOME="+home)
+	return cmd.Output()
+}
+
+func answersParseOutput(output string) (map[string]bool, map[string]string) {
+	accepted := map[string]bool{}
+	refused := map[string]string{}
+	for _, line := range strings.Split(output, "\n") {
+		if key, ok := strings.CutPrefix(line, "closed: "); ok {
+			accepted[strings.TrimSpace(key)] = true
 		}
-		cmd.Env = append(env, "FM_HOME="+home)
-		output, callErr := cmd.Output()
-		cancel()
-		accepted := map[string]bool{}
-		refused := map[string]string{}
-		for _, line := range strings.Split(string(output), "\n") {
-			if key, ok := strings.CutPrefix(line, "closed: "); ok {
-				accepted[strings.TrimSpace(key)] = true
-			}
-			for _, prefix := range []string{"skipped: ", "refused: "} {
-				if body, ok := strings.CutPrefix(line, prefix); ok {
-					key, why, _ := strings.Cut(body, " ")
-					refused[key] = strings.TrimSpace(why)
-				}
-			}
-		}
-		for _, i := range indices {
-			if accepted[answers[i].Key] {
-				results[i].Accepted = true
-				results[i].Reason = "Accepted"
-				if err := s.Reader.acknowledge(home, answers[i].Lane, answers[i].Key, answers[i].Asked); err != nil {
-					results[i].Reason = "Accepted; local receipt could not be saved"
-				}
-				continue
-			}
-			if reason := refused[answers[i].Key]; reason != "" {
-				results[i].Reason = reason
-			} else if callErr != nil {
-				results[i].Reason = "Keyed-answer command refused or failed"
-			} else {
-				results[i].Reason = "Keyed-answer command did not accept this ask"
+		for _, prefix := range []string{"skipped: ", "refused: "} {
+			if body, ok := strings.CutPrefix(line, prefix); ok {
+				key, why, _ := strings.Cut(body, " ")
+				refused[key] = strings.TrimSpace(why)
 			}
 		}
 	}
-	return results, nil
+	return accepted, refused
+}
+
+func (s *AnswerService) answersRecord(result *DeliveryResult, home string, answer SittingAnswer, accepted map[string]bool, refused map[string]string, callErr error) {
+	if accepted[answer.Key] {
+		result.Accepted = true
+		result.Reason = "Accepted"
+		if err := s.Reader.acknowledge(home, answer.Lane, answer.Key, answer.Asked); err != nil {
+			result.Reason = "Accepted; local receipt could not be saved"
+		}
+		return
+	}
+	if reason := refused[answer.Key]; reason != "" {
+		result.Reason = reason
+	} else if callErr != nil {
+		result.Reason = "Keyed-answer command refused or failed"
+	} else {
+		result.Reason = "Keyed-answer command did not accept this ask"
+	}
 }

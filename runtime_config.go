@@ -17,35 +17,63 @@ type runtimeConfig struct {
 }
 
 func loadRuntimeConfig(dropIn, ships string) (runtimeConfig, error) {
-	state := os.Getenv("XDG_STATE_HOME")
-	if state == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return runtimeConfig{}, err
-		}
-		state = filepath.Join(home, ".local", "state")
-	}
-	if !filepath.IsAbs(state) {
-		return runtimeConfig{}, errors.New("XDG_STATE_HOME must be absolute")
+	state, err := runtimeConfigStateRoot()
+	if err != nil {
+		return runtimeConfig{}, err
 	}
 	config := runtimeConfig{StateDir: filepath.Join(state, "fmlanes")}
 	path := os.Getenv("FM_LANES_CONFIG")
 	if path == "" {
 		path = filepath.Join(config.StateDir, "config.json")
 	}
-	data, err := os.ReadFile(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err = runtimeConfigReadFile(&config, path); err != nil {
 		return config, err
 	}
-	if err == nil {
-		if err = json.Unmarshal(data, &config); err != nil {
-			return config, fmt.Errorf("dashboard configuration: %w", err)
+	if err = runtimeConfigApplyFlags(&config, dropIn, ships); err != nil {
+		return config, err
+	}
+	for _, p := range []*string{&config.DropIn, &config.Models, &config.Ships} {
+		if !filepath.IsAbs(*p) {
+			*p = filepath.Join(filepath.Dir(path), *p)
 		}
 	}
+	return config, nil
+}
+
+func runtimeConfigStateRoot() (string, error) {
+	state := os.Getenv("XDG_STATE_HOME")
+	if state == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		state = filepath.Join(home, ".local", "state")
+	}
+	if !filepath.IsAbs(state) {
+		return "", errors.New("XDG_STATE_HOME must be absolute")
+	}
+	return state, nil
+}
+
+func runtimeConfigReadFile(config *runtimeConfig, path string) error {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err = json.Unmarshal(data, config); err != nil {
+		return fmt.Errorf("dashboard configuration: %w", err)
+	}
+	return nil
+}
+
+func runtimeConfigApplyFlags(config *runtimeConfig, dropIn, ships string) error {
 	if dropIn != "" {
 		abs, err := filepath.Abs(dropIn)
 		if err != nil {
-			return config, err
+			return err
 		}
 		config.DropIn = abs
 	}
@@ -55,7 +83,7 @@ func loadRuntimeConfig(dropIn, ships string) (runtimeConfig, error) {
 	if ships != "" {
 		abs, err := filepath.Abs(ships)
 		if err != nil {
-			return config, err
+			return err
 		}
 		config.Ships = abs
 		config.Models = filepath.Dir(abs)
@@ -66,12 +94,7 @@ func loadRuntimeConfig(dropIn, ships string) (runtimeConfig, error) {
 	if config.Ships == "" {
 		config.Ships = filepath.Join(config.Models, "converted")
 	}
-	for _, p := range []*string{&config.DropIn, &config.Models, &config.Ships} {
-		if !filepath.IsAbs(*p) {
-			*p = filepath.Join(filepath.Dir(path), *p)
-		}
-	}
-	return config, nil
+	return nil
 }
 
 func (c runtimeConfig) protectHomes(home string) error {

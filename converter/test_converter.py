@@ -29,9 +29,7 @@ def tetrahedron(vertices=None):
     return trimesh.Trimesh(vertices=np.asarray(vertices), faces=np.asarray(faces), process=False)
 
 
-def run_checks():
-    checker_prerequisites()
-    closed = tetrahedron()
+def _check_admission_rules(closed):
     opening = trimesh.Trimesh(vertices=closed.vertices, faces=closed.faces[:3], process=False)
     assert validate(opening)["pass"] and validate(opening)["open_edges"] > 0
     assert validate(opening, opening)["pass"], "intentional opening failed source-relative admission"
@@ -62,27 +60,27 @@ def run_checks():
     missing_component = validate(closed, components)
     assert not missing_component["pass"]
 
-    # Exact float32-GLB reproduction: all four int16 faces survive the actual renderer check.
-    repro = tetrahedron(np.asarray([[0, 0, 0], [2.4, 0, 0], [0, 3.2, 0], [0, 0, 1]],
-                                   dtype=np.float32))
-    for source in (closed, repro):
-        outputs, certificate = convert(source, "+x", "+y")
-        assert set(outputs) == {"hi", "lo"}
-        assert certificate["pass"] and certificate["reference_checked"]
-        assert certificate["algorithm_version"] == VERSION
-        assert certificate["renderer_sha256"] and certificate["checker_sha256"]
-        reference, _ = normalize(source, "+x", "+y")
-        for lod, data in outputs.items():
-            assert data and len(data) % 18 == 0
-            encoded = decode(data)
-            check = validate(encoded, reference)
-            assert check["pass"] and check["reference_checked"]
-            assert certificate["validation"][lod]["pass"]
-            if source is repro:
-                assert len(encoded.faces) == 4
-                assert all(view[key] == 0 for view in check["views"] for key in
-                           ("missing_ratio", "added_ratio", "inverted_normal_ratio"))
 
+def _check_convert_source(source, repro):
+    outputs, certificate = convert(source, "+x", "+y")
+    assert set(outputs) == {"hi", "lo"}
+    assert certificate["pass"] and certificate["reference_checked"]
+    assert certificate["algorithm_version"] == VERSION
+    assert certificate["renderer_sha256"] and certificate["checker_sha256"]
+    reference, _ = normalize(source, "+x", "+y")
+    for lod, data in outputs.items():
+        assert data and len(data) % 18 == 0
+        encoded = decode(data)
+        check = validate(encoded, reference)
+        assert check["pass"] and check["reference_checked"]
+        assert certificate["validation"][lod]["pass"]
+        if source is repro:
+            assert len(encoded.faces) == 4
+            assert all(view[key] == 0 for view in check["views"] for key in
+                       ("missing_ratio", "added_ratio", "inverted_normal_ratio"))
+
+
+def _check_tiny_face_dropped(closed):
     tiny_face = np.array([[[0., 0., 0.], [1e-7, 0., 0.], [0., 1e-7, 0.]]])
     outputs, _ = convert(soup(np.vstack((closed.triangles, tiny_face))), "+x", "+y")
     for data in outputs.values():
@@ -90,6 +88,7 @@ def run_checks():
         assert validate(actual)["pass"] and len(actual.faces) == 4
 
 
+def _check_workflow(repro):
     with TemporaryDirectory() as directory:
         root = Path(directory) / "models"
         source_dir = root / "synthetic" / "tetra"
@@ -124,6 +123,21 @@ def run_checks():
         repaired = main(root, output)["synthetic/tetra"]
         assert hashlib.sha256((output / "mesh" / filename).read_bytes()).hexdigest() == \
             repaired["output_sha256"][filename]
+
+
+def run_checks():
+    checker_prerequisites()
+    closed = tetrahedron()
+    _check_admission_rules(closed)
+
+    # Exact float32-GLB reproduction: all four int16 faces survive the actual renderer check.
+    repro = tetrahedron(np.asarray([[0, 0, 0], [2.4, 0, 0], [0, 3.2, 0], [0, 0, 1]],
+                                   dtype=np.float32))
+    for source in (closed, repro):
+        _check_convert_source(source, repro)
+
+    _check_tiny_face_dropped(closed)
+    _check_workflow(repro)
 
 
 if __name__ == "__main__":

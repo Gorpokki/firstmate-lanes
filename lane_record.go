@@ -80,54 +80,16 @@ func ParseLaneRecord(data []byte) (LaneRecord, int, error) {
 	} else if !errors.Is(err, io.EOF) {
 		return LaneRecord{}, 0, fmt.Errorf("decode lane record: %w", err)
 	}
-	record.Name, record.Now = clean(record.Name), clean(record.Now)
-	if record.Ticket != nil {
-		record.Ticket.ID = clean(record.Ticket.ID)
-		record.Ticket.Title = clean(record.Ticket.Title)
-	}
-	for i := range record.History {
-		record.History[i].Text = clean(record.History[i].Text)
-	}
-	if strings.TrimSpace(record.Name) == "" || strings.TrimSpace(record.Now) == "" || record.Start.IsZero() {
-		return LaneRecord{}, 0, errors.New("lane record requires name, now, and start")
-	}
-	if !laneRecordState(record.State) {
-		return LaneRecord{}, 0, fmt.Errorf("invalid lane record state %q", record.State)
-	}
-	if record.Ticket != nil && !validLaneRecordLink(*record.Ticket) {
-		return LaneRecord{}, 0, errors.New("invalid lane record ticket link")
-	}
-	for _, change := range record.History {
-		if change.At.IsZero() || !laneRecordState(change.State) {
-			return LaneRecord{}, 0, errors.New("invalid lane record history entry")
-		}
+	cleanLaneRecordFields(&record)
+	if err := checkLaneRecordFields(record); err != nil {
+		return LaneRecord{}, 0, err
 	}
 	valid := make([]LaneRecordAsk, 0, len(input.Asks))
 	invalid := 0
 	keys := make(map[string]struct{}, len(input.Asks))
 	for _, raw := range input.Asks {
-		var ask LaneRecordAsk
-		if err := json.Unmarshal(raw, &ask); err != nil {
-			invalid++
-			continue
-		}
-		for _, value := range []*string{&ask.Question, &ask.Topic, &ask.Reason, &ask.PickReason, &ask.NoPickReason, &ask.Detail, &ask.WaitsOnThis} {
-			*value = clean(*value)
-		}
-		for i := range ask.MustDecide {
-			ask.MustDecide[i] = clean(ask.MustDecide[i])
-		}
-		for i := range ask.Choices {
-			ask.Choices[i].Label = clean(ask.Choices[i].Label)
-			ask.Choices[i].Effect = clean(ask.Choices[i].Effect)
-		}
-		for _, links := range [][]LaneRecordLink{ask.Tickets, ask.PullRequests, ask.GrillPages} {
-			for i := range links {
-				links[i].ID = clean(links[i].ID)
-				links[i].Title = clean(links[i].Title)
-			}
-		}
-		if !validLaneRecordAsk(ask) {
+		ask, ok := decodeLaneRecordAsk(raw)
+		if !ok {
 			invalid++
 			continue
 		}
@@ -140,6 +102,60 @@ func ParseLaneRecord(data []byte) (LaneRecord, int, error) {
 	}
 	record.Asks = valid
 	return record, invalid, nil
+}
+
+func cleanLaneRecordFields(record *LaneRecord) {
+	record.Name, record.Now = clean(record.Name), clean(record.Now)
+	if record.Ticket != nil {
+		record.Ticket.ID = clean(record.Ticket.ID)
+		record.Ticket.Title = clean(record.Ticket.Title)
+	}
+	for i := range record.History {
+		record.History[i].Text = clean(record.History[i].Text)
+	}
+}
+
+func checkLaneRecordFields(record LaneRecord) error {
+	if strings.TrimSpace(record.Name) == "" || strings.TrimSpace(record.Now) == "" || record.Start.IsZero() {
+		return errors.New("lane record requires name, now, and start")
+	}
+	if !laneRecordState(record.State) {
+		return fmt.Errorf("invalid lane record state %q", record.State)
+	}
+	if record.Ticket != nil && !validLaneRecordLink(*record.Ticket) {
+		return errors.New("invalid lane record ticket link")
+	}
+	for _, change := range record.History {
+		if change.At.IsZero() || !laneRecordState(change.State) {
+			return errors.New("invalid lane record history entry")
+		}
+	}
+	return nil
+}
+
+// decodeLaneRecordAsk unmarshals, cleans, and validates one raw ask.
+func decodeLaneRecordAsk(raw json.RawMessage) (LaneRecordAsk, bool) {
+	var ask LaneRecordAsk
+	if err := json.Unmarshal(raw, &ask); err != nil {
+		return ask, false
+	}
+	for _, value := range []*string{&ask.Question, &ask.Topic, &ask.Reason, &ask.PickReason, &ask.NoPickReason, &ask.Detail, &ask.WaitsOnThis} {
+		*value = clean(*value)
+	}
+	for i := range ask.MustDecide {
+		ask.MustDecide[i] = clean(ask.MustDecide[i])
+	}
+	for i := range ask.Choices {
+		ask.Choices[i].Label = clean(ask.Choices[i].Label)
+		ask.Choices[i].Effect = clean(ask.Choices[i].Effect)
+	}
+	for _, links := range [][]LaneRecordLink{ask.Tickets, ask.PullRequests, ask.GrillPages} {
+		for i := range links {
+			links[i].ID = clean(links[i].ID)
+			links[i].Title = clean(links[i].Title)
+		}
+	}
+	return ask, validLaneRecordAsk(ask)
 }
 
 func laneRecordState(state string) bool {
@@ -164,28 +180,40 @@ func validLaneRecordAsk(a LaneRecordAsk) bool {
 	}
 	switch a.Form {
 	case "choice":
-		if strings.TrimSpace(a.Question) == "" || len(a.Choices) < 2 || len(a.Choices) > 4 || (a.Pick != nil && (*a.Pick < 0 || *a.Pick >= len(a.Choices) || strings.TrimSpace(a.PickReason) == "")) {
-			return false
-		}
-		for _, choice := range a.Choices {
-			if strings.TrimSpace(choice.Label) == "" || strings.TrimSpace(choice.Effect) == "" {
-				return false
-			}
-		}
-		return true
+		return validLaneRecordChoiceAsk(a)
 	case "discussion":
-		if strings.TrimSpace(a.Topic) == "" || len(a.MustDecide) == 0 {
-			return false
-		}
-		for _, decision := range a.MustDecide {
-			if strings.TrimSpace(decision) == "" {
-				return false
-			}
-		}
-		return true
+		return validLaneRecordDiscussionAsk(a)
 	default:
 		return false
 	}
+}
+
+func validLaneRecordChoiceAsk(a LaneRecordAsk) bool {
+	if strings.TrimSpace(a.Question) == "" || len(a.Choices) < 2 || len(a.Choices) > 4 || !validLaneRecordPick(a) {
+		return false
+	}
+	for _, choice := range a.Choices {
+		if strings.TrimSpace(choice.Label) == "" || strings.TrimSpace(choice.Effect) == "" {
+			return false
+		}
+	}
+	return true
+}
+
+func validLaneRecordPick(a LaneRecordAsk) bool {
+	return a.Pick == nil || (*a.Pick >= 0 && *a.Pick < len(a.Choices) && strings.TrimSpace(a.PickReason) != "")
+}
+
+func validLaneRecordDiscussionAsk(a LaneRecordAsk) bool {
+	if strings.TrimSpace(a.Topic) == "" || len(a.MustDecide) == 0 {
+		return false
+	}
+	for _, decision := range a.MustDecide {
+		if strings.TrimSpace(decision) == "" {
+			return false
+		}
+	}
+	return true
 }
 
 func validLaneRecordLink(link LaneRecordLink) bool {
