@@ -3,6 +3,8 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -82,6 +84,83 @@ func TestRegisteredHomeNamedLocalStaysAnswerable(t *testing.T) {
 	row, _ := stationLane(Lane{ID: "local/build", Home: "local", SecondMate: "local", OwnerDir: "/home", State: "needs-decision", Decisions: []Decision{{Key: "route", Verb: "needs-decision", At: now}}}, now)
 	if len(row.Asks) != 1 || !row.Asks[0].Answerable {
 		t.Fatalf("second mate aliased local lost answerability: %+v", row.Asks)
+	}
+}
+
+func TestStationFleetOrdersNeedsYouByOldestAskThenStates(t *testing.T) {
+	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	decided := func(id string, at time.Time) Lane {
+		return Lane{ID: id, OwnerDir: "/home", State: "needs-decision", UpdatedAt: now, Decisions: []Decision{{Key: id, Verb: "needs-decision", At: at}}}
+	}
+	lanes := []Lane{
+		{ID: "holding", State: "paused", UpdatedAt: now},
+		decided("needs-new", now.Add(-24*time.Hour)),
+		{ID: "working", State: "working", UpdatedAt: now.Add(-time.Hour)},
+		decided("undated", time.Time{}),
+		{ID: "done", State: "done", UpdatedAt: now},
+		decided("needs-old", now.Add(-72*time.Hour)),
+		{ID: "waiting", State: "waiting", UpdatedAt: now},
+		{ID: "quiet", State: "needs you", UpdatedAt: now, Record: &LaneRecord{}},
+	}
+	rows, _, _ := stationFleet(lanes, now)
+	got := make([]string, len(rows))
+	for i, row := range rows {
+		got[i] = row.ID
+	}
+	if len(got) != 8 || got[0] == got[1] || !(got[0] == "undated" || got[0] == "quiet") || !(got[1] == "undated" || got[1] == "quiet") {
+		t.Fatalf("unknown-age needs-you lanes must lead, got %v", got)
+	}
+	if want := []string{"needs-old", "needs-new", "waiting", "working", "done", "holding"}; !slices.Equal(got[2:], want) {
+		t.Fatalf("order after unknown-age lanes = %v, want %v", got[2:], want)
+	}
+}
+
+func collisionFixture(t *testing.T, dropInName string) (string, *Reader) {
+	t.Helper()
+	home := t.TempDir()
+	for _, dir := range []string{"state", "data", "mate/state", "mate/data"} {
+		if err := os.MkdirAll(filepath.Join(home, dir), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dropIn := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dropIn, "lanes"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		filepath.Join(home, "data", "secondmates.md"):           "- local - Local crew (home: mate)\n",
+		filepath.Join(home, "mate", "state", "build.status"):    "working [at=1768046400]: Building example",
+		filepath.Join(dropIn, "lanes", dropInName+".lane.json"): `{"name":"Drop-in lane","state":"working","now":"Synthetic","start":"2026-01-10T12:00:00Z"}`,
+	}
+	for path, content := range files {
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reader := NewReader()
+	reader.DropIn = dropIn
+	return home, reader
+}
+
+func TestCanonicalLaneIDCollisionFailsWholeFleet(t *testing.T) {
+	home, reader := collisionFixture(t, "build")
+	if _, err := reader.LoadFleet(home); err == nil || !strings.Contains(err.Error(), "local/build") {
+		t.Fatalf("colliding lane IDs loaded: err=%v", err)
+	}
+}
+
+func TestLocalAliasWithoutCollisionStillLoads(t *testing.T) {
+	home, reader := collisionFixture(t, "scratch")
+	lanes, err := reader.LoadFleet(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	homes := map[string]string{}
+	for _, lane := range lanes {
+		homes[lane.ID] = lane.Home
+	}
+	if homes["local/build"] != "local" || homes["local/scratch"] != "local" {
+		t.Fatalf("aliased and drop-in lanes not both loaded: %v", homes)
 	}
 }
 

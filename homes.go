@@ -95,7 +95,19 @@ func (r *Reader) LoadFleet(home string) ([]Lane, error) {
 	}
 	r.removeAccepted(out)
 	sort.SliceStable(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	for i := 1; i < len(out); i++ {
+		if out[i].ID == out[i-1].ID {
+			return nil, fmt.Errorf("lane %s is defined by both %s and %s", out[i].ID, laneSource(out[i-1]), laneSource(out[i]))
+		}
+	}
 	return out, nil
+}
+
+func laneSource(l Lane) string {
+	if l.OwnerDir == "" {
+		return "drop-in file " + strings.TrimPrefix(l.ID, "local/") + ".lane.json"
+	}
+	return "home " + l.Home
 }
 
 func (r *Reader) isAccepted(owner, lane, key string, asked time.Time) bool {
