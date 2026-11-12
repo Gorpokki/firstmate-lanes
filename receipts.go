@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -15,11 +16,11 @@ func readReceipts(path string) (map[string]time.Time, error) {
 		return map[string]time.Time{}, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("answer receipts %s: %w", filepath.Base(path), err)
 	}
 	var receipts map[string]time.Time
 	if err = json.Unmarshal(data, &receipts); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("answer receipts %s: %w", filepath.Base(path), err)
 	}
 	if receipts == nil {
 		receipts = map[string]time.Time{}

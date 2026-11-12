@@ -103,8 +103,8 @@ func TestViewFillsTerminal(t *testing.T) {
 // Empty fleet remains navigable in the Lane station.
 func TestSelectionOnEmptyList(t *testing.T) {
 	m, _ := model{w: 120, h: 34, view: 3}.key("j")
-	if m.sel != 0 {
-		t.Fatalf("selection = %d, want 0", m.sel)
+	if m.selIndex() != 0 {
+		t.Fatalf("selection = %d, want 0", m.selIndex())
 	}
 	if got := m.View(); !strings.Contains(got, "NO LANE SELECTED") {
 		t.Fatalf("empty lane station: %s", got)

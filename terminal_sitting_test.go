@@ -184,3 +184,24 @@ func TestTerminalLongAskCanBeReadBeforeAnswering(t *testing.T) {
 		t.Fatal("reading detail answered or sent the ask")
 	}
 }
+
+func TestFleetSelectionOpensTheLaneHighlighted(t *testing.T) {
+	m := model{view: 2, w: 120, h: 34, fleet: Fleet{Stations: []StationLane{
+		{ID: "alpha", Name: "Alpha", State: "needs you"},
+		{ID: "bravo", Name: "Bravo", State: "working"},
+		{ID: "charlie", Name: "Charlie", State: "working"},
+	}}}
+	m, _ = m.key("3")
+	m, _ = m.key("down")
+	if l, _ := m.selectedLane(); l.ID != "charlie" {
+		t.Fatalf("filtered Fleet highlighted %s, want charlie", l.ID)
+	}
+	m, _ = m.key("enter")
+	if l, _ := m.selectedLane(); l.ID != "charlie" {
+		t.Fatalf("Lane opened %s, want the lane highlighted in Fleet", l.ID)
+	}
+	m, _ = m.key("l")
+	if l, _ := m.selectedLane(); l.ID != "charlie" {
+		t.Fatalf("List selected %s, want charlie", l.ID)
+	}
+}

@@ -35,7 +35,8 @@ type model struct {
 	home          string
 	fleet         Fleet
 	err           error
-	view, sel     int
+	view          int
+	selID         string
 	w, h          int
 	every         time.Duration
 	tick          int
@@ -107,7 +108,7 @@ func (m model) key(k string) (model, bool) {
 			} else {
 				m.fleetFilter = state
 			}
-			m.sel = 0
+			m.setSel(0)
 		} else if m.view == 0 {
 			m.sitting.key(&m, k, m.askLanes())
 		}
@@ -122,13 +123,13 @@ func (m model) key(k string) (model, bool) {
 		if m.view == 0 {
 			m.sitting.key(&m, k, m.askLanes())
 		} else {
-			m.sel = max(0, m.sel-1)
+			m.setSel(m.selIndex() - 1)
 		}
 	case "down", "j":
 		if m.view == 0 {
 			m.sitting.key(&m, k, m.askLanes())
 		} else {
-			m.sel = min(max(0, len(m.listLanes())-1), m.sel+1)
+			m.setSel(m.selIndex() + 1)
 		}
 	default:
 		if m.view == 0 {
@@ -138,14 +139,20 @@ func (m model) key(k string) (model, bool) {
 	m.clampSelection()
 	return m, false
 }
-func (m *model) clampSelection() {
-	if m.sel < 0 {
-		m.sel = 0
+func (m *model) clampSelection() { m.setSel(m.selIndex()) }
+func (m model) selIndex() int {
+	for i, l := range m.listLanes() {
+		if l.ID == m.selID {
+			return i
+		}
 	}
-	if n := len(m.listLanes()); n == 0 {
-		m.sel = 0
-	} else if m.sel >= n {
-		m.sel = n - 1
+	return 0
+}
+func (m *model) setSel(i int) {
+	lanes := m.listLanes()
+	m.selID = ""
+	if len(lanes) > 0 {
+		m.selID = lanes[min(max(0, i), len(lanes)-1)].ID
 	}
 }
 func (m model) lanes() []StationLane { return m.fleet.Stations }
@@ -167,7 +174,7 @@ func (m model) selectedLane() (StationLane, bool) {
 	if len(lanes) == 0 {
 		return StationLane{}, false
 	}
-	return lanes[min(m.sel, len(lanes)-1)], true
+	return lanes[m.selIndex()], true
 }
 func (m *model) toggleSelected() {
 	l, ok := m.selectedLane()
@@ -214,7 +221,7 @@ func (m *model) cycleMate() {
 	for i, mate := range mates {
 		if mate == m.mateFilter {
 			m.mateFilter = mates[(i+1)%len(mates)]
-			m.sel = 0
+			m.setSel(0)
 			return
 		}
 	}
@@ -312,6 +319,7 @@ func (m model) listView(w, h int) []string {
 	rows := []string{dim.Render(fmt.Sprintf("%d lanes · %d selected · %d quick · %d read · mate %s", len(lanes), len(m.selected), askCount(lanes, "quick"), askCount(lanes, "read"), mate)), ""}
 	state := ""
 	focusRow := 0
+	sel := m.selIndex()
 	for i, l := range lanes {
 		if l.State != state {
 			state = l.State
@@ -321,7 +329,7 @@ func (m model) listView(w, h int) []string {
 		if m.selected[l.ID] {
 			check = "✓"
 		}
-		if i == m.sel {
+		if i == sel {
 			cursor = "›"
 			focusRow = len(rows)
 		}
@@ -339,21 +347,22 @@ func (m model) listView(w, h int) []string {
 func (m model) fleetView(w, h int) []string {
 	lanes := m.listLanes()
 	selected, _ := m.selectedLane()
+	sel := m.selIndex()
 	rows := []string{dim.Render("1 needs you · 2 waiting · 3 working · 4 holding · 5 done"), dim.Render("s heat / shipyard · ↑↓ select · filter " + m.fleetFilter + " · " + selected.Name), ""}
 	if m.fleetShipyard {
 		cellWidth := min(32, max(24, w/2))
 		cols := max(1, w/cellWidth)
 		cellHeight := max(5, min(10, h-4))
 		start := 0
-		if m.sel >= cols {
-			start = (m.sel / cols) * cols
+		if sel >= cols {
+			start = (sel / cols) * cols
 		}
 		for first := start; first < len(lanes) && len(rows) < h-1; first += cols {
 			cells := []string{}
 			for i := first; i < min(first+cols, len(lanes)); i++ {
 				lane := lanes[i]
 				title := lane.Name
-				if i == m.sel {
+				if i == sel {
 					title = "› " + title
 				}
 				body := shipLines(lane, m.tick, cellWidth-4, cellHeight-3)
@@ -366,15 +375,15 @@ func (m model) fleetView(w, h int) []string {
 		cellWidth := max(20, min(28, w))
 		cols := max(1, w/cellWidth)
 		start := 0
-		if m.sel >= cols*max(1, (h-5)/2) {
-			start = (m.sel / cols) * cols
+		if sel >= cols*max(1, (h-5)/2) {
+			start = (sel / cols) * cols
 		}
 		for first := start; first < len(lanes); first += cols {
 			names, states := []string{}, []string{}
 			for i := first; i < min(first+cols, len(lanes)); i++ {
 				lane := lanes[i]
 				mark := " "
-				if i == m.sel {
+				if i == sel {
 					mark = "›"
 				}
 				if lane.State == "working" && m.tick%2 == 0 {
