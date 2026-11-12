@@ -9,6 +9,16 @@ import subprocess
 import tempfile
 import sys
 
+SCANNER_PATH = "scripts/leak-check.py"
+SAFE_FIXTURE = 'for safe_text in ("https://github.com/users/synthetic/projects/1", "https://github.com/home/synthetic", "time.Local"):'
+
+
+def scanned_text(name, text):
+    if name == SCANNER_PATH:
+        return text.replace(SAFE_FIXTURE, "")
+    return text
+
+
 def scan_tree(tree, denylist, seen):
     entries = subprocess.run(
         ["git", "ls-tree", "-rz", "--full-tree", tree],
@@ -28,7 +38,7 @@ def scan_tree(tree, denylist, seen):
             data = subprocess.run(
                 ["git", "cat-file", "blob", oid], check=True, capture_output=True
             ).stdout.decode(errors="replace")
-            failed |= report(data, denylist)
+            failed |= report(scanned_text(name, data), denylist)
     return failed
 
 
@@ -39,7 +49,7 @@ def scan_worktree(denylist):
         path = Path(name)
         failed |= report(name, denylist)
         if path.is_file():
-            failed |= report(path.read_text(errors="replace"), denylist)
+            failed |= report(scanned_text(name, path.read_text(errors="replace")), denylist)
     return failed
 
 
@@ -234,6 +244,25 @@ def self_test():
             commit()
             result = run()
             assert result.returncode == 0 and not result.stdout and not result.stderr
+        fixture_denylist = "https://github.com/users/synthetic/projects/1"
+        Path(directory, "scripts").mkdir()
+        for content, name, expected in (
+            (SAFE_FIXTURE, "scripts/leak-check.py", 0),
+            (SAFE_FIXTURE + "\n" + fixture_denylist, "scripts/leak-check.py", 1),
+            (SAFE_FIXTURE.replace("for safe_text", "for safe_texts"), "scripts/leak-check.py", 1),
+            (SAFE_FIXTURE, "notes.txt", 1),
+        ):
+            Path(directory, name).write_text(content)
+            commit()
+            result = run(denylist=fixture_denylist)
+            assert result.returncode == expected
+            assert fixture_denylist not in result.stdout + result.stderr
+            if expected:
+                assert "leak detected (content redacted)" in result.stderr
+            else:
+                assert not result.stdout and not result.stderr
+            Path(directory, name).unlink()
+            commit()
         sample.write_text("safe synthetic content")
         commit()
         result = run(event={"pull_request": {"title": "$(touch executed.marker)", "body": "safe"}})
