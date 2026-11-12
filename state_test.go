@@ -158,7 +158,7 @@ func TestNarrowLanesEnterOpensLog(t *testing.T) {
 func TestServeHostGuard(t *testing.T) {
 	ok := hostGuard(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }), []string{"fleet.example"})
 	for host, want := range map[string]int{
-		"127.0.0.1:7777": 200, "localhost:7777": 200, "[::1]:7777": 200, "192.168.1.20:7777": 200,
+		"127.0.0.1:7777": 200, "localhost:7777": 200, "[::1]:7777": 200, "203.0.113.20:7777": 200,
 		"fleet.example:7777": 200, "evil.example:7777": 403, "127.0.0.1.evil.example:7777": 403, "": 403,
 	} {
 		req := httptest.NewRequest(http.MethodGet, "/fleet.json", nil)
