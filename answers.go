@@ -144,7 +144,7 @@ func (s *AnswerService) Send(ctx context.Context, confirmed bool, answers []Sitt
 		for _, i := range indices {
 			input.WriteString(payloads[i])
 		}
-		callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		cmd := exec.CommandContext(callCtx, command, "answers", "--source", "fm-lanes")
 		cmd.Stdin = strings.NewReader(input.String())
 		env := []string{}

@@ -205,7 +205,7 @@ func ReadBacklog(path string) map[string]entry {
 			section = strings.TrimSpace(line[3:])
 		}
 		m := backlogRe.FindStringSubmatch(line)
-		if m == nil {
+		if m == nil || !slugRe.MatchString(m[1]) {
 			continue
 		}
 		e := entry{Section: section, Title: m[2]}
@@ -232,7 +232,7 @@ func ReadSecondmates(path string) map[string]entry {
 	out := map[string]entry{}
 	for _, line := range lines(path) {
 		m := mateRe.FindStringSubmatch(line)
-		if m == nil {
+		if m == nil || !slugRe.MatchString(m[1]) {
 			continue
 		}
 		e := entry{Kind: "secondmate", Title: m[2]}
