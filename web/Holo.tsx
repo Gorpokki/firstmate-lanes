@@ -4,9 +4,10 @@ import {usePageHidden} from './page-visibility';
 import {fractureDuration} from './simulation-model';
 import {renderHolo,type RenderOptions,type TriangleMesh} from './holo-renderer';
 
-type HoloProps={mesh?:TriangleMesh;state:string;sourceState?:string;progress?:number;name:string;options?:(Pick<RenderOptions,'blocks'|'fragments'|'mode'|'fractureElapsed'>&{failed?:boolean})};
-export function Holo({mesh,state,sourceState,progress,name,options}:HoloProps){
- const [angle,setAngle]=useState({yaw:0,pitch:.16}),[spinning,setSpinning]=useState(true),[zoom,setZoom]=useState(1),[size,setSize]=useState({width:72,height:27}),[autoFractureElapsed,setAutoFractureElapsed]=useState<number|null>(null),host=useRef<HTMLDivElement>(null),drag=useRef<{x:number;y:number}|null>(null);
+type HoloProps={mesh?:TriangleMesh;state:string;sourceState?:string;progress?:number;name:string;idle?:boolean;options?:(Pick<RenderOptions,'blocks'|'fragments'|'mode'|'fractureElapsed'>&{failed?:boolean})};
+const reducedMotion=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
+export function Holo({mesh,state,sourceState,progress,name,idle,options}:HoloProps){
+ const [angle,setAngle]=useState({yaw:0,pitch:.16}),[spinning,setSpinning]=useState(()=>!reducedMotion()),[zoom,setZoom]=useState(1),[size,setSize]=useState({width:72,height:27}),[autoFractureElapsed,setAutoFractureElapsed]=useState<number|null>(null),host=useRef<HTMLDivElement>(null),drag=useRef<{x:number;y:number}|null>(null);
  const failed=options?.failed??(/failed|failure|error/i.test(state)||/failed|failure|error/i.test(sourceState??'')||(options?.fragments??0)>0);
  useEffect(()=>{
   const element=host.current;if(!element)return;
@@ -16,6 +17,7 @@ export function Holo({mesh,state,sourceState,progress,name,options}:HoloProps){
   return()=>{observer.disconnect();element.removeEventListener('wheel',wheel);};
  },[]);
  const hidden=usePageHidden();
+ useEffect(()=>{setSpinning(!idle&&!reducedMotion());},[idle]);
  useEffect(()=>{if(!spinTicks({hidden,spinning}))return;let frame=0,last=0;const tick=(time:number)=>{if(spinFrameDue(time,last)){setAngle(current=>({...current,yaw:current.yaw+.025}));last=time;}frame=requestAnimationFrame(tick);};frame=requestAnimationFrame(tick);return()=>cancelAnimationFrame(frame);},[hidden,spinning]);
  useEffect(()=>{const key=(event:KeyboardEvent)=>{const target=event.target;if(event.code==='Space'&&!event.repeat&&!event.metaKey&&!event.ctrlKey&&!event.altKey&&!(target instanceof HTMLElement&&target.closest('input,textarea,select,button'))){event.preventDefault();setSpinning(value=>!value);}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
  useEffect(()=>{
@@ -33,9 +35,9 @@ export function Holo({mesh,state,sourceState,progress,name,options}:HoloProps){
  const move=(event:React.PointerEvent)=>{if(!drag.current)return;const dx=event.clientX-drag.current.x,dy=event.clientY-drag.current.y;drag.current={x:event.clientX,y:event.clientY};setAngle(a=>({yaw:a.yaw+dx*.012,pitch:Math.max(-1.35,Math.min(1.35,a.pitch+dy*.012))}));};
  return <section aria-label="Holo view" style={{display:'flex',flexDirection:'column',width:'100%',alignItems:'center',justifyContent:'center',gap:12,minHeight:340,overflow:'hidden'}}>
   <div ref={host} onPointerDown={start} onPointerMove={move} onPointerUp={()=>{drag.current=null;}} onPointerCancel={()=>{drag.current=null;}} onDoubleClick={()=>{setZoom(1);setAngle({yaw:0,pitch:.16});}} style={{width:'min(100%,760px)',touchAction:'none',cursor:'grab',overflow:'hidden'}}>
-   <pre aria-label="Rendered ship" style={{margin:0,color:options?.blocks?'#ff6464':state==='holding'?'#b6a4c7':'#8fe6ff',fontSize:`${12*zoom}px`,lineHeight:1,whiteSpace:'pre',textShadow:'0 0 8px currentColor',animation:options?.blocks?'holo-flicker .3s steps(2,end) infinite':undefined}}>{frame}</pre>
+   <pre aria-label="Rendered ship" className={options?.blocks?'holo-blocked':undefined} style={{margin:0,color:options?.blocks?'#ff6464':state==='holding'?'#b6a4c7':'#8fe6ff',fontSize:`${12*zoom}px`,lineHeight:1,whiteSpace:'pre',textShadow:'0 0 8px currentColor'}}>{frame}</pre>
   </div><strong>{name}</strong>
   <div><button type="button" aria-label={spinning?'Stop ship spin':'Start ship spin'} onClick={()=>setSpinning(value=>!value)}>{spinning?'Pause spin':'Spin'}</button><button type="button" aria-label="Zoom out" onClick={()=>setZoom(value=>Math.max(.55,value-.15))}>−</button><button type="button" aria-label="Zoom in" onClick={()=>setZoom(value=>Math.min(2.5,value+.15))}>+</button></div>
-  {options?.blocks&&<style>{'@keyframes holo-flicker{50%{opacity:.35}}'}</style>}
+  {options?.blocks&&<style>{'@keyframes holo-flicker{50%{opacity:.35}}@media(prefers-reduced-motion:no-preference){.holo-blocked{animation:holo-flicker .3s steps(2,end) infinite}}'}</style>}
  </section>;
 }

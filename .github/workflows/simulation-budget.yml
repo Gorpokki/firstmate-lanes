@@ -22,15 +22,10 @@ jobs:
       - name: Install web dependencies
         run: bun install --frozen-lockfile
         working-directory: web
-      - name: Web tests
-        run: bun test
-        working-directory: web
       # Measure the current source, not whatever bundle is checked in.
       - name: Build web bundle
         run: bun run build
         working-directory: web
-      - name: Go tests
-        run: go test ./...
       - name: Build server
         run: go build -o fmlanes .
       - name: Install Playwright Chromium

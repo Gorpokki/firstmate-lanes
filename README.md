@@ -40,7 +40,7 @@ It uses synthetic lane data and never answers a real ask.
 The simulation keeps idle and hidden performance budgets, recorded in `web/perf/budget.json`:
 
 - **Hidden:** while the page is hidden, it draws no ship frames, steps no states and makes no requests. Spin and steps resume where they stopped once the page is visible again.
-- **Idle:** with the simulation paused or its breakup settled and the spin stopped, it draws no frames and makes no requests.
+- **Idle:** when the breakup settles, the ship stops spinning by itself. With the simulation paused and the spin stopped, the page draws no frames and makes no requests. Restart or Spin starts the ship again.
 - **Active:** spin redraws stay at 24 frames a second or fewer, within a main-thread script budget.
 - **Fleet:** the simulation never reads `/fleet.json`.
 
