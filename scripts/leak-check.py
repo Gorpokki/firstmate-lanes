@@ -45,8 +45,12 @@ def scan_worktree(denylist):
 
 HOME_MARKERS = ("/" + "Us" + "ers/", "/" + "ho" + "me/")
 PRIVATE_SUFFIXES = ("internal", "local", "lan", "corp", "private", "localhost", "intranet", "home.arpa")
-PATTERNS = tuple(re.compile(r"(?<![\w.-])" + re.escape(root) + r"[^/\s]+(?:/|\b)") for root in HOME_MARKERS) + (
-    re.compile(r"\b(?:[a-z0-9-]+\.)+(?:" + "|".join(map(re.escape, PRIVATE_SUFFIXES)) + r")\b"),
+PRIVATE_SUFFIX_FORMS = "|".join(re.escape(form) for suffix in PRIVATE_SUFFIXES for form in (suffix, suffix.upper()))
+PATTERNS = (
+    re.compile(re.escape(HOME_MARKERS[0]) + r"[^/\s]+(?:/|\b)"),
+    re.compile(re.escape("/var" + HOME_MARKERS[1]) + r"[^/\s]+(?:/|\b)"),
+    re.compile(r"(?<![\w.-])" + re.escape(HOME_MARKERS[1]) + r"[^/\s]+(?:/|\b)"),
+    re.compile(r"\b(?:[A-Za-z0-9-]+\.)+(?:" + PRIVATE_SUFFIX_FORMS + r")\b"),
     re.compile(r"\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b"),
     re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I),
 )
@@ -90,7 +94,7 @@ def self_test():
         sample = Path(directory) / "sample.txt"
         scanner = str(Path(__file__).resolve())
         cluster_host = ".".join(("service", "cluster", "internal"))
-        host_forms = tuple(".".join(parts) for parts in (("printer", "local"), ("nas", "home", "arpa"), ("app", "localhost")))
+        host_forms = tuple(".".join(parts) for parts in (("printer", "local"), ("nas", "home", "arpa"), ("app", "localhost"), ("Johns-MacBook-Pro", "local"), ("NAS", "LOCAL")))
         noreply = "1+synthetic@" + "users.noreply.github.com"
 
         def commit(message="Synthetic commit", identity=("Synthetic", noreply), committer=None):
@@ -196,6 +200,9 @@ def self_test():
         for content in (
             "path " + HOME_MARKERS[0] + "sample/file",
             "path " + HOME_MARKERS[1] + "sample/file",
+            "path /mnt/c" + HOME_MARKERS[0] + "sample/file",
+            "path /System/Volumes/Data" + HOME_MARKERS[0] + "sample/file",
+            "path /var" + HOME_MARKERS[1] + "sample/file",
             cluster_host,
             "192" + ".168.4.5",
             "person@" + "example.invalid",
