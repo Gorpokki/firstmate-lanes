@@ -156,10 +156,13 @@ func (m *model) setSel(i int) {
 	}
 }
 func (m model) lanes() []StationLane { return m.fleet.Stations }
+func (m model) mateHidden(l StationLane) bool {
+	return m.mateFilter != "" && l.SecondMate != m.mateFilter
+}
 func (m model) listLanes() []StationLane {
 	var out []StationLane
 	for _, l := range m.lanes() {
-		if m.mateFilter != "" && l.SecondMate != m.mateFilter {
+		if m.mateHidden(l) {
 			continue
 		}
 		if m.view == 2 && m.fleetFilter != "" && l.State != m.fleetFilter {
@@ -200,14 +203,20 @@ func (m *model) enterView(v int) {
 func (m model) askLanes() []StationLane {
 	var out []StationLane
 	for _, l := range m.lanes() {
-		if m.mateFilter != "" && l.SecondMate != m.mateFilter {
-			continue
-		}
 		if len(m.selected) == 0 || m.selected[l.ID] {
 			out = append(out, l)
 		}
 	}
 	return out
+}
+func (m model) hiddenSelected() int {
+	n := 0
+	for _, l := range m.lanes() {
+		if m.selected[l.ID] && m.mateHidden(l) {
+			n++
+		}
+	}
+	return n
 }
 func (m *model) cycleMate() {
 	mates := []string{""}
@@ -427,13 +436,13 @@ func (m model) laneView(w, h int) []string {
 }
 func (m model) askView(w, h int) []string {
 	if w < 90 {
-		return m.sitting.view(w, h, m.askLanes())
+		return m.sitting.view(w, h, m.hiddenSelected())
 	}
 	it, ok := m.sitting.current()
 	if !ok {
-		return m.sitting.view(w, h, m.askLanes())
+		return m.sitting.view(w, h, m.hiddenSelected())
 	}
-	left := strings.Join(m.sitting.view(w*2/3, h, m.askLanes()), "\n")
+	left := strings.Join(m.sitting.view(w*2/3, h, m.hiddenSelected()), "\n")
 	ship := frame(shipFor(it.lane.ID), stateColor(it.lane.State), "space spins / pauses", shipLines(it.lane, m.tick, w-w*2/3-4, max(1, h-3)), w-w*2/3, h)
 	return strings.Split(lipgloss.JoinHorizontal(lipgloss.Top, left, strings.Join(ship, "\n")), "\n")
 }

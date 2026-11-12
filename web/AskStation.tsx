@@ -5,11 +5,11 @@ import {Holo} from './Holo';
 import {answerFor,buildSitting,deferForLater,reviewAnswers,undoAnswer,type DeliveryResult,type SittingAnswer,type SittingItem} from './sitting';
 
 export type {DeliveryResult,SittingAnswer} from './sitting';
-type AskStationProps={fleet:Fleet;active:boolean;selectedLaneIds?:string[];meshes?:ShipMesh[];onBack:()=>void;onConfirm?:(answers:SittingAnswer[])=>Promise<DeliveryResult[]>};
+type AskStationProps={fleet:Fleet;active:boolean;selectedLaneIds?:string[];hiddenSelected:number;meshes?:ShipMesh[];onBack:()=>void;onConfirm?:(answers:SittingAnswer[])=>Promise<DeliveryResult[]>};
 const askQuestion=(item:SittingItem)=>item.ask.question||item.ask.topic||item.ask.key;
 const isEditing=(target:EventTarget|null)=>target instanceof HTMLElement&&!!target.closest('input,textarea,select,[contenteditable=true]');
 
-export function AskStation({fleet,active,selectedLaneIds,meshes,onBack,onConfirm}:AskStationProps){
+export function AskStation({fleet,active,selectedLaneIds,hiddenSelected,meshes,onBack,onConfirm}:AskStationProps){
  const [items,setItems]=useState<SittingItem[]>([]),[index,setIndex]=useState(0),[answers,setAnswers]=useState<Record<string,SittingAnswer>>({}),[ownText,setOwnText]=useState<Record<string,string>>({}),[later,setLater]=useState<SittingItem[]>([]),[delivery,setDelivery]=useState<DeliveryResult[]|null>(null),[sending,setSending]=useState(false),[error,setError]=useState(''),ownRef=useRef<HTMLTextAreaElement>(null);
  const item=items[index],answerList=Object.values(answers),reviews=reviewAnswers(fleet,answerList),linkGroups:[string,Link[]][]=item?[['Tickets',item.ask.tickets||[]],['Pull requests',item.ask.pull_requests||[]],['Grill pages',item.ask.grill_pages||[]]]:[];
  const ship=item?assignedShip(item.lane.id,meshes):undefined;
@@ -23,6 +23,7 @@ export function AskStation({fleet,active,selectedLaneIds,meshes,onBack,onConfirm
  const startTime=Date.parse(item?.ask.asked||''),known=Number.isFinite(startTime)&&startTime>0,waited=known?Math.max(0,Date.now()-startTime):0,readOnlyCount=fleet.stationLanes.filter(lane=>!selectedLaneIds||selectedLaneIds.includes(lane.id)).reduce((n,lane)=>n+lane.asks.filter(ask=>!ask.answerable).length,0),waitText=waited<3600000?`${Math.floor(waited/60000)} minutes`:waited<86400000?`${Math.floor(waited/3600000)} hours`:`${Math.floor(waited/86400000)} days`;
  return <section aria-label="Ask sitting" hidden={!active} style={{maxWidth:900,margin:'auto'}}>
   <header style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h1>Ask</h1><button onClick={onBack}>Back</button></header>
+  {hiddenSelected>0&&<p>{hiddenSelected} ticked lane(s) hidden by the mate filter are included.</p>}
   {item?<>
    <p>Ask {index+1} of {items.length} · {item.lane.secondMate}</p>
    <style>{'.ask-layout{display:grid;gap:20px}@media(min-width:800px){.ask-layout{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);align-items:start}}'}</style>

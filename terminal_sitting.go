@@ -318,7 +318,7 @@ func askQuestion(ask StationAsk) string {
 	}
 	return ask.Topic
 }
-func (s sitting) view(w, h int, lanes []StationLane) []string {
+func (s sitting) view(w, h, hidden int) []string {
 	rows := []string{}
 	render := func(tag string) []string {
 		var wrapped []string
@@ -330,6 +330,9 @@ func (s sitting) view(w, h int, lanes []StationLane) []string {
 	}
 	if s.message != "" {
 		rows = append(rows, dim.Render(clean(s.message)), "")
+	}
+	if hidden > 0 {
+		rows = append(rows, dim.Render(fmt.Sprintf("%d ticked lane(s) hidden by the mate filter are included", hidden)), "")
 	}
 	if s.finished {
 		rows = append(rows, text.Render("n NEXT SITTING · l List · f Fleet · enter Lane"))
