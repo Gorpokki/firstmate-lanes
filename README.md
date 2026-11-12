@@ -64,10 +64,10 @@ test -z "$(gofmt -l .)"
 go vet ./...
 go build .
 go test ./...
-cd web && bun install --frozen-lockfile
+python3 scripts/leak-check.py --self-test
 python3 scripts/slop-check.py
 python3 scripts/doc-slop-check.py
-cd web && bun run format:check && bun run lint && bun run typecheck && bun test && bun run build
+(cd web && bun install --frozen-lockfile && bun run format:check && bun run lint && bun run typecheck && bun test && bun run build)
 ```
 
 The Actions workflow runs these checks on pull requests and pushes to `main`.
