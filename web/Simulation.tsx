@@ -1,5 +1,7 @@
 import React,{useEffect,useState} from 'react';
 import {Holo} from './Holo';
+import {budget,simulationTicks} from './animation-budget';
+import {usePageHidden} from './page-visibility';
 import type {TriangleMesh} from './holo-renderer';
 import {createSimulation,fractureAt,fractureDuration,simulationStates,stepSimulation,type SimulationState} from './simulation-model';
 
@@ -10,7 +12,8 @@ export function Simulation({meshes}:SimulationProps){
  const [simulation,setSimulation]=useState(createSimulation),[running,setRunning]=useState(true),[meshId,setMeshId]=useState(meshes[0]?.id??''),[mode,setMode]=useState<'ascii'|'quadrant'>('ascii');
  const selected=meshes.find(mesh=>mesh.id===meshId)??meshes[0];
  useEffect(()=>{if(!meshes.some(mesh=>mesh.id===meshId))setMeshId(meshes[0]?.id??'');},[meshes,meshId]);
- useEffect(()=>{if(!running||simulation.failed&&simulation.fractureElapsed>=fractureDuration)return;const timer=window.setInterval(()=>setSimulation(current=>stepSimulation(current)),900);return()=>window.clearInterval(timer);},[running,simulation.failed,simulation.fractureElapsed]);
+ const hidden=usePageHidden(),settled=simulation.failed&&simulation.fractureElapsed>=fractureDuration;
+ useEffect(()=>{if(!simulationTicks({hidden,running,settled}))return;const timer=window.setInterval(()=>setSimulation(current=>stepSimulation(current)),budget.simulationStepMs);return()=>window.clearInterval(timer);},[hidden,running,settled]);
  const fracture=simulation.failed?fractureAt(simulation.fractureElapsed):null;
  const selectState=(state:SimulationState|'blocked'|'failed')=>{setSimulation(state==='failed'?{state:'done',failed:true,fractureElapsed:0}:state==='blocked'?{state:'needs you',sourceState:'blocked',failed:false,fractureElapsed:0}:{state,failed:false,fractureElapsed:0});};
  return <section aria-label="Lane simulation" style={{color:'#e8edf5',maxWidth:900,margin:'0 auto',padding:20}}>

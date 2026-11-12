@@ -1,4 +1,6 @@
-import React,{useEffect,useRef,useState} from 'react';
+import React,{useEffect,useMemo,useRef,useState} from 'react';
+import {spinFrameDue,spinTicks} from './animation-budget';
+import {usePageHidden} from './page-visibility';
 import {fractureDuration} from './simulation-model';
 import {renderHolo,type RenderOptions,type TriangleMesh} from './holo-renderer';
 
@@ -13,7 +15,8 @@ export function Holo({mesh,state,sourceState,progress,name,options}:HoloProps){
   observer.observe(element);element.addEventListener('wheel',wheel,{passive:false});
   return()=>{observer.disconnect();element.removeEventListener('wheel',wheel);};
  },[]);
- useEffect(()=>{if(!spinning)return;let frame=0,last=0;const tick=(time:number)=>{if(time-last>45){setAngle(current=>({...current,yaw:current.yaw+.025}));last=time;}frame=requestAnimationFrame(tick);};frame=requestAnimationFrame(tick);return()=>cancelAnimationFrame(frame);},[spinning]);
+ const hidden=usePageHidden();
+ useEffect(()=>{if(!spinTicks({hidden,spinning}))return;let frame=0,last=0;const tick=(time:number)=>{if(spinFrameDue(time,last)){setAngle(current=>({...current,yaw:current.yaw+.025}));last=time;}frame=requestAnimationFrame(tick);};frame=requestAnimationFrame(tick);return()=>cancelAnimationFrame(frame);},[hidden,spinning]);
  useEffect(()=>{const key=(event:KeyboardEvent)=>{const target=event.target;if(event.code==='Space'&&!event.repeat&&!event.metaKey&&!event.ctrlKey&&!event.altKey&&!(target instanceof HTMLElement&&target.closest('input,textarea,select,button'))){event.preventDefault();setSpinning(value=>!value);}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
  useEffect(()=>{
   if(!failed){setAutoFractureElapsed(null);return;}
@@ -24,7 +27,8 @@ export function Holo({mesh,state,sourceState,progress,name,options}:HoloProps){
  },[failed,options?.fractureElapsed]);
  const renderProgress=progress??(state==='done'?1:state==='needs you'||state==='working'?.72:state==='waiting'?.48:state==='holding'?.35:.55);
  const fractureElapsed=options?.fractureElapsed??(failed?autoFractureElapsed??0:undefined);
- const frame=mesh?renderHolo(mesh,{...size,yaw:angle.yaw,pitch:angle.pitch,progress:renderProgress,...options,fractureElapsed}):'No admitted ship';
+ const {blocks,fragments,mode}=options??{};
+ const frame=useMemo(()=>mesh?renderHolo(mesh,{...size,yaw:angle.yaw,pitch:angle.pitch,progress:renderProgress,blocks,fragments,mode,fractureElapsed}):'No admitted ship',[mesh,size,angle,renderProgress,blocks,fragments,mode,fractureElapsed]);
  const start=(event:React.PointerEvent)=>{drag.current={x:event.clientX,y:event.clientY};event.currentTarget.setPointerCapture(event.pointerId);};
  const move=(event:React.PointerEvent)=>{if(!drag.current)return;const dx=event.clientX-drag.current.x,dy=event.clientY-drag.current.y;drag.current={x:event.clientX,y:event.clientY};setAngle(a=>({yaw:a.yaw+dx*.012,pitch:Math.max(-1.35,Math.min(1.35,a.pitch+dy*.012))}));};
  return <section aria-label="Holo view" style={{display:'flex',flexDirection:'column',width:'100%',alignItems:'center',justifyContent:'center',gap:12,minHeight:340,overflow:'hidden'}}>
