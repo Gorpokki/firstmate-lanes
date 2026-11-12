@@ -23,7 +23,7 @@ function App(){
   const controller=new AbortController();
   const load=async()=>{try{
    const response=await fetch('/fleet.json',{cache:'no-store',signal:controller.signal});
-   if(!response.ok)throw Error('Fleet unavailable');
+   if(!response.ok)throw Error(await response.text());
    const data=await response.json();setFleet(data);setError('');
   }catch(e){if(!controller.signal.aborted)setError(String(e));}};
   load();const timer=setInterval(load,3000);
@@ -52,7 +52,7 @@ function App(){
    <p className="muted">{freshness(fleet.updatedAt)} · {fleet.hiddenAsks} old asks hidden</p>
    <nav aria-label="Stations">{(['ask','list','fleet','lane'] as Station[]).map(s=><button key={s} aria-current={station===s} onClick={()=>setStation(s)}>{s[0].toUpperCase()+s.slice(1)}</button>)}</nav>
    <div className="strip">{states.map(state=><span key={state} style={{borderColor:colors[state]}}>{state}: {fleet.stationLanes.filter(l=>l.state===state).length}</span>)}</div>
-   <button onClick={async()=>{try{const response=await fetch('/last-look',{method:'POST',headers:{'X-Fleet-Action':'save'}});if(!response.ok)throw Error('Could not save last look');}catch(e){setError(String(e));}}}>Save last look</button>
+   <button onClick={async()=>{try{const response=await fetch('/last-look',{method:'POST',headers:{'X-Fleet-Action':'save'}});if(!response.ok)throw Error(await response.text());}catch(e){setError(String(e));}}}>Save last look</button>
   </header>}
   {error&&<p role="alert">{error}</p>}
   {station==='list'&&<section>
@@ -78,8 +78,8 @@ function App(){
    const response=await fetch('/answers',{method:'POST',headers:{'Content-Type':'application/json','X-Fleet-Action':'confirm'},body:JSON.stringify({confirmed:true,answers})});
    if(!response.ok)throw Error(await response.text());
    const results=await response.json();
-   try{const refreshed=await fetch('/fleet.json',{cache:'no-store'});if(!refreshed.ok)throw Error('Fleet refresh failed');setFleet(await refreshed.json());}
-   catch{setError('Answer results received; fleet refresh failed');}
+   try{const refreshed=await fetch('/fleet.json',{cache:'no-store'});if(!refreshed.ok)throw Error(await refreshed.text());setFleet(await refreshed.json());}
+   catch(e){setError(`Answer results received; fleet refresh failed: ${String(e)}`);}
    return results;
   }}/>
   {modelWarnings.length>0&&<details><summary>Model admission warnings</summary>{modelWarnings.map(w=><p key={w}>{w}</p>)}</details>}

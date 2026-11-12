@@ -8,16 +8,17 @@ import (
 )
 
 func loadLaneRecord(home, id string, lane *Lane) error {
-	data, err := os.ReadFile(filepath.Join(home, "state", id+".lane.json"))
+	name := id + ".lane.json"
+	data, err := os.ReadFile(filepath.Join(home, "state", name))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("read lane record %s: %w", id, err)
+		return fmt.Errorf("read lane record %s: %w", name, err)
 	}
 	record, invalid, err := ParseLaneRecord(data)
 	if err != nil {
-		return fmt.Errorf("invalid lane record %s: %w", id, err)
+		return fmt.Errorf("invalid lane record %s: %w", name, err)
 	}
 	applyLaneRecord(lane, &record, invalid)
 	return nil
