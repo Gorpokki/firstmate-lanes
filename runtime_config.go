@@ -43,14 +43,22 @@ func loadRuntimeConfig(dropIn, ships string) (runtimeConfig, error) {
 		}
 	}
 	if dropIn != "" {
-		config.DropIn = dropIn
+		abs, err := filepath.Abs(dropIn)
+		if err != nil {
+			return config, err
+		}
+		config.DropIn = abs
 	}
 	if config.DropIn == "" {
 		config.DropIn = filepath.Join(config.StateDir, "dropins")
 	}
 	if ships != "" {
-		config.Ships = ships
-		config.Models = filepath.Dir(ships)
+		abs, err := filepath.Abs(ships)
+		if err != nil {
+			return config, err
+		}
+		config.Ships = abs
+		config.Models = filepath.Dir(abs)
 	}
 	if config.Models == "" {
 		config.Models = filepath.Join(config.DropIn, "models")

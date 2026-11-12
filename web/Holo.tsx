@@ -14,7 +14,7 @@ export function Holo({mesh,state,sourceState,progress,name,options}:HoloProps){
   return()=>{observer.disconnect();element.removeEventListener('wheel',wheel);};
  },[]);
  useEffect(()=>{if(!spinning)return;let frame=0,last=0;const tick=(time:number)=>{if(time-last>45){setAngle(current=>({...current,yaw:current.yaw+.025}));last=time;}frame=requestAnimationFrame(tick);};frame=requestAnimationFrame(tick);return()=>cancelAnimationFrame(frame);},[spinning]);
- useEffect(()=>{const key=(event:KeyboardEvent)=>{const target=event.target;if(event.code==='Space'&&!event.repeat&&!(target instanceof HTMLElement&&target.closest('input,textarea,select,button'))){event.preventDefault();setSpinning(value=>!value);}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
+ useEffect(()=>{const key=(event:KeyboardEvent)=>{const target=event.target;if(event.code==='Space'&&!event.repeat&&!event.metaKey&&!event.ctrlKey&&!event.altKey&&!(target instanceof HTMLElement&&target.closest('input,textarea,select,button'))){event.preventDefault();setSpinning(value=>!value);}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
  useEffect(()=>{
   if(!failed){setAutoFractureElapsed(null);return;}
   if(options?.fractureElapsed!==undefined)return;

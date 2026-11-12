@@ -179,7 +179,7 @@ Only use assets you have permission to use; never publish personal, third-party-
 ```
 
 4. By default, output goes to `models/converted`. It contains `meshes.json` and little-endian signed-16-bit high/low triangle buffers. The converter excludes its own output from source discovery.
-5. Start the normal full build with the same drop-in configuration. It preloads the admitted pool automatically; `--ships "$CONVERTED_ROOT"` can explicitly select a pool. Refresh an already open web page after changing the pool.
+5. Start the normal full build with the same drop-in configuration. It preloads the admitted pool automatically. `--ships "$CONVERTED_ROOT"` explicitly selects a pool and takes its parent as the models root, so use it only when `CONVERTED_ROOT` sits directly inside `MODEL_ROOT`. For an output folder elsewhere, set both `models` (`MODEL_ROOT`) and `ships` (`CONVERTED_ROOT`) in the configuration file and start without `--ships`. Refresh an already open web page after changing the pool.
 6. Open `/simulation`, choose the model, inspect nose/up orientation, rotate it, switch ASCII/quadrant output, and inspect blocked/failed states.
 
 Admission verifies the current source, manifest, converter, checker, renderer and output hashes, explicit orientation and reference-checked algorithm-2 certificates.
