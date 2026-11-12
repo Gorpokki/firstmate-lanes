@@ -190,6 +190,11 @@ def self_test():
             assert result.returncode == 1
             assert "leak detected (content redacted)" in result.stderr
             assert host not in result.stdout + result.stderr
+        for safe_text in SAFE_FIXTURE.split('"')[1::2]:
+            sample.write_text(safe_text)
+            commit()
+            result = run()
+            assert result.returncode == 0 and not result.stdout and not result.stderr
         sample.write_text("safe synthetic content")
         commit()
 

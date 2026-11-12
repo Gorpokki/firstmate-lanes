@@ -64,9 +64,11 @@ test -z "$(gofmt -l .)"
 go vet ./...
 go build .
 go test ./...
-python3 -m pip install --user 'lizard==1.24.1'
-python3 scripts/complexity-check.py --self-test
-python3 scripts/complexity-check.py --base "$(git merge-base origin/main HEAD)"
+python3 -m venv "${TMPDIR:-/tmp}/lizard"
+LIZARD_PY="${TMPDIR:-/tmp}/lizard/bin/python"
+"$LIZARD_PY" -m pip install --disable-pip-version-check 'lizard==1.24.1'
+"$LIZARD_PY" scripts/complexity-check.py --self-test
+"$LIZARD_PY" scripts/complexity-check.py --base "$(git merge-base origin/main HEAD)"
 python3 scripts/leak-check.py --self-test
 python3 scripts/slop-check.py
 python3 scripts/doc-slop-check.py
@@ -77,7 +79,7 @@ The quality workflow runs on pull requests and pushes to `main`; the no-leak wor
 
 The function-complexity gate compares all tracked and unignored `.go`, `.js`, `.jsx`, `.py`, `.ts`, and `.tsx` source in the base and current tree, including new files.
 It excludes `vendor/`, `node_modules/`, `web/app.js`, files ending in `_generated.go`, `.gen.go`, or `.generated.go`, and files marked `Code generated ... DO NOT EDIT.`
-Only new or worsened functions above CCN 15 fail; unchanged high-complexity functions remain visible in measurements.
+Only new or worsened functions above CCN 15 fail; unchanged functions above the limit do not fail.
 
 The required no-leak scan checks every outgoing commit in the PR (its file paths, file contents, full commit message, and author and committer names and emails), the PR head tree, and the PR title and body.
 A commit identity may only be the GitHub noreply address `<id>+<login>@users.noreply.github.com` or the repository owner's login (`--owner-login`, which CI takes from the repository owner); every other identity value goes through the denylist and generic shape checks.
