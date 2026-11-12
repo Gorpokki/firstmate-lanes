@@ -77,7 +77,7 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if quit {
 			return next, tea.Quit
 		}
-		if next.pendingSend {
+		if next.pendingSend && !m.pendingSend {
 			service := next.answerService
 			answers := append([]SittingAnswer(nil), next.answers...)
 			return next, func() tea.Msg {
