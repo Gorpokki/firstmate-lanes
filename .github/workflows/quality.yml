@@ -31,6 +31,14 @@ jobs:
         run: go build .
       - name: Go tests
         run: go test ./...
+      - name: Function complexity
+        env:
+          QUALITY_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          python3 -m venv "$RUNNER_TEMP/lizard"
+          "$RUNNER_TEMP/lizard/bin/python" -m pip install --disable-pip-version-check lizard==1.24.1
+          "$RUNNER_TEMP/lizard/bin/python" scripts/complexity-check.py --self-test
+          "$RUNNER_TEMP/lizard/bin/python" scripts/complexity-check.py --base "$QUALITY_BASE"
       - name: Source slop
         run: python3 scripts/slop-check.py
       - name: Documentation slop

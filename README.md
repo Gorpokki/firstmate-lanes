@@ -64,30 +64,30 @@ test -z "$(gofmt -l .)"
 go vet ./...
 go build .
 go test ./...
+python3 -m pip install --user 'lizard==1.24.1'
+python3 scripts/complexity-check.py --self-test
+python3 scripts/complexity-check.py --base "$(git merge-base origin/main HEAD)"
 python3 scripts/leak-check.py --self-test
 python3 scripts/slop-check.py
 python3 scripts/doc-slop-check.py
 (cd web && bun install --frozen-lockfile && bun run format:check && bun run lint && bun run typecheck && bun test && bun run build)
 ```
 
-The Actions workflow runs these checks on pull requests and pushes to `main`.
-The required no-leak scan checks every outgoing commit in the PR (its file
-paths, file contents, commit message, and author and committer names and
-emails), the PR head tree, and the PR title and body. A commit identity may
-only be the GitHub noreply address `<id>+<login>@users.noreply.github.com` or
-the repository owner's login (`--owner-login`, which CI takes from the
-repository owner); every other identity value goes through the denylist and
-the generic shape checks. Identity allowances never apply to file content,
-paths, messages, or issue and PR text. Local prepublication scans can also
-check an issue's title and body by passing `--event-file` a JSON file shaped
-`{"issue": {"title": ..., "body": ...}}`; a file with no `issue` or
-`pull_request` object fails the scan. CI does not scan issues. The
-secret-bearing job runs only the trusted default-branch scanner and reads PR
-Git objects as data; it never executes PR code. Set the secret with the
-official GitHub CLI by piping the private local denylist file on stdin:
-`gh secret set LEAK_DENYLIST < <denylist-file>`. Or paste the file's contents
-into the repository's Actions secrets settings. The secret must never be
-printed, committed, encoded in artifacts, or passed as a command-line argument.
+The quality workflow runs on pull requests and pushes to `main`; the no-leak workflow runs on pull request events.
+
+The function-complexity gate compares all tracked and unignored `.go`, `.js`, `.jsx`, `.py`, `.ts`, and `.tsx` source in the base and current tree, including new files.
+It excludes `vendor/`, `node_modules/`, `web/app.js`, files ending in `_generated.go`, `.gen.go`, or `.generated.go`, and files marked `Code generated ... DO NOT EDIT.`
+Only new or worsened functions above CCN 15 fail; unchanged high-complexity functions remain visible in measurements.
+
+The required no-leak scan checks every outgoing commit in the PR (its file paths, file contents, full commit message, and author and committer names and emails), the PR head tree, and the PR title and body.
+A commit identity may only be the GitHub noreply address `<id>+<login>@users.noreply.github.com` or the repository owner's login (`--owner-login`, which CI takes from the repository owner); every other identity value goes through the denylist and generic shape checks.
+Identity allowances never apply to file content, paths, messages, or issue and PR text.
+Local prepublication scans can also check an issue's title and body by passing `--event-file` a JSON file shaped `{"issue": {"title": ..., "body": ...}}`.
+A file with no `issue` or `pull_request` object fails the scan.
+CI does not scan issues.
+The secret-bearing job runs only the trusted default-branch scanner and reads PR Git objects as data; it never executes PR code.
+Set repository secret `LEAK_DENYLIST` from the private local denylist using repository Actions settings or a CLI that reads from stdin; never pass the value as an argument or print it.
+Never commit or encode the value in artifacts or other public text.
 The scan fails when the secret is missing or blank.
 
 ## Ship models

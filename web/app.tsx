@@ -442,6 +442,197 @@ function Holo(props: {
 	);
 }
 
+function AlertPanel(props: {
+	show: (view: View) => boolean;
+	blockers: NonNullable<Fleet["blockers"]>;
+}) {
+	const { show, blockers } = props;
+	return (
+		<>
+			{show("alert") ? (
+				<Frame
+					id="alert"
+					title={blockers.length ? "Red alert · blockers" : "Blockers"}
+					color={blockers.length ? C.red : C.blue}
+					tag={`${blockers.length} active`}
+				>
+					{blockers.length === 0 ? (
+						<Empty what="blockers" />
+					) : (
+						<div style={wrapRow}>
+							{blockers.map((b, i) => (
+								<div
+									key={i}
+									style={{
+										flex: "1 1 300px",
+										minWidth: 0,
+										border: `2px solid ${C.red}`,
+										borderRadius: 20,
+										padding: "12px 14px",
+									}}
+								>
+									<div style={{ ...lab, fontSize: 18, color: C.red }}>
+										{b.title}
+									</div>
+									<div style={{ fontSize: 14, lineHeight: 1.5, marginTop: 6 }}>
+										{b.detail}
+									</div>
+									<div style={{ fontSize: 14, marginTop: 10, color: C.peach }}>
+										<span style={{ ...lab, color: C.dim, fontSize: 12 }}>
+											Lane ·{" "}
+										</span>
+										{b.next}
+									</div>
+									<div
+										style={{ ...lab, fontSize: 11, color: C.dim, marginTop: 6 }}
+									>{`Open ${b.age}`}</div>
+								</div>
+							))}
+						</div>
+					)}
+				</Frame>
+			) : null}
+		</>
+	);
+}
+
+function HoloPanel(props: {
+	show: (view: View) => boolean;
+	all: Lane[];
+	tick: number;
+	prog: { current: Record<string, number> };
+}) {
+	const { show, all, tick, prog } = props;
+	return (
+		<>
+			{show("holo") ? (
+				<Frame
+					id="holo"
+					title="Holo · every lane"
+					color={C.blue}
+					tag="ships assemble as lanes move forward"
+				>
+					{all.length === 0 ? (
+						<Empty what="lanes" />
+					) : (
+						<div
+							style={{
+								display: "grid",
+								gridTemplateColumns:
+									"repeat(auto-fill, minmax(min(100%, 320px), 1fr))",
+								gap: 10,
+							}}
+						>
+							{all.map((l) => (
+								<div key={l.id} style={{ minWidth: 0 }}>
+									<div
+										style={{
+											display: "flex",
+											justifyContent: "space-between",
+											gap: 8,
+											alignItems: "center",
+											marginBottom: 4,
+										}}
+									>
+										<span
+											style={{
+												...lab,
+												fontSize: 14,
+												color: C.peach,
+												overflowWrap: "anywhere",
+											}}
+										>
+											{l.id}
+										</span>
+										<Pill
+											label={LANE_LABEL[l.status] ?? l.status}
+											color={LANE_COLOR[l.status] ?? C.gray}
+										/>
+									</div>
+									<Holo
+										lane={l}
+										tick={tick}
+										prog={prog.current[l.id] ?? 0}
+										size={6}
+									/>
+								</div>
+							))}
+						</div>
+					)}
+				</Frame>
+			) : null}
+		</>
+	);
+}
+
+function TimelinePanel(props: {
+	show: (view: View) => boolean;
+	timeline: NonNullable<Fleet["timeline"]>;
+}) {
+	const { show, timeline } = props;
+	return (
+		<>
+			{show("log") ? (
+				<Frame id="log" title="Timeline" color={C.lav} tag="local time">
+					{timeline.length === 0 ? (
+						<Empty what="events" />
+					) : (
+						<ol
+							style={{
+								listStyle: "none",
+								margin: 0,
+								padding: 0,
+								display: "flex",
+								flexDirection: "column",
+								gap: 6,
+							}}
+						>
+							{timeline.map((e, i) => (
+								<li
+									key={`${e.at}-${i}`}
+									style={{ display: "flex", gap: 10, alignItems: "flex-start" }}
+								>
+									<span
+										style={{
+											...lab,
+											flexShrink: 0,
+											minWidth: 64,
+											textAlign: "center",
+											background: i === timeline.length - 1 ? C.peach : C.lav,
+											color: C.ink,
+											borderRadius: 999,
+											padding: "4px 8px",
+											fontSize: 12,
+										}}
+									>
+										{e.at}
+									</span>
+									<span
+										style={{
+											fontSize: 14,
+											lineHeight: 1.45,
+											minWidth: 0,
+											overflowWrap: "anywhere",
+										}}
+									>
+										<b style={{ ...lab, fontSize: 12, color: C.peach }}>
+											{e.lane}
+										</b>{" "}
+										<b style={{ color: VERB_COLOR[e.verb] ?? C.text }}>
+											{e.verb}
+										</b>
+										{`: ${e.text}`}
+									</span>
+								</li>
+							))}
+						</ol>
+					)}
+				</Frame>
+			) : null}
+		</>
+	);
+}
+
 function App(props: { initial: Fleet }) {
 	const [F, setF] = useState<Fleet>(props.initial);
 	const [stale, setStale] = useState(false);
@@ -557,50 +748,7 @@ function App(props: { initial: Fleet }) {
 				</nav>
 			</header>
 
-			{show("alert") ? (
-				<Frame
-					id="alert"
-					title={blockers.length ? "Red alert · blockers" : "Blockers"}
-					color={blockers.length ? C.red : C.blue}
-					tag={`${blockers.length} active`}
-				>
-					{blockers.length === 0 ? (
-						<Empty what="blockers" />
-					) : (
-						<div style={wrapRow}>
-							{blockers.map((b, i) => (
-								<div
-									key={i}
-									style={{
-										flex: "1 1 300px",
-										minWidth: 0,
-										border: `2px solid ${C.red}`,
-										borderRadius: 20,
-										padding: "12px 14px",
-									}}
-								>
-									<div style={{ ...lab, fontSize: 18, color: C.red }}>
-										{b.title}
-									</div>
-									<div style={{ fontSize: 14, lineHeight: 1.5, marginTop: 6 }}>
-										{b.detail}
-									</div>
-									<div style={{ fontSize: 14, marginTop: 10, color: C.peach }}>
-										<span style={{ ...lab, color: C.dim, fontSize: 12 }}>
-											Lane ·{" "}
-										</span>
-										{b.next}
-									</div>
-									<div
-										style={{ ...lab, fontSize: 11, color: C.dim, marginTop: 6 }}
-									>{`Open ${b.age}`}</div>
-								</div>
-							))}
-						</div>
-					)}
-				</Frame>
-			) : null}
-
+			<AlertPanel show={show} blockers={blockers} />
 			{show("health") ? (
 				<Frame
 					id="health"
@@ -821,121 +969,8 @@ function App(props: { initial: Fleet }) {
 					)}
 				</Frame>
 			) : null}
-
-			{show("holo") ? (
-				<Frame
-					id="holo"
-					title="Holo · every lane"
-					color={C.blue}
-					tag="ships assemble as lanes move forward"
-				>
-					{all.length === 0 ? (
-						<Empty what="lanes" />
-					) : (
-						<div
-							style={{
-								display: "grid",
-								gridTemplateColumns:
-									"repeat(auto-fill, minmax(min(100%, 320px), 1fr))",
-								gap: 10,
-							}}
-						>
-							{all.map((l) => (
-								<div key={l.id} style={{ minWidth: 0 }}>
-									<div
-										style={{
-											display: "flex",
-											justifyContent: "space-between",
-											gap: 8,
-											alignItems: "center",
-											marginBottom: 4,
-										}}
-									>
-										<span
-											style={{
-												...lab,
-												fontSize: 14,
-												color: C.peach,
-												overflowWrap: "anywhere",
-											}}
-										>
-											{l.id}
-										</span>
-										<Pill
-											label={LANE_LABEL[l.status] ?? l.status}
-											color={LANE_COLOR[l.status] ?? C.gray}
-										/>
-									</div>
-									<Holo
-										lane={l}
-										tick={tick}
-										prog={prog.current[l.id] ?? 0}
-										size={6}
-									/>
-								</div>
-							))}
-						</div>
-					)}
-				</Frame>
-			) : null}
-
-			{show("log") ? (
-				<Frame id="log" title="Timeline" color={C.lav} tag="local time">
-					{timeline.length === 0 ? (
-						<Empty what="events" />
-					) : (
-						<ol
-							style={{
-								listStyle: "none",
-								margin: 0,
-								padding: 0,
-								display: "flex",
-								flexDirection: "column",
-								gap: 6,
-							}}
-						>
-							{timeline.map((e, i) => (
-								<li
-									key={`${e.at}-${i}`}
-									style={{ display: "flex", gap: 10, alignItems: "flex-start" }}
-								>
-									<span
-										style={{
-											...lab,
-											flexShrink: 0,
-											minWidth: 64,
-											textAlign: "center",
-											background: i === timeline.length - 1 ? C.peach : C.lav,
-											color: C.ink,
-											borderRadius: 999,
-											padding: "4px 8px",
-											fontSize: 12,
-										}}
-									>
-										{e.at}
-									</span>
-									<span
-										style={{
-											fontSize: 14,
-											lineHeight: 1.45,
-											minWidth: 0,
-											overflowWrap: "anywhere",
-										}}
-									>
-										<b style={{ ...lab, fontSize: 12, color: C.peach }}>
-											{e.lane}
-										</b>{" "}
-										<b style={{ color: VERB_COLOR[e.verb] ?? C.text }}>
-											{e.verb}
-										</b>
-										{`: ${e.text}`}
-									</span>
-								</li>
-							))}
-						</ol>
-					)}
-				</Frame>
-			) : null}
+			<HoloPanel show={show} all={all} tick={tick} prog={prog} />
+			<TimelinePanel show={show} timeline={timeline} />
 
 			<footer
 				style={{

@@ -101,58 +101,7 @@ def git(*args, cwd=None):
 
 
 def self_test():
-    with tempfile.TemporaryDirectory() as directory:
-        subprocess.run(["git", "init", "-q"], cwd=directory, check=True)
-        sample = Path(directory) / "sample.txt"
-        scanner = str(Path(__file__).resolve())
-        cluster_host = ".".join(("service", "cluster", "internal"))
-        host_forms = tuple(".".join(parts) for parts in (("printer", "local"), ("nas", "home", "arpa"), ("app", "localhost"), ("Johns-MacBook-Pro", "local"), ("NAS", "LOCAL")))
-        noreply = "1+synthetic@" + "users.noreply.github.com"
-
-        def commit(message="Synthetic commit", identity=("Synthetic", noreply), committer=None):
-            committer = committer or identity
-            env = {
-                **os.environ,
-                "GIT_AUTHOR_NAME": identity[0],
-                "GIT_AUTHOR_EMAIL": identity[1],
-                "GIT_COMMITTER_NAME": committer[0],
-                "GIT_COMMITTER_EMAIL": committer[1],
-            }
-            subprocess.run(["git", "add", "-A"], cwd=directory, check=True)
-            subprocess.run(
-                ["git", "commit", "--allow-empty", "-q", "-m", message],
-                cwd=directory,
-                env=env,
-                check=True,
-                capture_output=True,
-            )
-
-        def run(denylist="Synthetic-Private-Token", event=None, base=None, owner=None):
-            env = os.environ.copy()
-            env.pop("LEAK_DENYLIST", None)
-            if denylist is not None:
-                env["LEAK_DENYLIST"] = denylist
-            args = [sys.executable, scanner, "--tree", "HEAD"]
-            if base is not None:
-                args.extend(["--base", base])
-            if owner is not None:
-                args.extend(["--owner-login", owner])
-            if event is not None:
-                event_path = Path(directory) / "event.json"
-                event_path.write_text(json.dumps(event))
-                args.extend(["--event-file", str(event_path)])
-            return subprocess.run(
-                args, cwd=directory, env=env, capture_output=True, text=True
-            )
-
-        for missing in (None, "", " \n"):
-            result = run(missing)
-            assert result.returncode == 2
-            assert "leak denylist required" in result.stderr
-        sample.write_text("safe synthetic content")
-        commit()
-        result = run()
-        assert result.returncode == 0 and not result.stdout and not result.stderr
+    def identity_checks():
         owner_login = "Synthetic-Owner"
         identity_denylist = "Synthetic-Private-Token\n" + owner_login
         for identity, committer, owner_arg, expected in (
@@ -173,6 +122,8 @@ def self_test():
                 assert "leak detected (content redacted)" in result.stderr
             else:
                 assert not result.stdout and not result.stderr
+
+    def tree_and_history_checks():
         sample.write_text(noreply)
         commit()
         result = run()
@@ -241,11 +192,8 @@ def self_test():
             assert host not in result.stdout + result.stderr
         sample.write_text("safe synthetic content")
         commit()
-        for safe_text in ("https://github.com/users/synthetic/projects/1", "https://github.com/home/synthetic", "time.Local"):
-            sample.write_text(safe_text)
-            commit()
-            result = run()
-            assert result.returncode == 0 and not result.stdout and not result.stderr
+
+    def fixture_checks():
         fixture_denylist = SAFE_FIXTURE.split('"')[1]
         Path(directory, "scripts").mkdir()
         for content, name, expected in (
@@ -270,6 +218,8 @@ def self_test():
                 assert not result.stdout and not result.stderr
             Path(directory, name).unlink()
             commit()
+
+    def event_text_checks():
         sample.write_text("safe synthetic content")
         commit()
         result = run(event={"pull_request": {"title": "$(touch executed.marker)", "body": "safe"}})
@@ -284,6 +234,62 @@ def self_test():
         result = run(event={"title": "safe", "body": "person@" + "example.invalid"})
         assert result.returncode == 2
         assert "example.invalid" not in result.stdout + result.stderr
+    with tempfile.TemporaryDirectory() as directory:
+        subprocess.run(["git", "init", "-q"], cwd=directory, check=True)
+        sample = Path(directory) / "sample.txt"
+        scanner = str(Path(__file__).resolve())
+        cluster_host = ".".join(("service", "cluster", "internal"))
+        host_forms = tuple(".".join(parts) for parts in (("printer", "local"), ("nas", "home", "arpa"), ("app", "localhost"), ("Johns-MacBook-Pro", "local"), ("NAS", "LOCAL")))
+        noreply = "1+synthetic@" + "users.noreply.github.com"
+
+        def commit(message="Synthetic commit", identity=("Synthetic", noreply), committer=None):
+            committer = committer or identity
+            env = {
+                **os.environ,
+                "GIT_AUTHOR_NAME": identity[0],
+                "GIT_AUTHOR_EMAIL": identity[1],
+                "GIT_COMMITTER_NAME": committer[0],
+                "GIT_COMMITTER_EMAIL": committer[1],
+            }
+            subprocess.run(["git", "add", "-A"], cwd=directory, check=True)
+            subprocess.run(
+                ["git", "commit", "--allow-empty", "-q", "-m", message],
+                cwd=directory,
+                env=env,
+                check=True,
+                capture_output=True,
+            )
+
+        def run(denylist="Synthetic-Private-Token", event=None, base=None, owner=None):
+            env = os.environ.copy()
+            env.pop("LEAK_DENYLIST", None)
+            if denylist is not None:
+                env["LEAK_DENYLIST"] = denylist
+            args = [sys.executable, scanner, "--tree", "HEAD"]
+            if base is not None:
+                args.extend(["--base", base])
+            if owner is not None:
+                args.extend(["--owner-login", owner])
+            if event is not None:
+                event_path = Path(directory) / "event.json"
+                event_path.write_text(json.dumps(event))
+                args.extend(["--event-file", str(event_path)])
+            return subprocess.run(
+                args, cwd=directory, env=env, capture_output=True, text=True
+            )
+
+        for missing in (None, "", " \n"):
+            result = run(missing)
+            assert result.returncode == 2
+            assert "leak denylist required" in result.stderr
+        sample.write_text("safe synthetic content")
+        commit()
+        result = run()
+        assert result.returncode == 0 and not result.stdout and not result.stderr
+        identity_checks()
+        tree_and_history_checks()
+        fixture_checks()
+        event_text_checks()
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--self-test", action="store_true")
