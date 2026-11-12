@@ -95,6 +95,7 @@ Working becomes holding at exactly two hours.
 Autonomy share counts lanes without recorded human involvement, including structured asks and history.
 The board also shows freshness and lane-state changes since the explicit last look.
 The fleet's `progress` is shared state-derived ship materialization, not a measured percentage of task completion or a time estimate.
+Web reveal follows each mesh's own width and includes partially covered edge cells, keeping narrow ships visible at phone and desktop sizes without changing their proportions.
 
 Application state lives outside homes in `$XDG_STATE_HOME/fmlanes`, or the user's `.local/state/fmlanes` when that variable is unset.
 The default drop-in root is its `dropins` directory.

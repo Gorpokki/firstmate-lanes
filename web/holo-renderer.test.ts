@@ -15,6 +15,22 @@ test('the build plane preserves and removes the expected world-space regions',()
  expect(samples(surface(1))).toEqual([true,true]);
 });
 
+test('partial reveal covers a narrow mesh at phone and desktop cell sizes without moving framing',()=>{
+ const rectangle=new Int16Array([-3277,-32767,0,3277,-32767,0,3277,32767,0,-3277,-32767,0,3277,32767,0,-3277,32767,0]);
+ for(const {width,height,holdingSamples} of [{width:39,height:14,holdingSamples:[true,true]},{width:72,height:27,holdingSamples:[true,false]}]){
+  const surface=(progress:number)=>renderHoloSurface(rectangle,{width,height,yaw:0,pitch:.16,progress});
+  const samples=(view:RenderSurface)=>[-.05,.05].map(x=>{
+   const row=Math.floor(view.framing.cy),column=Math.floor(view.framing.cx+x*view.framing.scale);
+   return Number.isFinite(view.depth[row*width+column]);
+  });
+  const hidden=surface(0),holding=surface(.35),full=surface(1);
+  expect(samples(hidden)).toEqual([false,false]);
+  expect(samples(holding)).toEqual(holdingSamples);
+  expect(samples(full)).toEqual([true,true]);
+  expect(holding.framing).toEqual(full.framing);
+ }
+});
+
 test('fracture starts intact, separates rigid pieces, bursts particles, and stops at its end',()=>{
  const intact=render(),start=render(0),burst=render(1800),end=render(3000);
  expect(start).toBe(intact);
