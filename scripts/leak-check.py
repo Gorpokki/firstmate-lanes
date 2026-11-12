@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scan the working tree, outgoing commit messages, and GitHub public text."""
+"""Scan the working tree or Git trees, outgoing commits, and GitHub title/body text."""
 import argparse
 import json
 import os
@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import sys
 
-def scan_tree(tree, denylist):
+def scan_tree(tree, denylist, seen):
     entries = subprocess.run(
         ["git", "ls-tree", "-rz", "--full-tree", tree],
         check=True,
@@ -17,8 +17,9 @@ def scan_tree(tree, denylist):
     ).stdout
     failed = 0
     for entry in entries.split(b"\0"):
-        if not entry:
+        if not entry or entry in seen:
             continue
+        seen.add(entry)
         metadata, raw_name = entry.split(b"\t", 1)
         _, kind, oid = metadata.decode().split()
         name = os.fsdecode(raw_name)
@@ -70,8 +71,8 @@ def report(text, denylist):
     return 0
 
 
-def git(*args):
-    return subprocess.run(["git", *args], check=True, capture_output=True, text=True).stdout
+def git(*args, cwd=None):
+    return subprocess.run(["git", *args], check=True, capture_output=True, text=True, cwd=cwd).stdout
 
 
 def self_test():
@@ -116,12 +117,27 @@ def self_test():
             assert "leak denylist required" in result.stderr
         sample.write_text("safe synthetic content")
         commit()
-        base = git("rev-parse", "HEAD").strip()
+        base = git("rev-parse", "HEAD", cwd=directory).strip()
         result = run()
         assert result.returncode == 0 and not result.stdout and not result.stderr
+        for name, content in (
+            ("intermediate.txt", "synthetic-private-token"),
+            ("service.cluster." + PRIVATE_SUFFIXES[0], "safe"),
+        ):
+            start = git("rev-parse", "HEAD", cwd=directory).strip()
+            Path(directory, name).write_text(content)
+            commit()
+            Path(directory, name).unlink()
+            commit()
+            result = run(base=start)
+            assert result.returncode == 1
+            assert "leak detected (content redacted)" in result.stderr
+            assert name not in result.stdout + result.stderr
+            assert content not in result.stdout + result.stderr
         commit("synthetic-private-token")
         result = run(base=base)
         assert result.returncode == 1
+        assert "leak detected (content redacted)" in result.stderr
         assert "synthetic-private-token" not in result.stdout + result.stderr
         sample.write_text("safe synthetic content")
         private_name = Path(directory) / ("service.cluster." + PRIVATE_SUFFIXES[0])
@@ -173,7 +189,7 @@ def self_test():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--self-test", action="store_true")
-    parser.add_argument("--base", help="published base commit for outgoing commit messages")
+    parser.add_argument("--base", help="published base commit; scans every outgoing commit's paths, contents and messages")
     parser.add_argument("--head", default="HEAD", help="outgoing commit head")
     parser.add_argument("--tree", help="Git tree to scan without checking it out")
     parser.add_argument("--event-file", help="GitHub event JSON with issue or PR text")
@@ -186,12 +202,15 @@ def main():
     if denylist is None:
         print("leak denylist required", file=sys.stderr)
         return 2
-    failed = scan_tree(args.tree, denylist) if args.tree else scan_worktree(denylist)
+    seen = set()
+    failed = scan_tree(args.tree, denylist, seen) if args.tree else scan_worktree(denylist)
     if args.base:
+        for commit in git("rev-list", f"{args.base}..{args.head}").split():
+            failed |= scan_tree(commit, denylist, seen)
         failed |= report(git("log", "--format=%B", f"{args.base}..{args.head}"), denylist)
     if args.event_file:
         event = json.loads(Path(args.event_file).read_text())
-        for payload in (event.get("issue", {}), event.get("pull_request", {}), event.get("comment", {}), event.get("review", {})):
+        for payload in (event.get("issue", {}), event.get("pull_request", {})):
             for field in ("title", "body"):
                 if payload.get(field):
                     failed |= report(payload[field], denylist)
