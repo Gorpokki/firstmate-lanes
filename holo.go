@@ -1,117 +1,107 @@
 package main
 
-// Per-lane hologram. Each lane gets one of the generated ASCII
-// ships (picked by a hash of its id), rotating one frame per tick. The ship
-// assembles toward a target set by the lane's status: unbuilt cells show the
-// wire scaffold, built cells the solid hull. Blocked flickers red; failed
-// breaks apart.
-
 import (
-	"fmt"
 	"hash/fnv"
 	"math"
 	"strings"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
-type shipFrame struct {
-	wire []string
-	fill []string
-}
+var fragmentDirections = [...]meshPoint{{1, .2, 0}, {-.7, .7, 0}, {-.8, -.5, 0}, {.3, -.9, 0}, {.3, .9, 0}, {-.2, -.8, 0}}
 
-var shipNames = []string{"Starblazer", "Liberty Enforcer", "Barracuda", "Anubis"}
-
-// holoTarget is how far each status has built its ship.
-var holoTarget = map[string]float64{"queued": 0.12, "parked": 0.45, "in-progress": 0.6, "waiting": 0.72, "blocked": 0.5, "failed": 0.5, "done": 1}
-
-func shipFor(id string) string {
+func shipIndex(id string) int {
 	h := fnv.New32a()
-	h.Write([]byte(id))
-	return shipNames[int(h.Sum32())%len(shipNames)]
+	_, _ = h.Write([]byte(id))
+	return int(h.Sum32()) % len(proceduralModels())
 }
 
-// cellRank is a fixed pseudo-random order in [0,1) for assembling and breaking cells.
-func cellRank(r, c int) float64 {
-	x := uint32(r)*73856093 ^ uint32(c)*19349663
-	x ^= x >> 13
-	x *= 0x5bd1e995
-	x ^= x >> 15
-	return float64(x%1000) / 1000
+func shipFor(id string) string { return proceduralModels()[shipIndex(id)].Name }
+
+func (m *model) step() {
+	if !m.spinPaused {
+		m.tick++
+	}
 }
 
-// holoLines draws the lane's ship in w x h cells at rotation tick and build progress prog.
-func holoLines(l BoardLane, tick int, prog float64, w, h int) []string {
-	frames := generatedShipFrames[shipFor(l.ID)]
-	if len(frames) == 0 || w < 8 || h < 3 {
+func cellRank(row, col int) float64 {
+	value := uint32(row)*73856093 ^ uint32(col)*19349663
+	value ^= value >> 13
+	value *= 0x5bd1e995
+	value ^= value >> 15
+	return float64(value%1000) / 1000
+}
+
+func shipLines(lane StationLane, tick, width, height int) []string {
+	if width < 1 || height < 1 {
 		return nil
 	}
-	f := frames[tick%len(frames)]
-	sh, sw := len(f.fill), len(f.fill[0])
-	// shrink by sampling when the pane is smaller than the 64x20 frame; never stretch
-	s := math.Max(1, math.Max(float64(sw)/float64(w), float64(sh)/float64(h)))
-	rows := min(h, int(float64(sh)/s))
-	cols := min(w, int(float64(sw)/s))
-	color := statusColor[l.Status]
-	if l.Status == "blocked" && tick%4 < 2 {
-		color = "#661f1f"
+	asset := proceduralModels()[shipIndex(lane.ID)]
+	motionTick, fracture := tick, 0.0
+	if lane.SourceState == "failed" {
+		motionTick = min(24, max(0, tick))
+		fracture = float64(motionTick) / 24
 	}
-	hull := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
-	wire := lipgloss.NewStyle().Foreground(lipgloss.Color("#3a3550"))
-	var out []string
-	for r := 0; r < rows; r++ {
-		var b strings.Builder
-		sr := min(sh-1, int(float64(r)*s))
-		fill, wr := []rune(f.fill[sr]), []rune(f.wire[sr])
-		for c := 0; c < cols; c++ {
-			sc := min(len(fill)-1, int(float64(c)*s))
-			ch, wc := fill[sc], wr[min(len(wr)-1, sc)]
-			rank := cellRank(sr, sc)
-			switch {
-			case ch == ' ' && wc == ' ':
-				b.WriteByte(' ')
-			case l.Status == "failed" && rank < 0.4:
-				b.WriteString(dim.Render("·"))
-			case rank < prog && ch != ' ':
-				b.WriteString(hull.Render(string(ch)))
-			case wc != ' ':
-				b.WriteString(wire.Render(string(wc)))
-			default:
-				b.WriteByte(' ')
+	sin, cos := math.Sincos(float64(motionTick) * .08)
+	points := asset.geometry
+	triangles := make([][3]meshPoint, 0, len(points)/3)
+	for i := 0; i < len(points)/3; i++ {
+		var triangle [3]meshPoint
+		direction := fragmentDirections[i%len(fragmentDirections)]
+		for j := range triangle {
+			p := points[i*3+j]
+			z := p.z*cos - p.x*sin
+			triangle[j] = meshPoint{
+				x: p.x*cos + p.z*sin + direction.x*fracture*1.5,
+				y: p.y*.92 - z*.28 + direction.y*fracture*1.5,
 			}
 		}
-		out = append(out, b.String())
-	}
-	// centre vertically and horizontally in the pane
-	pad := strings.Repeat(" ", max(0, (w-cols)/2))
-	for i := range out {
-		out[i] = pad + out[i]
-	}
-	top := max(0, (h-rows)/2)
-	return append(make([]string, top), out...)
-}
-
-func holoTitle(l BoardLane, prog float64) string {
-	return fmt.Sprintf("HOLO // %s // %s · %d%%", strings.ToUpper(shipFor(l.ID)), strings.ToUpper(StatusLabel[l.Status]), int(prog*100+0.5))
-}
-
-// step moves each lane's build progress toward its status target; called once per tick.
-func (m *model) step() {
-	if m.prog == nil {
-		m.prog = map[string]float64{}
-	}
-	for _, l := range m.fleet.Lanes {
-		p, ok := m.prog[l.ID]
-		t := holoTarget[l.Status]
-		if !ok {
-			m.prog[l.ID] = t
-			continue
-		}
-		if d := t - p; math.Abs(d) < 0.02 {
-			m.prog[l.ID] = t
-		} else {
-			m.prog[l.ID] = p + math.Copysign(0.02, d)
+		a, b, c := triangle[0], triangle[1], triangle[2]
+		if math.Abs((b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x)) > 1e-9 {
+			triangles = append(triangles, triangle)
 		}
 	}
-	m.tick++
+	// Terminal cells are roughly twice as tall as they are wide.
+	aspect := math.Min(float64(width)/2.0, float64(height))
+	cols, rows := max(1, min(width, int(math.Ceil(aspect*2)))), max(1, min(height, int(math.Ceil(aspect))))
+	out := make([]string, rows)
+	for row := 0; row < rows; row++ {
+		var line strings.Builder
+		line.Grow(cols)
+		for col := 0; col < cols; col++ {
+			x := (float64(col)+.5)/float64(cols)*2 - 1
+			y := 1 - (float64(row)+.5)/float64(rows)*2
+			char := ' '
+			for _, triangle := range triangles {
+				if insideTriangle(x, y, triangle) {
+					rank := cellRank(row, col)
+					char = '█'
+					if lane.SourceState == "failed" && rank < math.Min(1, float64(tick)/24) {
+						char = '·'
+					} else if rank > lane.Progress {
+						char = '▒'
+					}
+					break
+				}
+			}
+			line.WriteRune(char)
+		}
+		text := strings.TrimRight(line.String(), " ")
+		if lane.SourceState == "blocked" {
+			color := cRed
+			if tick%4 < 2 {
+				color = "#662222"
+			}
+			text = fg(color).Render(text)
+		}
+		out[row] = text
+	}
+	for len(out) > 0 && out[len(out)-1] == "" {
+		out = out[:len(out)-1]
+	}
+	return out
+}
+
+func insideTriangle(x, y float64, t [3]meshPoint) bool {
+	cross := func(a, b meshPoint) float64 { return (b.x-a.x)*(y-a.y) - (b.y-a.y)*(x-a.x) }
+	a, b, c := cross(t[0], t[1]), cross(t[1], t[2]), cross(t[2], t[0])
+	return (a >= 0 && b >= 0 && c >= 0) || (a <= 0 && b <= 0 && c <= 0)
 }

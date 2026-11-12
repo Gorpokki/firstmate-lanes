@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"flag"
@@ -9,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -26,22 +28,26 @@ type animMsg struct{}
 func anim() tea.Cmd {
 	return tea.Tick(150*time.Millisecond, func(time.Time) tea.Msg { return animMsg{} })
 }
-
-func (m model) read() tea.Cmd {
-	return func() tea.Msg {
-		lanes, err := m.r.Load(m.home)
-		return fleetMsg{BuildFleet(lanes, time.Now()), err}
+func readFleet(reader *Reader, home string, look *lastLook) (Fleet, error) {
+	lanes, err := reader.LoadFleet(home)
+	if err != nil {
+		return Fleet{}, err
 	}
+	fleet := BuildFleet(lanes, time.Now())
+	if look != nil {
+		err = look.apply(&fleet)
+	}
+	return fleet, err
 }
-
+func (m model) read() tea.Cmd {
+	return func() tea.Msg { f, err := readFleet(m.r, m.home, m.look); return fleetMsg{f, err} }
+}
 func (m model) poll() tea.Cmd {
 	return tea.Batch(m.read(), tea.Tick(m.every, func(time.Time) tea.Msg { return tickMsg{} }))
 }
-
 func (m model) Init() tea.Cmd { return tea.Batch(m.poll(), anim()) }
-
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
+func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := message.(type) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
 	case animMsg:
@@ -50,13 +56,37 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		return m, m.poll()
 	case fleetMsg:
-		if m.err = msg.err; msg.err == nil {
+		m.err = msg.err
+		if msg.err == nil {
 			m.fleet = msg.f
+			if m.view == 0 && len(m.sitting.items) == 0 {
+				m.openSitting()
+			}
 		}
+	case answerResultMsg:
+		m.applyAnswerResult(msg)
+		return m, m.read()
 	case tea.KeyMsg:
+		if m.view == 0 && m.sitting.ownMode && msg.Type == tea.KeyRunes && !msg.Alt {
+			for _, r := range msg.Runes {
+				m, _ = m.key(string(r))
+			}
+			return m, nil
+		}
 		next, quit := m.key(msg.String())
 		if quit {
 			return next, tea.Quit
+		}
+		if next.pendingSend {
+			service := next.answerService
+			answers := append([]SittingAnswer(nil), next.answers...)
+			return next, func() tea.Msg {
+				if service == nil {
+					return answerResultMsg{err: fmt.Errorf("answer command is unavailable")}
+				}
+				results, err := service.Send(context.Background(), true, answers)
+				return answerResultMsg{results: results, err: err}
+			}
 		}
 		return next, nil
 	}
@@ -64,94 +94,156 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func main() {
-	home := flag.String("home", os.Getenv("FM_HOME"), "Firstmate home to read (default $FM_HOME)")
-	viewF := flag.String("view", "all", "start view: all, alert, health, captain, lanes, crew, log, holo")
-	every := flag.Duration("every", time.Second, "how often to re-read the home")
-	once := flag.Bool("once", false, "print one frame to stdout and exit")
-	size := flag.String("size", "120x34", "frame size for --once, as COLSxROWS")
-	asJSON := flag.Bool("json", false, "print the fleet board data as JSON and exit")
-	addr := flag.String("serve", "", "serve the web and phone board at this address (for example 127.0.0.1:7777) and exit only on error")
+	home := flag.String("home", os.Getenv("FM_HOME"), "main home to read (default $FM_HOME)")
+	view := flag.String("view", "list", "start station: ask, list, fleet, lane")
+	every := flag.Duration("every", time.Second, "home refresh interval")
+	once := flag.Bool("once", false, "print one terminal frame and exit")
+	size := flag.String("size", "120x34", "terminal frame size COLSxROWS")
+	asJSON := flag.Bool("json", false, "print the shared fleet JSON and exit")
+	address := flag.String("serve", "", "serve the web and phone board at this address")
+	dropIn := flag.String("drop-in", "", "dedicated root containing models/ and lanes/")
+	ships := flag.String("ships", "", "additional certified converted model directory")
+	convert := flag.String("convert-ships", "", "convert GLB models from this source root")
+	output := flag.String("output", "", "conversion output directory (default <source>/converted)")
 	var allow []string
-	flag.Func("allow-host", "extra host name that --serve accepts in the Host header (repeatable)", func(s string) error {
-		allow = append(allow, s)
-		return nil
-	})
+	flag.Func("allow-host", "additional accepted Host name (repeatable)", func(value string) error { allow = append(allow, value); return nil })
 	flag.Parse()
+	fail := func(err error) { fmt.Fprintln(os.Stderr, "fmlanes:", err); os.Exit(1) }
+	if *convert != "" {
+		destination := *output
+		if destination == "" {
+			destination = filepath.Join(*convert, "converted")
+		}
+		if *home != "" {
+			if err := (runtimeConfig{StateDir: destination}).protectHomes(*home); err != nil {
+				fail(err)
+			}
+		}
+		if err := convertShips(*convert, destination); err != nil {
+			fail(err)
+		}
+		return
+	}
 	if *home == "" {
 		fmt.Fprintln(os.Stderr, "usage: fmlanes --home PATH (or set FM_HOME)")
 		os.Exit(2)
 	}
-	m := model{r: NewReader(), home: *home, every: *every}
-	for i, v := range views {
-		if v.key == *viewF {
-			m.view = i
+	if *every <= 0 {
+		fail(fmt.Errorf("--every must be positive"))
+	}
+	config, err := loadRuntimeConfig(*dropIn, *ships)
+	if err != nil {
+		fail(err)
+	}
+	if err = config.protectHomes(*home); err != nil {
+		fail(err)
+	}
+	for _, directory := range []string{filepath.Join(config.DropIn, "models"), filepath.Join(config.DropIn, "lanes")} {
+		if err = os.MkdirAll(directory, 0700); err != nil {
+			fail(err)
 		}
 	}
-	if *addr != "" {
-		fmt.Fprintf(os.Stderr, "fmlanes: serving the board at http://%s\n", *addr)
-		if err := serve(*addr, *home, allow); err != nil {
-			fmt.Fprintln(os.Stderr, "fmlanes:", err)
-			os.Exit(1)
+	reader := NewReader()
+	reader.DropIn = config.DropIn
+	reader.receiptPath = filepath.Join(config.StateDir, "accepted-asks.json")
+	look := newLastLook(filepath.Join(config.StateDir, "last-look.json"))
+	service := &AnswerService{Reader: reader, Home: *home, Command: os.Getenv("FM_LANES_ANSWER_COMMAND")}
+	m := model{r: reader, home: *home, every: *every, view: 1, answerService: service, look: look}
+	found := false
+	for i, station := range views {
+		if station.key == *view {
+			m.view = i
+			found = true
+		}
+	}
+	if !found {
+		fail(fmt.Errorf("unknown station %q", *view))
+	}
+	if *address != "" {
+		handler, err := boardHandler(*home, config, reader, look, service, allow)
+		if err != nil {
+			fail(err)
+		}
+		fmt.Fprintf(os.Stderr, "fmlanes: serving the board at http://%s\n", *address)
+		if err = http.ListenAndServe(*address, handler); err != nil {
+			fail(err)
 		}
 		return
 	}
 	if *once || *asJSON {
-		lanes, err := m.r.Load(*home)
-		m.fleet, m.err = BuildFleet(lanes, time.Now()), err
-		m.step()
+		m.fleet, err = readFleet(reader, *home, look)
+		if err != nil {
+			fail(err)
+		}
 		if *asJSON {
-			enc := json.NewEncoder(os.Stdout)
-			enc.SetIndent("", " ")
-			enc.Encode(m.fleet)
+			if err = json.NewEncoder(os.Stdout).Encode(m.fleet); err != nil {
+				fail(err)
+			}
 			return
 		}
-		fmt.Sscanf(*size, "%dx%d", &m.w, &m.h)
+		if _, err = fmt.Sscanf(*size, "%dx%d", &m.w, &m.h); err != nil || m.w < 1 || m.h < 1 {
+			fail(fmt.Errorf("invalid --size"))
+		}
+		m.step()
+		if m.view == 0 {
+			m.openSitting()
+		}
 		fmt.Println(m.View())
 		return
 	}
-	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
-		fmt.Fprintln(os.Stderr, "fmlanes:", err)
-		os.Exit(1)
+	if _, err = tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
+		fail(err)
 	}
-}
-
-func shipsJSON() map[string][]map[string][]string {
-	out := map[string][]map[string][]string{}
-	for n, fs := range generatedShipFrames {
-		for _, f := range fs {
-			out[n] = append(out[n], map[string][]string{"wire": f.wire, "fill": f.fill})
-		}
-	}
-	return out
 }
 
 //go:embed web/index.html web/app.js web/manifest.webmanifest
 var webFiles embed.FS
 
-// serve publishes the board for browsers and phones: the static page, the
-// ship frames, and fleet.json, which re-reads the home on every request.
-// Requests whose Host is not allowed get 403.
-func serve(addr, home string, allow []string) error {
-	site, _ := fs.Sub(webFiles, "web")
-	ships, _ := json.Marshal(shipsJSON())
-	r := NewReader()
+func boardHandler(home string, config runtimeConfig, reader *Reader, look *lastLook, answers *AnswerService, allow []string) (http.Handler, error) {
+	site, err := fs.Sub(webFiles, "web")
+	if err != nil {
+		return nil, err
+	}
 	mux := http.NewServeMux()
-	mux.Handle("GET /", http.FileServerFS(site))
-	mux.HandleFunc("GET /ships.json", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(ships)
-	})
-	mux.HandleFunc("GET /fleet.json", func(w http.ResponseWriter, _ *http.Request) {
-		lanes, err := r.Load(home)
+	mux.Handle("POST /answers", answerHandler(answers))
+	mux.HandleFunc("GET /fleet.json", func(w http.ResponseWriter, r *http.Request) {
+		fleet, err := readFleet(reader, home, look)
 		if err != nil {
-			http.Error(w, "cannot read the home", http.StatusServiceUnavailable)
+			http.Error(w, "cannot read fleet", http.StatusServiceUnavailable)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		json.NewEncoder(w).Encode(BuildFleet(lanes, time.Now()))
+		json.NewEncoder(w).Encode(fleet)
 	})
-	return http.ListenAndServe(addr, hostGuard(mux, allow))
+	mux.HandleFunc("POST /last-look", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Fleet-Action") != "save" {
+			http.Error(w, "explicit save required", http.StatusBadRequest)
+			return
+		}
+		fleet, err := readFleet(reader, home, nil)
+		if err != nil {
+			http.Error(w, "cannot read fleet", http.StatusServiceUnavailable)
+			return
+		}
+		if err = look.save(fleet); err != nil {
+			http.Error(w, "cannot save last look", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mountModelRoutes(mux, config)
+	mux.HandleFunc("GET /simulation", func(w http.ResponseWriter, r *http.Request) {
+		data, err := webFiles.ReadFile("web/index.html")
+		if err != nil {
+			http.Error(w, "page unavailable", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(data)
+	})
+	mux.Handle("GET /", http.FileServerFS(site))
+	return hostGuard(mux, allow), nil
 }
 
 func hostGuard(next http.Handler, names []string) http.Handler {
@@ -163,7 +255,6 @@ func hostGuard(next http.Handler, names []string) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-
 func hostAllowed(hostport string, names []string) bool {
 	host, _, err := net.SplitHostPort(hostport)
 	if err != nil {
@@ -173,5 +264,5 @@ func hostAllowed(hostport string, names []string) bool {
 	if net.ParseIP(host) != nil || strings.EqualFold(host, "localhost") {
 		return true
 	}
-	return slices.ContainsFunc(names, func(n string) bool { return strings.EqualFold(n, host) })
+	return slices.ContainsFunc(names, func(name string) bool { return strings.EqualFold(host, name) })
 }

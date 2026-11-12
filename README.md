@@ -1,71 +1,218 @@
 # firstmate-lanes
 
-Terminal and web lane dashboard for Firstmate fleets.
+A private-network fleet board with four stations: **Ask, List, Fleet and Lane**.
+The web board, phone board, terminal and `--json` use the same fleet contract.
+The reading stations retain the board summary; Ask hides it.
 
-`fmlanes` shows every lane of one Firstmate home: a task or a second mate, its state, its latest status line, its open decisions and its status log. It has three front ends that read the same data:
+## Build and run
 
-- **Terminal (TUI):** an LCARS board in Bubble Tea, with eight views.
-- **Web:** the same board in a browser, served by `fmlanes --serve`.
-- **Phone:** the same web board. It fits a phone screen and can be added to the home screen as an app.
-
-Each lane also gets a **hologram**: an ASCII ship that rotates and assembles as the lane moves forward. Blocked lanes flicker red. Failed lanes break up.
-
-## Run
-
-Needs Go 1.24 or later.
+Requires Go 1.24 or later. Bun is needed to rebuild the web bundle or convert models.
+The checked-in `web/app.js` is embedded in the executable; the board does not load remote fonts or scripts.
 
 ```sh
-go run . --home testdata/sample-home                          # terminal board on the sample home
-FM_HOME=/path/to/firstmate go run .                           # terminal board on a real home
-go run . --home testdata/sample-home --serve 127.0.0.1:7777   # web and phone board at http://127.0.0.1:7777
-go run . --home testdata/sample-home --once --view holo --size 120x34   # print one frame and exit
-go run . --home testdata/sample-home --json                   # print the board data as JSON and exit
+go build -o fmlanes .
+./fmlanes --home testdata/sample-home
+./fmlanes --home "$FM_HOME" --serve 127.0.0.1:7777
+./fmlanes --home testdata/sample-home --json
+./fmlanes --home testdata/sample-home --once --view lane --size 120x34
 ```
 
-To open the board on a phone, serve it on an address the phone can reach, for example `--serve 0.0.0.0:7777`. The board has no login, so anyone who can reach that address can read the home's lane names and status lines. Use a private network.
+`--view` accepts `ask`, `list`, `fleet` or `lane`; List is the default.
+The terminal refreshes every second (`--every`); the web refreshes every three seconds.
+For phone access, listen on a private-network interface and open that address on the phone.
+The board has **no login**: anyone who can reach it can read fleet data and submit confirmed answers.
+Do not expose it to an untrusted network.
 
-`--serve` answers only the Host names `localhost`, IP addresses, and names given with `--allow-host <name>` (repeatable). Any other Host gets 403, which stops other websites from reading the board through DNS rebinding.
+The HTTP Host guard accepts IP addresses, `localhost`, and names explicitly supplied with repeatable `--allow-host` flags.
+Other Host values receive 403, including on answer and asset routes.
+
+## Stations
+
+- **List:** state headings, needs-you lanes ordered by oldest recent ask, then waiting, working, done and holding. Filter by second mate, inspect quick/read asks, tick lanes and start their sitting.
+- **Fleet:** a heat grid and a caged shipyard, with state shares, state filtering, selected-lane focus, working drones and a Motion switch. Mouse drag pans; Shift-drag turns; the wheel zooms; double-click resets. Touch drag pans, two fingers turn/pinch, and double-tap resets. Labels are collision-aware; the selected lane's name remains visible.
+- **Lane:** a lit, rotating triangle-mesh ASCII ship, build materialization, ship name, crew's last word, timestamped history and asks. Drag turns/tilts, wheel or buttons zoom, Space pauses/resumes, and double-click resets. Blocked ships flicker red; failed ships break apart and the breakup ends.
+- **Ask:** up to four asks, quick first and grouped by the lane's second mate. Questions, reasons and choices precede the ship and expandable detail. A crew pick is labelled with its reason; a board suggestion is explicitly labelled when there is no crew pick. Discussion asks show their must-decide items and offer a grill request first. Choice, own answer, crew-decides skip, defer, grill, undo and review do not send anything. The send card identifies each answer by lane name and question. **Confirm and send sitting** is the one sending action. Deferred asks return in later sittings.
+
+`/simulation` is a web-only surface outside the station rail.
+It exercises every state, blocked flicker, finite failure breakup, ASCII/quadrant output and every admitted model in the loaded pool.
+It uses synthetic lane data and never answers a real ask.
+
+### Keys
 
 | Key | Action |
 |---|---|
-| `1`-`8`, `tab`, `←` `→` | Change view: All, Alert, Health, Captain, Lanes, Crew, Log, Holo |
-| `↑` `↓` (`k` `j`) | Select a lane |
-| `enter`, `esc` | Below 100 columns: open the selected lane (hologram and log) in the Lanes view, then go back |
-| `f` | Filter the lane board by status |
-| `q` | Quit |
+| `a`, `l`, `f`, `enter` | Ask, List, Fleet, selected Lane |
+| `space` | Tick the focused List lane; pause/resume a Lane or Ask ship |
+| `o` | Focus/type an own answer in Ask |
+| `tab`, `shift+tab` | Next/previous terminal station |
+| `↑`, `↓` or `k`, `j` | Select a terminal lane or ask |
+| `m` | Cycle terminal second-mate filter |
+| `1`–`4` | Choose an Ask option in the terminal |
+| `s`, `g`, `d` | Terminal crew-decides skip, grill request, defer |
+| `u`, `r`, `v`, `/` | Terminal undo, review, details, find ask |
+| `pgup`, `pgdown` | Scroll terminal Ask cards, detail and delivery reports |
+| `y` | Explicitly confirm a terminal send from review |
+| `c`, `o`, `u`, `n` | In terminal review: change, own answer, undo, return |
+| `n` | Start another terminal sitting after delivery/all-deferred |
+| `s`, `1`–`5` | In terminal Fleet: heat/shipyard toggle; state filters |
+| `b` | Save the terminal's last look |
+| `q`, `ctrl+c` | Quit terminal; typing an own answer keeps ordinary letters |
 
-## Read-only
+Terminal and web use self-made procedural defaults.
+Real ship models load only from the user's local drop-in pool; no third-party models, inherited frames or model-source assets are shipped.
 
-`fmlanes` only stats and reads files. It never writes to the home, never sends steers, and never runs Firstmate scripts. The terminal board reads the home again every second (`--every`). The web board asks the server for `fleet.json` every 2 seconds, and the server reads the home again for each request. A status log is parsed again only when its size or modification time changes.
+## Reads, state and writes
 
-It reads:
+The reader reads the main home and the homes registered in its `data/secondmates.md`.
+Registered second mates remain lanes themselves; their homes' lanes carry the second-mate alias.
 
-- `state/<id>.status`: one event per line, `verb [key=<slug>] [at=<epoch>]: text`. A line that does not start an event continues the one above it.
-- `state/<id>.meta`: `kind` (ship, scout, secondmate).
-- `data/backlog.md`: title, kind and hold of each entry. A `(hold-kind: captain)` hold counts as an open decision.
-- `data/secondmates.md`: registered second mates.
+Inputs:
 
-Open decisions follow Firstmate's own fold. `needs-decision` and `blocked` open a key (`default` when the line has none). `resolved` and `captain-held` close it. A `done` or `failed` line closes all of a task's decisions, but never a second mate's.
+- `state/<id>.lane.json`: preferred structured lane record when present.
+- `state/<id>.status`: fallback events, `verb [key=<slug>] [at=<epoch>]: text`; continuation lines belong to the previous event.
+- `state/<id>.meta`: lane kind.
+- `data/backlog.md`: titles, kinds and captain holds.
+- `data/secondmates.md`: registered second mates and their `home:` locations, relative to the main home or absolute.
+- The configured drop-in root's `lanes/*.lane.json`: local, read-only lanes using the same parser and station projection. These are never answer-command destinations.
 
-## Layout
+A malformed present lane record is an error, not permission to use conflicting status data.
+Malformed individual asks are omitted and counted without hiding valid asks in that record.
+Text controls are sanitized before terminal rendering; links must be HTTP(S) without embedded credentials.
 
-- `state.go`: the home reader.
-- `fleet.go`: `BuildFleet`, which turns lanes into the board's panels. Every front end renders this one value.
-- `main.go`, `holo.go`: the terminal board's views and the hologram.
-- `cli.go`: the terminal program, the flags, and `--serve`.
-- `web/`: the web and phone board (React 18.3.1). `web/app.js` is the built bundle that `--serve` embeds. After a change to `web/app.tsx`, run `bun install && bun run build` in `web/`.
+Five station states:
 
-## Test
+| State | Meaning |
+|---|---|
+| needs you | A recent open ask or block |
+| waiting | Explicit waiting state without a recent ask |
+| working | Working with an update less than two hours old |
+| holding | Parked, silent working, failed, or otherwise inactive |
+| done | Completed without a recent open ask |
+
+Asks exactly seven days old remain visible; older asks are hidden and counted.
+Working becomes holding at exactly two hours.
+Autonomy share counts lanes without recorded human involvement, including structured asks and history.
+The board also shows freshness and lane-state changes since the explicit last look.
+The fleet's `progress` is shared state-derived ship materialization, not a measured percentage of task completion or a time estimate.
+
+Application state lives outside homes in `$XDG_STATE_HOME/fmlanes`, or the user's `.local/state/fmlanes` when that variable is unset.
+The default drop-in root is its `dropins` directory.
+The app creates owner-only `models/` and `lanes/` directories there.
+A `config.json` in application state, or an external file selected by `FM_LANES_CONFIG`, may set `drop_in`, `models` and `ships`.
+Relative configuration locations resolve beside that configuration file.
+`--drop-in` overrides the drop-in root; `--ships` selects a converted pool and its parent source root.
+Keep this configuration and all personal model inputs outside version control.
+
+`last-look.json` is one server-owned reading shared by devices and the terminal.
+`accepted-asks.json` stores exact confirmed-answer receipts; its companion lock prevents concurrent writers losing receipts.
+Both use atomic owner-only files.
+A receipt hides only the accepted key and asked timestamp, not a later ask reusing that key.
+State, drop-in creation and configured conversion output are rejected inside known homes, including through symlinks.
+
+**No home is written by the reader.** Confirmed answers are the sole home-writing path:
+
+1. Re-read the current fleet and validate every answer against a current, recent, open ask.
+2. Reject stale timestamps, invalid choices, duplicate keys and read-only drop-in lanes.
+3. Invoke the installed `bin/fm-captain-hold.sh answers --source fm-lanes` once per owning home, setting `FM_HOME` for that batch.
+4. Send the existing tab-separated key/answer/label contract on stdin; never invoke a shell with answer text.
+5. Report actual `closed`, `skipped` and `refused` command results. Exit success alone is not acceptance. There is no automatic retry.
+
+`FM_LANES_ANSWER_COMMAND` can select another installed intake executable, including a deterministic stand-in for isolated verification.
+Unconfirmed requests never invoke it.
+
+## Structured lane records
+
+A record carries `name`, one of the five `state` values, `now`, `start`, optional `ticket`, timestamped `history`, and `asks`.
+An example choice ask:
+
+```json
+{
+  "form": "choice",
+  "key": "route-choice",
+  "question": "Which route should the crew use?",
+  "reason": "The next step depends on the route.",
+  "choices": [
+    {"label": "North", "effect": "Use the shorter route."},
+    {"label": "South", "effect": "Use the sheltered route."}
+  ],
+  "pick": 0,
+  "pick_reason": "The shorter route meets the requirement.",
+  "effort": "quick",
+  "detail": "Additional synthetic context.",
+  "tickets": [],
+  "pull_requests": [],
+  "grill_pages": [],
+  "waits_on_this": "The next build step",
+  "asked": "2026-01-01T09:00:00Z"
+}
+```
+
+Choice asks require two to four labelled choices with effects.
+`pick` is an optional zero-based choice index; a supplied pick requires `pick_reason`.
+`no_pick_reason` may explain why the crew gave no pick.
+`effort` is `quick` or `read`.
+A discussion ask uses `form: "discussion"`, `topic` and a nonempty `must_decide` string array instead of `question`, `choices` and a pick.
+Links have `id`, `title` and `url`; history entries have `at`, `state` and optional `text`.
+Use a current `asked` timestamp when trying the example; old asks intentionally disappear from sittings.
+The second mate belongs to the lane, not to each ask.
+
+## Add a model
+
+The full executable includes the conversion workflow, certificate checks and ASCII/quadrant renderer.
+Conversion requires Bun and Python's `uv` launcher; its isolated script environment installs the declared geometry dependencies.
+No source models are downloaded by the app.
+Only use assets you have permission to use; never publish personal, third-party-private or game-extracted models.
+
+1. Use the dedicated drop-in root's `models/<group>/<ship>/` directory. Put `model.glb` and `manifest.json` together there.
+2. Give every model a stable unique key, display name and explicit nose/up axes. Axes are `+x`, `-x`, `+y`, `-y`, `+z`, `-z`; forward and up must be perpendicular.
+
+```json
+{"key":"example-ship","name":"Example Ship","orient":{"forward":"+x","up":"+y"}}
+```
+
+3. Set `MODEL_ROOT` to that `models` directory and run the built-in converter:
+
+```sh
+./fmlanes --convert-ships "$MODEL_ROOT"
+# Optional separate output:
+./fmlanes --convert-ships "$MODEL_ROOT" --output "$CONVERTED_ROOT"
+```
+
+4. By default, output goes to `models/converted`. It contains `meshes.json` and little-endian signed-16-bit high/low triangle buffers. The converter excludes its own output from source discovery.
+5. Start the normal full build with the same drop-in configuration. It preloads the admitted pool automatically; `--ships "$CONVERTED_ROOT"` can explicitly select a pool. Refresh an already open web page after changing the pool.
+6. Open `/simulation`, choose the model, inspect nose/up orientation, rotate it, switch ASCII/quadrant output, and inspect blocked/failed states.
+
+Admission verifies the current source, manifest, converter, checker, renderer and output hashes, explicit orientation and reference-checked algorithm-2 certificates.
+After duplicate, degenerate and winding repair, conversion compares the actual quantized output against its repaired source through the application's double-sided quadrant depth and triangle buffers.
+Nine fixed oblique/cardinal views detect newly missing surfaces, added surfaces and inverted normals; mathematical openness alone is diagnostic, not a rejection.
+The checker uses a normalized depth tolerance of 0.02 and a per-view visible-loss limit of 1%, retaining source detail when reduction loses visible surfaces.
+These sampled views do not establish completeness for off-view or subpixel geometry.
+A failed model does not hide healthy models; admission warnings explain rejected entries.
+An outdated or altered certificate cannot serve a mesh.
+Do not edit a certificate to force a model through.
+
+Public converter checks construct unequal-axis tetrahedra, open surfaces and missing-face regressions; no external model fixture is required.
+The normal runtime configuration can privately preload a local pool without publishing its inventory or locations.
+
+## Development checks
 
 ```sh
 go test ./...
+go build .
+# Run these from web/:
+bun install --frozen-lockfile
+bun test
+bun run build
+# From the repository root:
+PYTHONDONTWRITEBYTECODE=1 uv run --with trimesh --with numpy --with fast-simplification --with networkx --with scipy python converter/test_converter.py
 ```
 
-## Ship models
+After rebuilding `web/app.js`, rebuild the Go executable so it embeds the updated bundle.
+Runtime proof should use synthetic homes, a stand-in keyed-answer command, all four terminal `--once` stations, and actual desktop/phone browser surfaces.
 
-The hologram frames are ASCII renders, made from these 3D models by HotSliceOfJesus on Thingiverse. Each model is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The renders are changed from the originals: each is turned into 32 rotation frames of 64x20 text cells.
+## Public geometry
 
-- Starblazer: [Freelancer Civilian Fighter "Starblazer"](https://www.thingiverse.com/thing:2047196)
-- Liberty Enforcer: [Freelancer Liberty "Enforcer" Ship](https://www.thingiverse.com/thing:2041139)
-- Barracuda: [Freelancer Bounty Hunter Ship "Barracuda" Fighter](https://www.thingiverse.com/thing:2044452)
-- Anubis: [Freelancer The Order Ship Anubis](https://www.thingiverse.com/thing:2038647)
+Built-in defaults and public test fixtures are self-made generic procedural or hand-built geometry.
+No third-party models, inherited baked frames or previously credited model sources are included.
+Personal models and local preload configuration stay outside version control.
+

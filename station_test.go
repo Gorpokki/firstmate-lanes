@@ -1,0 +1,77 @@
+package main
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func TestStationStateBoundaries(t *testing.T) {
+	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name, state string
+		updated     time.Time
+		decisions   []Decision
+		want        string
+		hidden      int
+	}{
+		{"recent work", "working", now.Add(-time.Hour), nil, "working", 0},
+		{"silent work", "working", now.Add(-2 * time.Hour), nil, "holding", 0},
+		{"parked", "paused", now, nil, "holding", 0},
+		{"waiting", "waiting", now, nil, "waiting", 0},
+		{"done", "done", now, nil, "done", 0},
+		{"seven day ask", "needs-decision", now, []Decision{{Key: "choice", At: now.Add(-7 * 24 * time.Hour)}}, "needs you", 0},
+		{"old ask", "needs-decision", now, []Decision{{Key: "choice", At: now.Add(-7*24*time.Hour - time.Second)}}, "holding", 1},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			lane, hidden := stationLane(Lane{ID: "example", State: c.state, UpdatedAt: c.updated, Decisions: c.decisions}, now)
+			if lane.State != c.want || hidden != c.hidden {
+				t.Fatalf("state=%q hidden=%d; want %q %d", lane.State, hidden, c.want, c.hidden)
+			}
+		})
+	}
+}
+
+func TestRegisteredHomeLanes(t *testing.T) {
+	home := t.TempDir()
+	for _, dir := range []string{"state", "data", "mate/state", "mate/data"} {
+		if err := os.MkdirAll(filepath.Join(home, dir), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, content := range map[string]string{
+		"state/build.status":      "working [at=1768046400]: Building example",
+		"data/secondmates.md":     "- design - Design crew (home: mate)\n",
+		"mate/state/build.status": "done [at=1768046400]: Example shipped",
+	} {
+		if err := os.WriteFile(filepath.Join(home, name), []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	lanes, err := NewReader().LoadFleet(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]Lane{}
+	for _, l := range lanes {
+		found[l.ID] = l
+	}
+	if found["build"].Home != "main" || found["design/build"].SecondMate != "design" || found["design/build"].State != "done" {
+		t.Fatalf("registered homes not represented: %#v", found)
+	}
+}
+
+func TestAutonomyIncludesStructuredAskHistory(t *testing.T) {
+	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	lanes := []Lane{
+		{ID: "automatic", State: "done"},
+		{ID: "answered", State: "done", HadRecordAsks: true},
+		{ID: "past-help", State: "done", Events: []Event{{Verb: "needs you", At: now.Add(-time.Hour)}}},
+		{ID: "status-help", State: "done", Events: []Event{{Verb: "blocked", At: now.Add(-time.Hour)}}},
+	}
+	if got := BuildFleet(lanes, now).AutonomyShare; got != 0.25 {
+		t.Fatalf("autonomy=%v, want one untouched lane out of four", got)
+	}
+}
