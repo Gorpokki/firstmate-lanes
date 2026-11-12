@@ -41,7 +41,7 @@ func stationLane(l Lane, at time.Time) (StationLane, int) {
 			hidden++
 			continue
 		}
-		out.Asks = append(out.Asks, StationAsk{Key: d.Key, Form: "discussion", Topic: d.Text, Question: d.Text, MustDecide: []string{d.Text}, Reason: "Crew needs your answer", Effort: "read", Asked: d.At, Answerable: nativeTaskKey(d.Key)})
+		out.Asks = append(out.Asks, StationAsk{Key: d.Key, Form: "discussion", Topic: d.Text, Question: d.Text, MustDecide: []string{d.Text}, Reason: "Crew needs your answer", Effort: "read", Asked: d.At, Answerable: l.OwnerDir != "" && nativeTaskKey(d.Key)})
 	}
 	if l.Record != nil {
 		out.Start, out.Ticket, out.InvalidAsks = l.Record.Start, l.Record.Ticket, l.InvalidAsks
@@ -51,7 +51,7 @@ func stationLane(l Lane, at time.Time) (StationLane, int) {
 				hidden++
 				continue
 			}
-			ask.Answerable = nativeTaskKey(ask.Key)
+			ask.Answerable = l.OwnerDir != "" && nativeTaskKey(ask.Key)
 			out.Asks = append(out.Asks, ask)
 		}
 	}

@@ -35,6 +35,26 @@ func TestStationStateBoundaries(t *testing.T) {
 	}
 }
 
+func TestOnlyOwnedNativeAsksAreAnswerable(t *testing.T) {
+	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	ask := LaneRecordAsk{Form: "choice", Key: "route", Question: "Route?", Reason: "Pick", Effort: "quick", Asked: now, Choices: []LaneRecordChoice{{Label: "A", Effect: "a"}, {Label: "B", Effect: "b"}}}
+	owned, _ := stationLane(Lane{ID: "owned", OwnerDir: "/home", State: "needs-decision", Decisions: []Decision{{Key: "route", Verb: "needs-decision", At: now}}, Record: &LaneRecord{Asks: []LaneRecordAsk{ask}}}, now)
+	local, _ := stationLane(Lane{ID: "local/dropin", OwnerDir: "", State: "needs-decision", Decisions: []Decision{{Key: "route", Verb: "needs-decision", At: now}}, Record: &LaneRecord{Asks: []LaneRecordAsk{ask}}}, now)
+	if len(owned.Asks) != 2 || len(local.Asks) != 2 {
+		t.Fatalf("asks owned=%d local=%d, want 2 each", len(owned.Asks), len(local.Asks))
+	}
+	for _, a := range owned.Asks {
+		if !a.Answerable {
+			t.Fatalf("owned native ask %q not answerable", a.Key)
+		}
+	}
+	for _, a := range local.Asks {
+		if a.Answerable {
+			t.Fatalf("drop-in ask %q answerable without an owning home", a.Key)
+		}
+	}
+}
+
 func TestRegisteredHomeLanes(t *testing.T) {
 	home := t.TempDir()
 	for _, dir := range []string{"state", "data", "mate/state", "mate/data"} {
