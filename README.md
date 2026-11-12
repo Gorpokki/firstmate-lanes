@@ -75,7 +75,7 @@ Inputs:
 - `data/secondmates.md`: registered second mates and their `home:` locations, relative to the main home or absolute.
 - The configured drop-in root's `lanes/*.lane.json`: local, read-only lanes using the same parser and station projection. These are never answer-command destinations.
 
-A malformed present lane record is an error, not permission to use conflicting status data.
+A malformed present lane record fails the whole fleet read, without falling back to conflicting status data. CLI and web errors identify the source file or home and preserve the underlying cause.
 Malformed individual asks are omitted and counted without hiding valid asks in that record.
 Text controls are sanitized before terminal rendering; links must be HTTP(S) without embedded credentials.
 

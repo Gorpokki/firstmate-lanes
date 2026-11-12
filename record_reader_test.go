@@ -1,8 +1,12 @@
 package main
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -35,5 +39,38 @@ func TestRecordPreferredAndMissingRecordFallsBack(t *testing.T) {
 	}
 	if found["fallback"].Now != "Status example" {
 		t.Fatalf("fallback lost: %#v", found["fallback"])
+	}
+}
+
+func TestSourceFailureIdentifiesFileAndCauseOverHTTP(t *testing.T) {
+	home := t.TempDir()
+	if err := os.Mkdir(filepath.Join(home, "state"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "state", "broken.lane.json"), []byte(`{"name":`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	reader := NewReader()
+	handler, err := boardHandler(home, runtimeConfig{}, reader, newLastLook(filepath.Join(t.TempDir(), "last-look.json")), &AnswerService{Reader: reader, Home: home}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, route := range []struct{ method, path string }{
+		{http.MethodGet, "/fleet.json"},
+		{http.MethodPost, "/last-look"},
+	} {
+		t.Run(route.path, func(t *testing.T) {
+			request := httptest.NewRequest(route.method, "http://localhost"+route.path, nil)
+			request.Header.Set("X-Fleet-Action", "save")
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusServiceUnavailable {
+				t.Fatalf("status=%d, want source failure", response.Code)
+			}
+			body := response.Body.String()
+			if !strings.Contains(body, "broken.lane.json") || !strings.Contains(body, io.ErrUnexpectedEOF.Error()) {
+				t.Fatalf("source filename or underlying cause missing: %q", body)
+			}
+		})
 	}
 }

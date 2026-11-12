@@ -209,7 +209,7 @@ func boardHandler(home string, config runtimeConfig, reader *Reader, look *lastL
 	mux.HandleFunc("GET /fleet.json", func(w http.ResponseWriter, r *http.Request) {
 		fleet, err := readFleet(reader, home, look)
 		if err != nil {
-			http.Error(w, "cannot read fleet", http.StatusServiceUnavailable)
+			http.Error(w, fmt.Sprintf("cannot read fleet: %v", err), http.StatusServiceUnavailable)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -223,7 +223,7 @@ func boardHandler(home string, config runtimeConfig, reader *Reader, look *lastL
 		}
 		fleet, err := readFleet(reader, home, nil)
 		if err != nil {
-			http.Error(w, "cannot read fleet", http.StatusServiceUnavailable)
+			http.Error(w, fmt.Sprintf("cannot read fleet: %v", err), http.StatusServiceUnavailable)
 			return
 		}
 		if err = look.save(fleet); err != nil {
