@@ -53,6 +53,15 @@ It counts ship redraws, requests, simulation steps and Chromium script time over
 node web/perf/simulation-budget.mjs --binary ./fmlanes --report simulation-budget.json
 ```
 
+The check imports `playwright` from `NODE_PATH`; it is not a repository dependency.
+Install it with a Chromium build outside the repository, then point `NODE_PATH` at it:
+
+```sh
+npm install --prefix "$HOME/.cache/fmlanes-playwright" --no-save playwright@1.63.0
+"$HOME/.cache/fmlanes-playwright/node_modules/.bin/playwright" install chromium
+export NODE_PATH="$HOME/.cache/fmlanes-playwright/node_modules"
+```
+
 The **Simulation budget** GitHub workflow builds the web bundle from source, runs this check on every pull request and push to `main`, and posts the measurements to the job summary.
 
 ### Keys
@@ -233,6 +242,8 @@ python3 scripts/slop-check.py
 python3 scripts/doc-slop-check.py
 (cd web && bun install --frozen-lockfile && bun run format:check && bun run lint && bun run typecheck && bun test && bun run build)
 PYTHONDONTWRITEBYTECODE=1 uv run --with trimesh --with numpy --with fast-simplification --with networkx --with scipy python converter/test_converter.py
+# Needs NODE_PATH for Playwright and ./fmlanes from go build -o fmlanes . (see the simulation budget section):
+node web/perf/simulation-budget.mjs --binary ./fmlanes
 ```
 
 The quality workflow runs on pull requests and pushes to `main`; the no-leak workflow runs on pull request events.
