@@ -9,8 +9,8 @@ import (
 func terminalFixture() []StationLane {
 	asked := time.Date(2026, 11, 12, 9, 0, 0, 0, time.UTC)
 	return []StationLane{
-		{ID: "mate-a", Name: "Mate A", SecondMate: "mate", State: "needs you", Asks: []StationAsk{{Form: "choice", Key: "quick-a", Question: "Choose A?", Effort: "quick", Asked: asked, Choices: []LaneRecordChoice{{Label: "Yes", Effect: "ship"}, {Label: "No", Effect: "wait"}}}}},
-		{ID: "lane-b", Name: "Lane B", State: "working", Asks: []StationAsk{{Form: "discussion", Key: "read-b", Topic: "Discuss B?", MustDecide: []string{"Plan"}, Effort: "read", Asked: asked.Add(time.Minute)}}},
+		{ID: "mate-a", Name: "Mate A", SecondMate: "mate", State: "needs you", Asks: []StationAsk{{Form: "choice", Key: "quick-a", Question: "Choose A?", Effort: "quick", Asked: asked, Answerable: true, Choices: []LaneRecordChoice{{Label: "Yes", Effect: "ship"}, {Label: "No", Effect: "wait"}}}}},
+		{ID: "lane-b", Name: "Lane B", State: "working", Asks: []StationAsk{{Form: "discussion", Key: "read-b", Topic: "Discuss B?", MustDecide: []string{"Plan"}, Effort: "read", Asked: asked.Add(time.Minute), Answerable: true}}},
 	}
 }
 
@@ -106,6 +106,39 @@ func TestTerminalListSelectionStartsUntouchedSittingOnEveryAskEntry(t *testing.T
 		if !m.selected[m.sitting.items[0].lane.ID] {
 			t.Fatalf("%s: sitting holds lane %q, not the selected lane", entry, m.sitting.items[0].lane.ID)
 		}
+	}
+}
+
+func TestTerminalBoardSuggestionIsAttributedAndKeylessAskIsReadOnly(t *testing.T) {
+	asked := time.Date(2026, 11, 12, 9, 0, 0, 0, time.UTC)
+	choices := []LaneRecordChoice{{Label: "North", Effect: "go"}, {Label: "South", Effect: "wait"}}
+	m := model{fleet: Fleet{Stations: []StationLane{
+		{ID: "north-lane", Name: "North Lane", State: "needs you", Asks: []StationAsk{{Form: "choice", Key: "route", Question: "Route?", Reason: "Pick", Effort: "quick", Asked: asked, Answerable: true, NoPickReason: "both carry equal risk", Choices: choices}}},
+		{ID: "keyless-lane", Name: "Keyless Lane", State: "needs you", Asks: []StationAsk{{Form: "choice", Key: "default", Question: "Keyless?", Reason: "Pick", Effort: "read", Asked: asked, Choices: choices}}},
+	}}, view: 0, w: 120, h: 40, selected: map[string]bool{}}
+	m.openSitting()
+	lineWith := func(view, needle string) string {
+		for _, line := range strings.Split(view, "\n") {
+			if strings.Contains(line, needle) {
+				return line
+			}
+		}
+		return ""
+	}
+	view := m.View()
+	if !strings.Contains(lineWith(view, "North — go"), "board suggestion") || strings.Contains(lineWith(view, "South — wait"), "board suggestion") {
+		t.Fatalf("board suggestion not attributed to the first listed choice only:\n%s", view)
+	}
+	if !strings.Contains(view, "Crew gave no pick: both carry equal risk") || strings.Contains(lineWith(view, "North — go"), "both carry equal risk") {
+		t.Fatalf("crew's no-pick reason not shown separately:\n%s", view)
+	}
+	m, _ = m.key("down")
+	if !strings.Contains(m.View(), "read-only here") {
+		t.Fatalf("keyless ask not marked read-only:\n%s", m.View())
+	}
+	m, _ = m.key("1")
+	if len(m.sitting.answers) != 0 {
+		t.Fatalf("keyless ask recorded an answer: %+v", m.sitting.answers)
 	}
 }
 

@@ -226,6 +226,10 @@ func (s *sitting) commit(kind, txt string, choice int) {
 	if !ok {
 		return
 	}
+	if !it.ask.Answerable {
+		s.message = "No verifiable task ID; this ask is read-only here"
+		return
+	}
 	answer := SittingAnswer{Lane: it.lane.ID, Key: it.ask.Key, Kind: kind, Text: txt, Choice: choice, Asked: it.ask.Asked}
 	delete(s.deferred, itemKey(it))
 	for i, a := range s.answers {
@@ -380,13 +384,23 @@ func (s sitting) view(w, h int, lanes []StationLane) []string {
 				mark = " · crew pick: " + a.PickReason
 			}
 			if a.Pick == nil && i == 0 {
-				mark = " · board suggestion: " + a.NoPickReason
+				mark = " · board suggestion: first listed (board ordering fallback)"
 			}
 			rows = append(rows, fmt.Sprintf("%d  %s — %s%s", i+1, c.Label, oneLine(c.Effect), mark))
 		}
+		if a.Pick == nil && a.NoPickReason != "" {
+			rows = append(rows, dim.Render("Crew gave no pick: "+oneLine(a.NoPickReason)))
+		}
+	}
+	if !a.Answerable {
+		rows = append(rows, dim.Render("No verifiable task ID: read-only here; d defers."))
 	}
 	if s.details {
-		rows = append(rows, "", text.Render(oneLine(a.Detail)), dim.Render("Asked "+a.Asked.Format(time.RFC3339)+" · waiting impact: "+oneLine(a.WaitsOnThis)))
+		asked := "time unknown"
+		if !a.Asked.IsZero() {
+			asked = a.Asked.Format(time.RFC3339)
+		}
+		rows = append(rows, "", text.Render(oneLine(a.Detail)), dim.Render("Asked "+asked+" · waiting impact: "+oneLine(a.WaitsOnThis)))
 		for _, group := range [][]LaneRecordLink{a.Tickets, a.PullRequests, a.GrillPages} {
 			for _, link := range group {
 				rows = append(rows, oneLine(link.Title)+" "+link.URL)
