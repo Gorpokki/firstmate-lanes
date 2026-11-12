@@ -400,7 +400,11 @@ func (m model) laneView(w, h int) []string {
 	rows = append(rows, shipLines(l, m.tick, max(1, w-4), max(2, h/3))...)
 	rows = append(rows, text.Render("CREW'S LAST WORD  "+oneLine(l.Now)), lab(cLav).Render("HISTORY"))
 	for _, event := range tail(l.History, max(1, (h-len(rows)-4)/2)) {
-		rows = append(rows, dim.Render(event.At.Format("Jan 2 15:04"))+" "+pill(event.State, stateColor(event.State))+" "+oneLine(event.Text))
+		when := "time unknown"
+		if !event.At.IsZero() {
+			when = event.At.Format("Jan 2 15:04")
+		}
+		rows = append(rows, dim.Render(when)+" "+pill(event.State, stateColor(event.State))+" "+oneLine(event.Text))
 	}
 	rows = append(rows, lab(cPeach).Render(fmt.Sprintf("ASKS %d · a starts sitting", len(l.Asks))))
 	for _, ask := range l.Asks {

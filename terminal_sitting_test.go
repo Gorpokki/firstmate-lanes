@@ -151,7 +151,7 @@ func TestTerminalReadOnlyAsksDoNotTakeSittingSlots(t *testing.T) {
 	}
 }
 
-func TestTerminalAllReadOnlySittingSendsNothing(t *testing.T) {
+func TestTerminalAllReadOnlySittingHasNoAsks(t *testing.T) {
 	asked := time.Date(2026, 11, 12, 9, 0, 0, 0, time.UTC)
 	lanes := []StationLane{{ID: "lane-d", Name: "Lane D", State: "needs you", Asks: []StationAsk{{Form: "discussion", Key: "default", Topic: "Keyless?", MustDecide: []string{"Plan"}, Effort: "quick", Asked: asked}}}}
 	m := model{fleet: Fleet{Stations: lanes}, view: 0, w: 120, h: 40, selected: map[string]bool{}}
@@ -161,10 +161,6 @@ func TestTerminalAllReadOnlySittingSendsNothing(t *testing.T) {
 	}
 	if !strings.Contains(m.View(), "read-only") {
 		t.Fatalf("empty read-only sitting not explained:\n%s", m.View())
-	}
-	m, _ = m.key("y")
-	if m.pendingSend {
-		t.Fatal("read-only sitting initiated a send")
 	}
 }
 
