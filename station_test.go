@@ -55,15 +55,33 @@ func TestOnlyOwnedNativeAsksAreAnswerable(t *testing.T) {
 	}
 }
 
-func TestUndatedAsksAreReadOnlyAndDoNotAcceptZeroTimeReceipts(t *testing.T) {
+func TestUndatedOwnedAskStaysAnswerableAndZeroTimeReceiptHidesNothing(t *testing.T) {
 	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
 	row, _ := stationLane(Lane{ID: "owned", OwnerDir: "/home", State: "needs-decision", Decisions: []Decision{{Key: "route", Verb: "needs-decision"}}}, now)
-	if len(row.Asks) != 1 || row.Asks[0].Answerable {
-		t.Fatalf("undated ask should stay visible and read-only: %+v", row.Asks)
+	if len(row.Asks) != 1 || !row.Asks[0].Answerable {
+		t.Fatalf("undated owned native ask should stay answerable: %+v", row.Asks)
 	}
-	r := &Reader{accepted: map[string]time.Time{receiptID("/home", "owned", "route"): {}}}
-	if r.isAccepted("/home", "owned", "route", time.Time{}) {
-		t.Fatal("zero-time receipt hid an undated ask")
+	r := &Reader{}
+	if err := r.acknowledge("/home", "owned", "route", time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	lanes := []Lane{{ID: "owned", OwnerDir: "/home", Decisions: []Decision{{Key: "route", Verb: "needs-decision"}}}}
+	r.removeAccepted(lanes)
+	if len(lanes[0].Decisions) != 1 {
+		t.Fatal("zero-time receipt hid a re-held undated ask")
+	}
+	stale := &Reader{accepted: map[string]time.Time{receiptID("/home", "owned", "route"): {}}}
+	stale.removeAccepted(lanes)
+	if len(lanes[0].Decisions) != 1 {
+		t.Fatal("persisted zero-time receipt hid a re-held undated ask")
+	}
+}
+
+func TestRegisteredHomeNamedLocalStaysAnswerable(t *testing.T) {
+	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	row, _ := stationLane(Lane{ID: "local/build", Home: "local", SecondMate: "local", OwnerDir: "/home", State: "needs-decision", Decisions: []Decision{{Key: "route", Verb: "needs-decision", At: now}}}, now)
+	if len(row.Asks) != 1 || !row.Asks[0].Answerable {
+		t.Fatalf("second mate aliased local lost answerability: %+v", row.Asks)
 	}
 }
 

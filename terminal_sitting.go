@@ -20,6 +20,7 @@ type sitting struct {
 	deferred                                       map[string]bool
 	own                                            string
 	ownMode, searchMode, review, details, finished bool
+	readOnly                                       int
 	message                                        string
 }
 type answerResultMsg struct {
@@ -36,6 +37,8 @@ func (s *sitting) load(lanes []StationLane) {
 		for _, ask := range lane.Asks {
 			if ask.Answerable {
 				asks = append(asks, ask)
+			} else {
+				s.readOnly++
 			}
 		}
 		sort.SliceStable(asks, func(i, j int) bool {
@@ -333,6 +336,10 @@ func (s sitting) view(w, h int, lanes []StationLane) []string {
 		return render("delivery")
 	}
 	if len(s.items) == 0 {
+		if s.readOnly > 0 {
+			rows = append(rows, text.Render(fmt.Sprintf("%d read-only asks cannot be answered here. Lane shows why. l List · f Fleet · enter Lane", s.readOnly)))
+			return render("read-only")
+		}
 		rows = append(rows, dim.Render("NO OPEN ASKS"), text.Render("Select lanes in List; a opens their sitting. l List · f Fleet · enter Lane"))
 		return render("0 asks")
 	}

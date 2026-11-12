@@ -406,7 +406,7 @@ func (m model) laneView(w, h int) []string {
 	for _, ask := range l.Asks {
 		line := pill(ask.Effort, cGold) + " " + oneLine(askQuestion(ask))
 		if !ask.Answerable {
-			line += dim.Render(" · " + readOnlyReason(l, ask))
+			line += dim.Render(" · " + readOnlyReason(l))
 		}
 		rows = append(rows, line)
 	}

@@ -151,6 +151,23 @@ func TestTerminalReadOnlyAsksDoNotTakeSittingSlots(t *testing.T) {
 	}
 }
 
+func TestTerminalAllReadOnlySittingSendsNothing(t *testing.T) {
+	asked := time.Date(2026, 11, 12, 9, 0, 0, 0, time.UTC)
+	lanes := []StationLane{{ID: "lane-d", Name: "Lane D", State: "needs you", Asks: []StationAsk{{Form: "discussion", Key: "default", Topic: "Keyless?", MustDecide: []string{"Plan"}, Effort: "quick", Asked: asked}}}}
+	m := model{fleet: Fleet{Stations: lanes}, view: 0, w: 120, h: 40, selected: map[string]bool{}}
+	m.openSitting()
+	if len(m.sitting.items) != 0 || m.sitting.readOnly != 1 {
+		t.Fatalf("read-only ask entered the sitting: items=%d readOnly=%d", len(m.sitting.items), m.sitting.readOnly)
+	}
+	if !strings.Contains(m.View(), "read-only") {
+		t.Fatalf("empty read-only sitting not explained:\n%s", m.View())
+	}
+	m, _ = m.key("y")
+	if m.pendingSend {
+		t.Fatal("read-only sitting initiated a send")
+	}
+}
+
 func TestTerminalLongAskCanBeReadBeforeAnswering(t *testing.T) {
 	m := model{fleet: Fleet{Stations: terminalFixture()}, view: 0, w: 60, h: 16}
 	m.fleet.Stations[0].Asks[0].Detail = strings.Repeat("synthetic context ", 100) + "end-of-detail"
