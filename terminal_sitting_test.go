@@ -93,6 +93,22 @@ func TestTerminalMultipleSelectionKeepsUncheckedLanesVisible(t *testing.T) {
 	}
 }
 
+func TestTerminalListSelectionStartsUntouchedSittingOnEveryAskEntry(t *testing.T) {
+	for _, entry := range []string{"a", "shift+tab"} {
+		m := model{fleet: Fleet{Stations: terminalFixture()}, view: 1, w: 100, h: 30}
+		m, _ = m.key("a")
+		m, _ = m.key("l")
+		m, _ = m.key("space")
+		m, _ = m.key(entry)
+		if m.view != 0 || len(m.sitting.items) != 1 || len(m.selected) != 1 {
+			t.Fatalf("%s: view=%d items=%d selected=%v, want Ask with only the selected lane's ask", entry, m.view, len(m.sitting.items), m.selected)
+		}
+		if !m.selected[m.sitting.items[0].lane.ID] {
+			t.Fatalf("%s: sitting holds lane %q, not the selected lane", entry, m.sitting.items[0].lane.ID)
+		}
+	}
+}
+
 func TestTerminalLongAskCanBeReadBeforeAnswering(t *testing.T) {
 	m := model{fleet: Fleet{Stations: terminalFixture()}, view: 0, w: 60, h: 16}
 	m.fleet.Stations[0].Asks[0].Detail = strings.Repeat("synthetic context ", 100) + "end-of-detail"

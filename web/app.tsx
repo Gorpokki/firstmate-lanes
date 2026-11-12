@@ -81,7 +81,7 @@ function App(){
    try{const refreshed=await fetch('/fleet.json',{cache:'no-store'});if(!refreshed.ok)throw Error('Fleet refresh failed');setFleet(await refreshed.json());}
    catch{setError('Answer results received; fleet refresh failed');}
    return results;
-  }}/>}
+  }}/>
   {modelWarnings.length>0&&<details><summary>Model admission warnings</summary>{modelWarnings.map(w=><p key={w}>{w}</p>)}</details>}
  </main>;
 }
