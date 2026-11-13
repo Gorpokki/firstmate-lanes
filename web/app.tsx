@@ -22,6 +22,7 @@ import { Simulation } from "./Simulation";
 import { assignedShip, loadCatalog, type ShipMesh } from "./mesh-catalog";
 
 const POLL_MS = 3000;
+const AGE_TICK_MS = 30000;
 type Pop = "find" | "changed" | "save" | "keys" | null;
 type Toggle = (pop: Pop) => void;
 const stationKeys: [Station, string, string][] = [
@@ -392,7 +393,7 @@ function Pops(
 		return (
 			<div className="pop" role="dialog" aria-label="Save">
 				<span className="lab">{freshness(p.fleet.updatedAt)}</span>
-				{`The board reads Firstmate's state again every ${POLL_MS / 1000} seconds; if it stays old, check that Firstmate is running.`}
+				{`The board server reads Firstmate's state files for each poll, every ${POLL_MS / 1000} seconds; if the reading stays old, check that the board server is running and reachable.`}
 			</div>
 		);
 	return null;
@@ -550,6 +551,11 @@ function App() {
 			clearInterval(timer);
 		};
 	}, [simulation]);
+	const [, setAge] = useState(0);
+	useEffect(() => {
+		const timer = setInterval(() => setAge((n) => n + 1), AGE_TICK_MS);
+		return () => clearInterval(timer);
+	}, []);
 	useEffect(() => {
 		const key = (e: KeyboardEvent) => {
 			if (
