@@ -32,25 +32,26 @@ Other Host values receive 403, including on answer and asset routes.
 
 - **List:** state headings, needs-you lanes ordered by oldest recent ask, then waiting, working, done and holding. Filter by second mate, inspect quick/read asks, tick lanes and start their sitting. The second-mate filter scopes List only: a sitting covers every ticked lane, including ticked lanes the filter hides, and Ask shows how many there are.
 - **Fleet:** a heat grid and a caged shipyard, with state shares, state filtering, selected-lane focus, working drones and a Motion switch. Mouse drag pans; Shift-drag turns; the wheel zooms; double-click resets. Touch drag pans, two fingers turn/pinch, and double-tap resets. Labels are collision-aware; the selected lane's name remains visible.
-- **Lane:** a lit, rotating triangle-mesh ASCII ship, build materialization, ship name, crew's last word, timestamped history and asks. Drag turns/tilts, wheel or buttons zoom, Space pauses/resumes, and double-click resets. Blocked ships flicker red; failed ships break apart and the breakup ends.
+- **Lane:** the lane's ship, large, with its name and build percentage, and the status log under it as a strip and timed lines. Beside the ship the lane's asks are answered in place: choices (`1`-`9`), own answer (`o`), crew-decides skip (`s`), defer (`w`), grill (`g`) and undo (`u`); `↑` `↓` step through the asks and `i` opens the lane's list of asks with its own find. The lane's answers go as one batch through the answer command (`y`), and only once every ask of the lane has an answer, a skip or a grill, or is deferred. `esc` goes back to the station that opened the lane. A blocked lane's ship stops at half build in steady grey; a failed lane's hull breaks apart.
+- **Holo view:** one ASCII renderer draws every lane's ship, on Lane, Ask and the lane simulation, with the same controls: ASCII lit, ASCII flat or bars (`v`); the unbuilt hull as dot fill, dim hull or wireframe; zoom −, + and fit; tilt; spin (`space`). Drag turns and tilts, the wheel zooms, double-click resets, and on Lane `←` `→` turn the ship. The view mode and fill are shared by every holo and kept in the browser. The ship turns by itself unless the browser asks for reduced motion.
 - **Ask:** up to four asks, quick first and grouped by the lane's second mate. Questions, reasons and choices precede the ship and expandable detail. A crew pick is labelled with its reason; a board suggestion is explicitly labelled when there is no crew pick. Discussion asks show their must-decide items and offer a grill request first. Choice, own answer, crew-decides skip, defer, grill, undo and review do not send anything. The send card identifies each answer by lane name and question. **Confirm and send sitting** is the one sending action, and it stays disabled until every ask in the sitting has a choice, own answer, skip or grill request, so the whole batch goes at once and any answer can be undone or changed before then. A deferred ask leaves the sitting and returns in a later one.
 
 - **Board:** Find lane (`/`) finds any lane by name, holding lanes too. Changed lanes (`c`) lists the lanes whose state changed since your last look; its **save this as your last look** link saves a new last look. The reading age at the right of the top bar opens a box that says how fresh the reading is. Keys (`?`) lists the web keys; on a phone, More holds the board switch and Lane sim.
 
 `/simulation` is a web-only surface, opened from Lane sim in the station rail.
-It exercises every state, blocked flicker, finite failure breakup, ASCII/quadrant output and every admitted model in the loaded pool.
+It runs one admitted model through every lane state and ends in its failure: stress eruptions on the hull, the rupture with its blast, then nine rigid pieces that drift out of the field, each with its own velocity and spin. The drawing stops once every piece has left the field. Pause, Restart, Step, a state button for each state and Blow it up (`x`) drive it; the ship picker lists every admitted model in the loaded pool.
 It uses synthetic lane data and never answers a real ask.
 
 The simulation keeps idle and hidden performance budgets, recorded in `web/perf/budget.json`:
 
 - **Hidden:** while the page is hidden, it draws no ship frames, steps no states and makes no requests. Spin and steps resume where they stopped once the page is visible again.
-- **Idle:** when the breakup settles, the ship stops spinning by itself. With the simulation paused and the spin stopped, the page draws no frames and makes no requests. Restart or Spin starts the ship again.
+- **Idle:** when the debris has left the field, the ship stops spinning by itself. With the simulation paused and the spin stopped, the page draws no frames and makes no requests. Restart or Spin starts the ship again.
 - **Active:** spin redraws stay at 24 frames a second or fewer, within a main-thread script budget.
 - **Fleet:** the simulation never reads `/fleet.json`.
 
 Lane and Ask ships also stop spinning while the page is hidden.
 `web/perf/simulation-budget.mjs` serves `testdata/sample-home` with a built `fmlanes` and runs `/simulation` in headless Chromium.
-It counts ship redraws, requests, simulation steps and Chromium script time over fixed windows, and fails when any budget is exceeded:
+It counts ship canvas paints, requests, simulation steps and Chromium script time over fixed windows, and fails when any budget is exceeded:
 
 ```sh
 (cd web && bun run build) && go build -o fmlanes .
@@ -76,6 +77,8 @@ The **Simulation budget** GitHub workflow builds the web bundle from source, run
 | `z` | Show or hide the rest of the board on the web Ask station |
 | `/`, `c`, `?`, `esc` | Web: find a lane, changed lanes, keys, close a box |
 | `space` | Tick the focused List lane; pause/resume a Lane or Ask ship |
+| `v` | Web: ship view, ASCII lit, ASCII flat or bars |
+| `i`, `esc` | Web Lane: the lane's list of asks; back to the station that opened it |
 | `o` | Focus/type an own answer in Ask |
 | `tab`, `shift+tab` | Next/previous terminal station |
 | `↑`, `↓` or `k`, `j` | Select a terminal lane or ask |
@@ -215,7 +218,7 @@ Only use assets you have permission to use; never publish personal, third-party-
 
 4. By default, output goes to `models/converted`. It contains `meshes.json` and little-endian signed-16-bit high/low triangle buffers. The converter excludes its own output from source discovery.
 5. Start the normal full build with the same drop-in configuration. It preloads the admitted pool automatically. `--ships "$CONVERTED_ROOT"` explicitly selects a pool and takes its parent as the models root, so use it only when `CONVERTED_ROOT` sits directly inside `MODEL_ROOT`. For an output folder elsewhere, set both `models` (`MODEL_ROOT`) and `ships` (`CONVERTED_ROOT`) in the configuration file and start without `--ships`. Refresh an already open web page after changing the pool.
-6. Open `/simulation`, choose the model, inspect nose/up orientation, rotate it, switch ASCII/quadrant output, and inspect blocked/failed states.
+6. Open `/simulation`, choose the model, inspect nose/up orientation, rotate it, switch the ship view, and inspect the blocked and failed states.
 
 Admission verifies the current source, manifest, converter, checker, renderer and output hashes, explicit orientation and reference-checked algorithm-2 certificates.
 After duplicate, degenerate and winding repair, conversion compares the actual quantized output against its repaired source through the application's double-sided quadrant depth and triangle buffers.
