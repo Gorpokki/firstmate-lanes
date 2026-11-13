@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
 	boardSummary,
@@ -47,6 +47,10 @@ const KEYS: [string, string][] = [
 	["space", "list: tick the lane · ask, lane: spin the ship, or stop it"],
 	["o", "ask station: type your own answer"],
 	["v", "ship view: ASCII lit, ASCII flat, bars"],
+	["b", "fleet: the heat grid or the shipyard"],
+	["t", "shipyard: from an angle or from the top"],
+	["h", "fleet: show or hide the holding lanes"],
+	["m", "motion: the flashes and the drones on or off"],
 	["i", "lane: its list of asks, with find"],
 	["arrows", "lane: ← → turn the ship, ↑ ↓ its asks"],
 	["1-9 s w g u y", "lane: choose, skip, defer, grill, undo, send"],
@@ -72,6 +76,16 @@ const SIM_TITLE =
 	"One ship run through every lane state, for the review of the holo view";
 const Key = ({ k }: { k: string }) => <kbd className="k">{k}</kbd>;
 const phone = () => matchMedia("(max-width: 760px)").matches;
+
+// Motion: the flashes of a lane that changed and the shipyard's drones; a ship's spin has its own switch. motionOn is the
+// switch; motion is what moves, off too when the system asks for reduced motion.
+function useMotion() {
+	const [motionOn, setMotionOn] = useState(true),
+		flipMotion = useCallback(() => setMotionOn((on) => !on), []),
+		motion =
+			motionOn && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+	return { motionOn, flipMotion, motion };
+}
 
 function StationButtons(p: { station: Station; go: (s: Station) => void }) {
 	return (
@@ -137,11 +151,30 @@ function TopBar(p: {
 		</div>
 	);
 }
+function MotionButton(p: {
+	motion: boolean;
+	flipMotion: () => void;
+	className: string;
+	keyed?: boolean;
+}) {
+	return (
+		<button
+			className={p.className}
+			aria-pressed={p.motion}
+			onClick={p.flipMotion}
+		>
+			Motion: {p.motion ? "on" : "off"}
+			{p.keyed && <Key k="m" />}
+		</button>
+	);
+}
 function Rail(p: {
 	station: Station;
 	focus: boolean;
 	go: (s: Station) => void;
 	toggle: Toggle;
+	motion: boolean;
+	flipMotion: () => void;
 }) {
 	return (
 		<nav className="rail" aria-label="Stations">
@@ -161,6 +194,12 @@ function Rail(p: {
 						Find lane
 						<Key k="/" />
 					</button>
+					<MotionButton
+						className="sm"
+						motion={p.motion}
+						flipMotion={p.flipMotion}
+						keyed
+					/>
 					<button className="sm" onClick={() => p.toggle("keys")}>
 						Keys
 						<Key k="?" />
@@ -365,6 +404,8 @@ function KeysBox(p: {
 	station: Station;
 	board: boolean;
 	flipBoard: () => void;
+	motion: boolean;
+	flipMotion: () => void;
 }) {
 	return (
 		<div className="pop" role="dialog" aria-label="Keys">
@@ -374,6 +415,11 @@ function KeysBox(p: {
 					{p.board ? "Hide the board" : "Show the board"}
 				</button>
 			)}
+			<MotionButton
+				className="btn motionbtn"
+				motion={p.motion}
+				flipMotion={p.flipMotion}
+			/>
 			<a className="btn motionbtn" href="/simulation" title={SIM_TITLE}>
 				Lane sim
 			</a>
@@ -391,6 +437,9 @@ function KeysBox(p: {
 type FrameProps = {
 	fleet: Fleet;
 	station: Station;
+	flash: string[];
+	motion: boolean;
+	flipMotion: () => void;
 	go: (s: Station) => void;
 	openLane: (id: string) => void;
 	saveLook: () => void;
@@ -398,7 +447,7 @@ type FrameProps = {
 	children: React.ReactNode;
 };
 function Pops(
-	p: Omit<FrameProps, "children" | "go"> & {
+	p: Omit<FrameProps, "children" | "go" | "flash"> & {
 		pop: Pop;
 		close: () => void;
 		board: boolean;
@@ -423,7 +472,13 @@ function Pops(
 		return <ChangedBox fleet={p.fleet} saveLook={p.saveLook} />;
 	if (p.pop === "keys")
 		return (
-			<KeysBox station={p.station} board={p.board} flipBoard={p.flipBoard} />
+			<KeysBox
+				station={p.station}
+				board={p.board}
+				flipBoard={p.flipBoard}
+				motion={p.motion}
+				flipMotion={p.flipMotion}
+			/>
 		);
 	if (p.pop === "save")
 		return (
@@ -440,10 +495,12 @@ function useFrameKeys(
 	flipBoard: () => void,
 	toggle: Toggle,
 	close: () => void,
+	flipMotion: () => void,
 ) {
 	useEffect(() => {
 		const keys: Record<string, () => void> = {
 			"/": () => toggle("find"),
+			m: flipMotion,
 			c: () => toggle("changed"),
 			"?": () => toggle("keys"),
 			Escape: close,
@@ -460,13 +517,14 @@ function useFrameKeys(
 		};
 		window.addEventListener("keydown", key);
 		return () => window.removeEventListener("keydown", key);
-	}, [station]);
+	}, [station, flipMotion]);
 }
 // A lane that changed state since the reading before lights its strip mark and the summary once; the class drops at the next reading.
-function useFlash(fleet: Fleet) {
+function useFlash(fleet: Fleet | null) {
 	const seen = useRef<Record<string, string> | null>(null),
 		[flash, setFlash] = useState<string[]>([]);
 	useEffect(() => {
+		if (!fleet) return;
 		const ids = stateChanges(seen.current, fleet);
 		seen.current = Object.fromEntries(
 			fleet.stationLanes.map((l) => [l.id, l.state]),
@@ -483,8 +541,8 @@ function Frame(p: FrameProps) {
 		setPop((old) => (old === next ? null : next));
 	const flipBoard = () => setBoard((shown) => !shown);
 	const close = () => setPop(null);
-	useFrameKeys(p.station, flipBoard, toggle, close);
-	const flash = useFlash(p.fleet);
+	useFrameKeys(p.station, flipBoard, toggle, close, p.flipMotion);
+	const flash = p.motion ? p.flash : []; // Motion off: no mark or summary lights
 	const focus = p.station === "ask" && !board,
 		quiet = p.station === "ask" || p.station === "list";
 	const openFleet = () => p.go("fleet");
@@ -500,7 +558,14 @@ function Frame(p: FrameProps) {
 				flipBoard={flipBoard}
 				toggle={toggle}
 			/>
-			<Rail station={p.station} focus={focus} go={p.go} toggle={toggle} />
+			<Rail
+				station={p.station}
+				focus={focus}
+				go={p.go}
+				toggle={toggle}
+				motion={p.motion}
+				flipMotion={p.flipMotion}
+			/>
 			<main className="main">
 				{p.station !== "ask" && (
 					<Summary
@@ -541,6 +606,8 @@ function Frame(p: FrameProps) {
 			<Pops
 				fleet={p.fleet}
 				station={p.station}
+				motion={p.motion}
+				flipMotion={p.flipMotion}
 				openLane={p.openLane}
 				saveLook={p.saveLook}
 				pop={pop}
@@ -563,6 +630,8 @@ function App() {
 	const [have, setHave] = useState<string[]>([]);
 	const [meshes, setMeshes] = useState<ShipMesh[]>([]),
 		[modelWarnings, setModelWarnings] = useState<string[]>([]);
+	const { motionOn, flipMotion, motion } = useMotion();
+	const flash = useFlash(fleet);
 	const simulation = location.pathname === "/simulation";
 	// The Lane station's esc goes back to the station that opened it.
 	const go = (next: Station) => {
@@ -715,6 +784,9 @@ function App() {
 		<Frame
 			fleet={fleet}
 			station={station}
+			flash={flash}
+			motion={motionOn}
+			flipMotion={flipMotion}
 			go={go}
 			openLane={openLane}
 			saveLook={saveLook}
@@ -753,7 +825,11 @@ function App() {
 					<FleetStation
 						fleet={fleet}
 						meshes={meshes}
-						onSelect={(row) => setSelected(row.id)}
+						lane={lane}
+						motion={motion}
+						flash={flash}
+						onSelect={setSelected}
+						onOpen={openLane}
 					/>
 				)}
 				<AskStation

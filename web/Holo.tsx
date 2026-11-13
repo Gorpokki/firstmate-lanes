@@ -19,7 +19,7 @@ export const buildOf=(state:string,blocked:boolean,failed:boolean,progress?:numb
 const fieldKey=(event:KeyboardEvent)=>event.metaKey||event.ctrlKey||event.altKey||(event.target instanceof HTMLElement&&!!event.target.closest('input,textarea,select,[contenteditable=true]'));
 const spaceToggles=(event:KeyboardEvent)=>event.code==='Space'&&!event.repeat&&!fieldKey(event)&&!(event.target instanceof HTMLElement&&event.target.closest('button'));
 // the ship's colours: a light tone of its state colour; the unbuilt hull's wire and fill in darker tones of it
-const shipHex=(hex:string)=>'#'+[1,3,5].map((i,k)=>Math.round(parseInt(hex.slice(i,i+2),16)*.6+[255,230,204][k]*.4).toString(16).padStart(2,'0')).join('');
+export const shipHex=(hex:string)=>'#'+[1,3,5].map((i,k)=>Math.round(parseInt(hex.slice(i,i+2),16)*.6+[255,230,204][k]*.4).toString(16).padStart(2,'0')).join('');
 const shade=(hex:string,k:number)=>'#'+[1,3,5].map(i=>Math.round(parseInt(shipHex(hex).slice(i,i+2),16)*k).toString(16).padStart(2,'0')).join('');
 const inHue=(scene:Scene,hex:string):Scene=>({...scene,objs:scene.objs.map(o=>({...o,wire:shade(hex,.55),dim:shade(hex,.26)}))});
 

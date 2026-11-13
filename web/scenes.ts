@@ -1,7 +1,8 @@
-// The holo view's scenes, with no UI: the carousel (one lane's ship, turning) and its explosion. A port of the approved
-// prototype's scenes, which follow the first Go ship renderer.
-import {hex} from './ascii3d';
-import type {Cam,Dot,Inner,Mesh,RGB,Scene,V3} from './ascii3d';
+// The holo view's scenes, with no UI: the carousel (one lane's ship, turning), its explosion, and the shipyard (every
+// shown lane's ship in an ASCII drydock, with its worker drones). A port of the approved prototype's scenes, which follow
+// the first Go ship renderer.
+import {hex,slab,view} from './ascii3d';
+import type {Cam,Dot,Inner,Label,Mesh,Obj,RGB,Scene,Seg,V3} from './ascii3d';
 
 export const SPIN=.75; // rad/s: one turn in about 8.4 s
 export const CAR0={yaw:-.65,pitch:.35};
@@ -193,4 +194,116 @@ export function blastPhase(b:Blast,t:number,V:BlastView):BlastPhase{
  const ppu=X.fit*V.zoom*pullback(s),corner=Math.hypot(V.w*V.cw,V.h*V.ch)/2/ppu,gas=Math.max(...b.sites.map(site=>site.start))+30;
  const gone=X.chunks.every(c=>!c||Math.hypot(c.c[0]+c.v[0]*s,c.c[1]+c.v[1]*s,c.c[2]+c.v[2]*s)-c.rad>corner);
  return gone&&t/TICK>gas?'settled':'debris';
+}
+
+// ---------------- the shipyard ----------------
+// Motion means news: the yard is drawn at this fixed time, so its lights and sparks hold still; only the drones move.
+export const STILL=300;
+// yard: how far the berth's ship is built: scaffold (a frame, nothing built), hull (in work), lit (needs you or waits),
+// launched (done), stalled (blocked or failed). color: its hull's colour.
+export type YardLane={id:string;name:string;yard:string;color:string;hot:boolean;failed:boolean};
+const S=7,GX=20,GZ=18; // ship scale (radius 7), berth pitch along and across the keel
+const PROG:Record<string,number>={scaffold:0,hull:.55,lit:1,launched:1,stalled:.5};
+const FRAME='#E09A45',CLAMP='#C8D2E6';
+export type Berth={lane:YardLane;i:number;mesh:Mesh|null;at:V3;x0:number;x1:number;zf:number;y1:number;ym:number;segs:Seg[];clamps:Seg[];lights:V3[]};
+export const ISO={yaw:.16,pitch:.8},TOP={yaw:0,pitch:Math.PI/2};
+
+// one berth: an ASCII scaffold of ribs and rails around the hull, harness clamps onto it, and a pad in the lane's colour
+function berth(lane:YardLane,i:number,mesh:Mesh|null,c:[number,number]):Berth{
+ const lo=mesh?.lo??[-1,-.3,-.5],hi=mesh?.hi??[1,.3,.5];
+ const at:V3=[c[0],3-lo[1]*S,c[1]];
+ const x0=at[0]+lo[0]*S-1.6,x1=at[0]+hi[0]*S+1.6,zf=Math.max(-lo[2],hi[2])*S+1.6;
+ const y1=at[1]+hi[1]*S+1.6,ym=at[1];
+ const color=lane.yard==='stalled'?'#6A6472':lane.yard==='launched'?'#6b4a1a':FRAME;
+ const segs:Seg[]=[],clamps:Seg[]=[],lights:V3[]=[];
+ // the frame stays behind the hull in the picture, so the ship always reads inside its dock
+ const seg=(a:V3,b:V3,col=color,back=true)=>segs.push({a,b,color:col,id:i,back});
+ const z0=c[1]-zf,z1=c[1]+zf,xs=[0,1,2,3].map(k=>x0+(x1-x0)*k/3);
+ seg([x0,y1,z0],[x1,y1,z0],color,false);seg([x0,y1,z1],[x1,y1,z1],color,false); // the two top rails: with the ribs a cage around the hull
+ xs.forEach((x,k)=>{
+  seg([x,0,z0],[x,y1,z0],color,false);seg([x,0,z1],[x,y1,z1],color,false);seg([x,y1,z0],[x,y1,z1]); // a rib: two posts in front of the hull, a top beam behind it
+  lights.push([x,y1,z0],[x,y1,z1]);
+  if(mesh&&(k===1||k===2)){ // harness: clamp arms from the inner ribs onto the hull, two from the sides and one from above
+   const sl=slab(mesh,Math.min(.94,Math.max(.06,(x-(at[0]+lo[0]*S))/((hi[0]-lo[0])*S))));
+   clamps.push({a:[x,ym,z0],b:[x,ym,c[1]-sl.z*S-.3],color:CLAMP,id:i},{a:[x,ym,z1],b:[x,ym,c[1]+sl.z*S+.3],color:CLAMP,id:i});
+   clamps.push({a:[x,y1,c[1]],b:[x,at[1]+sl.yHi*S+.3,c[1]],color:CLAMP,id:i});
+  }
+ });
+ for(const y of [ym,y1]){seg([x0,y,z0],[x1,y,z0]);seg([x0,y,z1],[x1,y,z1]);} // keel-wise rails
+ const pz0=z0-1,pz1=z1+1,px0=x0-1,px1=x1+1;
+ for(const [a,b] of [[[px0,0,pz0],[px1,0,pz0]],[[px1,0,pz0],[px1,0,pz1]],[[px1,0,pz1],[px0,0,pz1]],[[px0,0,pz1],[px0,0,pz0]]] as [V3,V3][])segs.push({a,b,color,id:i,ch:'═',back:true});
+ return {lane,i,mesh,at,x0,x1,zf,y1,ym,segs,clamps,lights};
+}
+// the berths in a grid of `cols`
+export function yardLayout(lanes:YardLane[],meshOf:(l:YardLane)=>Mesh|null,cols:number,gx=GX,gz=GZ){ // gx, gz: the berth pitch, wider when every berth has a name above it
+ const rows=Math.max(1,Math.ceil(lanes.length/cols));
+ const berths=lanes.map((l,i)=>berth(l,i,meshOf(l),[(i%cols-(cols-1)/2)*gx,(Math.floor(i/cols)-(rows-1)/2)*gz]));
+ return {berths};
+}
+export const yardCols=(n:number)=>Math.max(1,Math.ceil(Math.sqrt(n*1.4)));
+// scale and centre that fit every berth in w x h px from this camera angle
+export function fitYard(berths:Berth[],yaw:number,pitch:number,wPx:number,hPx:number){
+ let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;
+ for(const b of berths)for(const x of [b.x0,b.x1])for(const z of [b.at[2]-b.zf-1,b.at[2]+b.zf+1])for(const y of [0,b.y1+4]){
+  const q=view({yaw,pitch,ppu:1,px:0,py:0},x,y,z);
+  x0=Math.min(x0,q[0]);x1=Math.max(x1,q[0]);y0=Math.min(y0,q[1]);y1=Math.max(y1,q[1]);
+ }
+ const fit=x1>x0?Math.min(wPx*.96/(x1-x0),hPx*.92/(y1-y0)):0;
+ return {fit,bx:-(x0+x1)/2*fit,by:(y0+y1)/2*fit};
+}
+// one berth's ship: its build, glow and colour by its yard state, welding sparks on a hull in work, thrust behind a launched one
+function berthShip(b:Berth,m:Mesh,now:number,rnd:()=>number,objs:Obj[],dots:Dot[]){
+ const y=b.lane.yard;
+ const at:V3=[...b.at];
+ let prog=PROG[y]??0,glow=1,rgb=hex(b.lane.color);
+ if(y==='hull')prog+=.06*Math.sin(now/1250);
+ if(y==='lit')glow=1.1+.15*Math.sin(now/400);
+ if(y==='stalled')rgb=STALLED;
+ if(y==='launched'){at[1]+=8+Math.sin(now/800)*.6;at[0]+=3;}
+ objs.push({mesh:m,at,s:S,id:b.i,rgb,prog,glow,broken:b.lane.failed});
+ const xl=(u:number)=>at[0]+(m.lo[0]+u*(m.hi[0]-m.lo[0]))*S;
+ if(y==='hull'||y==='stalled'){ // welding sparks along the build frontier
+  const u=Math.max(0,Math.min(1,(prog-.075)/.85)),sl=slab(m,u);
+  for(let k=0;k<7;k++)if(rnd()<(y==='hull'?.7:.15))dots.push({p:[xl(u)+(rnd()-.5)*.8,at[1]+(rnd()-.3)*sl.yHi*S,at[2]+(rnd()-.5)*2*sl.z*S],ch:"*+'`."[k%5]!,color:'#FFF2A8',id:b.i});
+ }
+ if(y==='launched')for(let k=1;k<=14;k++){ // thrust trail behind the stern
+  const sh=Math.floor(70+150*(1-k/14));
+  dots.push({p:[xl(0)-k*.7-rnd()*.4,at[1]+(rnd()-.5)*.6,at[2]+(rnd()-.5)*1.2],ch:k<5?'≈':k<10?'~':'·',color:`rgb(${sh>>1},${sh},255)`,id:b.i});
+ }
+}
+// One frame of the yard at time `now` (ms): build states, sparks, thrust, lights. Its sparks come from a fixed seed, so a
+// yard at rest is the same frame every time it is drawn.
+export function yardScene(berths:Berth[],now:number):Scene{
+ const objs:Obj[]=[],segs:Seg[]=[],dots:Dot[]=[],labels:Label[]=[],rnd=rng(7);
+ for(const b of berths){
+  const y=b.lane.yard;
+  segs.push(...b.segs);
+  if(y!=='launched')segs.push(...b.clamps);
+  b.lights.forEach((q,k)=>{if(Math.sin(now/330+k+b.i)>0)dots.push({p:q,ch:'•',color:k%2?'#FFFFFF':'#FFCC66',id:b.i});});
+  if(b.mesh)berthShip(b,b.mesh,now,rnd,objs,dots);
+ }
+ return {objs,segs,dots,labels};
+}
+// The worker drones: two on each ship in work. A drone flies a slow loop over the build frontier, stops, and zaps the hull
+// where it grows: a beam to a point on the frontier, and a white spark there; each zap takes a new point. now: the time of
+// the yard's frame (it sets where the frontier is); work: the drones' own clock (ms). The drones are a scene of their own,
+// so a caller draws them over a yard that is already drawn.
+export const DRONE='¤';
+export function droneScene(berths:Berth[],now:number,work:number):{segs:Seg[];dots:Dot[]}{
+ const segs:Seg[]=[],dots:Dot[]=[];
+ for(const b of berths){
+  if(b.lane.yard!=='hull'||!b.mesh)continue;
+  const m=b.mesh,at=b.at,u=Math.max(0,Math.min(1,(PROG.hull+.06*Math.sin(now/1250)-.075)/.85)),sl=slab(m,u),x=at[0]+(m.lo[0]+u*(m.hi[0]-m.lo[0]))*S,yHi=Math.max(.6,sl.yHi*S);
+  for(let d=0;d<2;d++){
+   const ph=work/1700+b.i*1.7+d*Math.PI,p:V3=[x+Math.cos(ph)*2.4,at[1]+yHi+1.5+.4*Math.sin(ph*2.3),at[2]+Math.sin(ph)*(sl.z*S+1.3)];
+   dots.push({p,ch:DRONE,color:'#9BE7FF',id:b.i});
+   const c=work/1100+b.i*.37+d*.5,cyc=c%1,shot=Math.floor(c);
+   if(cyc>=.4)continue;
+   const h=(n:number)=>{const v=Math.sin((shot+1)*12.9898+b.i*78.233+d*37.719+n)*43758.5453;return v-Math.floor(v);};
+   const t:V3=[x+(h(1)-.5)*1.2,at[1]+(.2+.7*h(2))*yHi,at[2]+(h(3)-.5)*1.6*sl.z*S];
+   segs.push({a:p,b:t,color:cyc<.2?'#FFFFFF':'#9BE7FF',id:b.i});
+   dots.push({p:t,ch:cyc<.2?'#':'*',color:'#FFFFFF',id:b.i});
+  }
+ }
+ return {segs,dots};
 }

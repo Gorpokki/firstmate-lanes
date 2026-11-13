@@ -40,12 +40,33 @@ export function toMesh(q:Int16Array):Mesh{
  return {pos,n,key,lo,hi};
 }
 const converted=new WeakMap<Int16Array,Mesh>();
-/** The renderer's mesh of an admitted ship (its high level of detail), converted once. */
-export function shipMesh(mesh:TriangleMesh):Mesh{
- const source=mesh.lod[1];
+/** The renderer's mesh of an admitted ship, converted once: its high level of detail, or its low one (level 0) for the yard. */
+export function shipMesh(mesh:TriangleMesh,level:0|1=1):Mesh{
+ const source=mesh.lod[level];
  let result=converted.get(source);
  if(!result){result=toMesh(source);converted.set(source,result);}
  return result;
+}
+// The hull's profile along the keel, in 16 slabs: its half width and its top and bottom, for the yard's harness clamps
+// and the drones. Taken once per mesh; a reduced mesh can leave a slab with no vertex, so it takes the nearest filled one.
+const SLABS=16,profiles=new WeakMap<Mesh,{z:Float32Array;yHi:Float32Array;yLo:Float32Array}>();
+export function slab(m:Mesh,u:number){
+ let p=profiles.get(m);
+ if(!p){
+  const P=m.pos,len=Math.max(1e-6,m.hi[0]-m.lo[0]);
+  p={z:new Float32Array(SLABS),yHi:new Float32Array(SLABS).fill(-Infinity),yLo:new Float32Array(SLABS).fill(Infinity)};
+  for(let i=0;i<P.length;i+=3){
+   const s=Math.min(SLABS-1,Math.floor((P[i]-m.lo[0])/len*SLABS));
+   p.z[s]=Math.max(p.z[s],Math.abs(P[i+2]));p.yHi[s]=Math.max(p.yHi[s],P[i+1]);p.yLo[s]=Math.min(p.yLo[s],P[i+1]);
+  }
+  for(const order of [[...Array(SLABS).keys()],[...Array(SLABS).keys()].reverse()]){
+   let last=-1;
+   for(const s of order)if(Number.isFinite(p.yHi[s]))last=s;else if(last>=0){p.yHi[s]=p.yHi[last];p.yLo[s]=p.yLo[last];p.z[s]=p.z[last];}
+  }
+  profiles.set(m,p);
+ }
+ const s=Math.min(SLABS-1,Math.max(0,Math.floor(u*SLABS)));
+ return {z:p.z[s],yHi:p.yHi[s],yLo:p.yLo[s]};
 }
 
 // ---- frame buffer ----
@@ -358,6 +379,12 @@ function paintLabels(ctx:CanvasRenderingContext2D,f:Frame,lf:number){
   ctx.fillStyle=l.color;rows.forEach((t,i)=>ctx.fillText(t,l.x,l.y+1-up+i*lp));
  }
  ctx.textAlign='start';
+}
+// the label under a point (px), for taps
+export function labelAt(f:Frame,ctx:CanvasRenderingContext2D,x:number,y:number,lf=12):number{
+ ctx.font=LABEL_FONT.replace('12px',`${lf}px`);
+ for(const l of f.labels){const rows=l.text.toUpperCase().split('\n');if(y<l.y+10&&y>l.y-10-(rows.length-1)*(lf+2)&&Math.abs(x-l.x)<Math.max(...rows.map(t=>ctx.measureText(t).width))/2+8)return l.id;}
+ return -1;
 }
 export function paint(ctx:CanvasRenderingContext2D,f:Frame,font:string,bg:string,lf=12){ // lf: the label size in px
  ctx.fillStyle=bg;ctx.fillRect(0,0,f.w*f.cw,f.h*f.ch);
