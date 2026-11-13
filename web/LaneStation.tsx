@@ -69,12 +69,12 @@ type BatchProps={lane:Lane;answers:Answers;left:number;deferred:number;ready:boo
 function LaneBatch(p:BatchProps){
  const sent=acceptedKeys(p.delivery);
  const rows=Object.values(p.answers).flatMap(answer=>{const ask=p.lane.asks.find(a=>a.key===answer.key);return ask?[{key:ask.key,q:question(ask),a:answerWords(ask,answer),sent:sent.has(ask.key)}]:[];});
- const pending=rows.filter(row=>!row.sent).length;
+ const pending=rows.filter(row=>!row.sent).length,allAccepted=!!p.delivery?.every(r=>r.accepted);
  if(!rows.length&&!p.delivery&&!p.error)return null;
  return <div className="answers" aria-label="Answers on this lane">
-  <span className="lab">{pending?'Your answers on this lane':'Sent'}</span>
+  <span className="lab">{pending?'Your answers on this lane':allAccepted?'Sent':'Delivery'}</span>
   <ol>{rows.map(row=><li key={row.key}><span className="aq">{row.q}</span><span className="aa">{row.a}</span>{row.sent&&<small>sent</small>}</li>)}</ol>
-  {p.delivery&&<ul aria-label="Delivery results">{p.delivery.map(r=><li key={r.key}>{r.key}: {r.accepted?'Accepted':'Refused'} — {r.reason}</li>)}</ul>}
+  {p.delivery&&<ul aria-label="Delivery results">{p.delivery.map((r,i)=><li key={`${i}-${r.key}`}>{r.key}: {r.accepted?'Accepted':'Refused'} — {r.reason}</li>)}</ul>}
   {p.error&&<p role="alert">{p.error}</p>}
   {p.left>0&&<p className="now">{p.left} {p.left===1?'ask still needs':'asks still need'} an answer, a skip or a defer before this lane's answers can be sent.</p>}
   {p.ready&&p.canSend&&<button type="button" className="link act send" disabled={p.sending} onClick={p.send}>{p.sending?'Sending…':`send ${pending} ${pending===1?'answer':'answers'}`}<kbd>y</kbd></button>}

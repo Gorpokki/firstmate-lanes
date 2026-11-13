@@ -53,7 +53,7 @@ export function Simulation({meshes}:SimulationProps){
  const choose=(index:number)=>{setStep(index);setRunning(false);if(index===LAST){setPhase(null);setBlast(performance.now());}};
  return <section aria-label="Lane simulation" className="lane sim">
   <div className="holo">
-   <Holo mesh={selected?.mesh} name={selected?.name??'No ships loaded'} state={current.state} sourceState={current.sourceState} progress={current.progress} idle={phase==='settled'} blast={blast} paused={!running} onPhase={setPhase}/>
+   <Holo mesh={selected?.mesh} name={selected?.name??'No ships loaded'} state={current.state} sourceState={current.sourceState} progress={current.progress} options={{failed:failing}} idle={phase==='settled'} blast={blast} paused={!running} onPhase={setPhase}/>
   </div>
   <div className="side">
    <div><a className="link" href="/">‹ back to the board</a></div>
