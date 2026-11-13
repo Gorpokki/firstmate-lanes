@@ -246,8 +246,12 @@ func TestCaptainHoldTextStaysInLaneViewOfLongLog(t *testing.T) {
 	}
 	start := time.Date(2026, 1, 4, 12, 0, 0, 0, time.UTC)
 	var status strings.Builder
-	for i := 0; i < 30; i++ {
-		fmt.Fprintf(&status, "working [at=%d]: step %d\n", start.Add(time.Duration(i)*time.Minute).Unix(), i)
+	for i := 0; i < 6; i++ {
+		fmt.Fprintf(&status, "working: early step %d\n", i)
+	}
+	status.WriteString("needs-decision [key=old]: early question\nresolved [key=old]: early answer\n")
+	for i := 0; i < 20; i++ {
+		fmt.Fprintf(&status, "working [at=%d]: recent step %d\n", start.Add(time.Duration(i)*time.Minute).Unix(), i)
 	}
 	files := map[string]string{
 		filepath.Join(home, "data", "backlog.md"):     "## In flight\n- [ ] legacy - Legacy lane (kind: ship) (hold: Owner picks the route) (hold-kind: captain)\n",
@@ -263,8 +267,8 @@ func TestCaptainHoldTextStaysInLaneViewOfLongLog(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := model{fleet: BuildFleet(lanes, start.Add(time.Hour)), view: 3, w: 100, h: 30}
-	if view := m.View(); !strings.Contains(view, "Owner picks the route") {
-		t.Fatalf("captain hold text missing from the Lane view:\n%s", view)
+	if view := m.View(); !strings.Contains(view, "Owner picks the route") || !strings.Contains(view, "recent step 19") {
+		t.Fatalf("captain hold text or recent status missing from the Lane view:\n%s", view)
 	}
 }
 

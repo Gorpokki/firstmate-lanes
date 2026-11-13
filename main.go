@@ -458,12 +458,12 @@ func (m model) laneView(w, h int) []string {
 	rows = append(rows, text.Render("CREW'S LAST WORD  "+oneLine(l.Now)), lab(cLav).Render("HISTORY"))
 	history := make([]StationChange, 0, len(l.History))
 	for _, event := range l.History {
-		if !event.At.IsZero() {
+		if event.State != "captain-hold" {
 			history = append(history, event)
 		}
 	}
 	for _, event := range l.History {
-		if event.At.IsZero() {
+		if event.State == "captain-hold" {
 			history = append(history, event)
 		}
 	}
