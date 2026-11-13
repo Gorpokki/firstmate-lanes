@@ -1,5 +1,5 @@
 import {test,expect} from 'bun:test';
-import {ageDays,boardSummary,findFoot,findLanes,fleetOrder,freshness,hiddenTicked,isOld,keepNeedingTicks,laneWords,listRows,overdue,stateChanges} from './stations';
+import {ageDays,boardSummary,findFoot,findLanes,fleetOrder,freshness,hiddenTicked,isOld,keepNeedingTicks,laneWords,listQuestion,listRows,overdue,returnedOnly,stateChanges,type Lane} from './stations';
 import {buildSitting} from './sitting';
 
 const lane=(id:string,state:string,secondMate:string,asked:string)=>({id,name:id,state,secondMate,home:'main',now:'Example',history:[],asks:asked?[{key:id,form:'discussion',question:'Example?',reason:'Choose',effort:'quick',asked,answerable:true}]:[]});
@@ -78,6 +78,17 @@ test('a lane whose open asks are all returned waits from its oldest decision, no
  const board=boardOf(returnedLane('ann','2026-01-10T11:00:00Z','2026-01-10T08:00:00Z'),returnedLane('zed','2026-01-05T12:00:00Z','2026-01-10T11:59:00Z'));
  expect(fleetOrder(board).map(l=>l.id)).toEqual(['zed','ann']);
  expect(ageOf(board,'zed')).toBe(5*1440);
+});
+
+test('a record block keeps its reason beside its malformed-ask count; a status-line return shows only its count',()=>{
+ const block={...lane('blocked','needs you','build',''),invalidAsks:2,now:'Waiting on the owner to pick the route'} as unknown as Lane;
+ const returned={...lane('returned','needs you','build',''),invalidAsks:1,returnedSince:'2026-01-10T11:00:00Z'} as unknown as Lane;
+ const asked={...lane('asked','needs you','build','2026-01-10T11:00:00Z'),invalidAsks:1} as unknown as Lane;
+ expect(listQuestion({lane:block,age:NaN})).toBe('Blocked: Waiting on the owner to pick the route');
+ expect(returnedOnly(block)).toBe(false);
+ expect(listQuestion({lane:returned,age:NaN})).toBe('1 ask not in the ask form went back to the crew.');
+ expect(returnedOnly(returned)).toBe(true);
+ expect(listQuestion({lane:asked,ask:asked.asks[0],age:NaN})).toBe('Example?');
 });
 
 test('a returned ask without a decision time stays unknown and sorts ahead of dated lanes',()=>{

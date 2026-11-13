@@ -74,4 +74,6 @@ export const findFoot=(query:string,shown:number,n:number)=>!query.trim()?'esc c
 // Go sends its zero time (year 1) for a lane with no status time; that and a missing time read as unknown.
 // Asks not in a fixed form (ADR 0003) are no cards: they go back to the crew and only their count shows.
 export const returnedWords=(n:number)=>`${plural(n,'ask')} not in the ask form went back to the crew.`;
+export const returnedOnly=(lane:Lane)=>lane.asks.length===0&&lane.returnedSince!==undefined;
+export const listQuestion=({lane,ask}:ListRow)=>ask?ask.question||ask.topic||ask.key:returnedOnly(lane)?returnedWords(lane.invalidAsks??0):/^blocked\b/i.test(lane.now)?lane.now:`Blocked: ${lane.now||'the crew cannot clear it'}`;
 export const laneWords=(lane:Lane,now=Date.now())=>`${lane.asks.length?`${plural(lane.asks.length,'ask')} · `:''}last word ${Date.parse(lane.updatedAt||'')>0?`${elapsed(minutesSince(lane.updatedAt,now))} ago`:'time unknown'}`;

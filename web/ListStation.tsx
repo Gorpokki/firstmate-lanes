@@ -5,9 +5,10 @@ import {
 	ageTone,
 	ageWords,
 	hiddenTicked,
+	listQuestion,
 	listRows,
 	overdue,
-	returnedWords,
+	returnedOnly,
 	type Fleet,
 	type ListRow,
 } from "./stations";
@@ -26,16 +27,6 @@ type ListProps = {
 // The List's columns; the fourth is the lane's count of open asks.
 const COLS = ["Waiting", "", "Lane", "Asks", "Its oldest ask"];
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-// A block with no ask shows the crew's last word, said as a block; asks not in the form show only their count.
-const question = ({ lane, ask }: ListRow) =>
-	ask
-		? ask.question || ask.topic || ask.key
-		: lane.invalidAsks
-			? returnedWords(lane.invalidAsks)
-			: /^blocked\b/i.test(lane.now)
-				? lane.now
-				: `Blocked: ${lane.now || "the crew cannot clear it"}`;
-
 // One segment per day; an overdue day is bright and tall.
 function AgeBar({ age }: { age: number }) {
 	const days = ageDays(age);
@@ -82,15 +73,15 @@ function Row(p: { row: ListRow } & Omit<ListProps, "fleet" | "mate" | "setMate" 
 				onFocus={() => p.select(lane.id)}
 				onKeyDown={key}
 				onKeyUp={key}
-				aria-label={`${lane.name}${on ? ", ticked" : ""}: ${plural(lane.asks.length, "ask")}, waiting ${words}${late ? ", overdue" : ""}. ${question(p.row)}`}
+				aria-label={`${lane.name}${on ? ", ticked" : ""}: ${plural(lane.asks.length, "ask")}, waiting ${words}${late ? ", overdue" : ""}. ${listQuestion(p.row)}`}
 			>
 				<AgeBar age={p.row.age} />
 				<span className="a">{words}</span>
 				<span className="n">{lane.name}</span>
 				<span className="m">{lane.asks.length}</span>
 				<span className="q2">
-					{question(p.row)}
-					{!!lane.invalidAsks && !!p.row.ask && <em> · {lane.invalidAsks} malformed asks omitted</em>}
+					{listQuestion(p.row)}
+					{!!lane.invalidAsks && !returnedOnly(lane) && <em> · {lane.invalidAsks} malformed asks omitted</em>}
 				</span>
 			</button>
 		</div>
