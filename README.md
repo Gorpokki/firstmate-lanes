@@ -255,6 +255,7 @@ Only new or worsened functions above CCN 15 fail; unchanged functions above the 
 The required no-leak scan checks every outgoing commit in the PR (its file paths, file contents, full commit message, and author and committer names and emails), the PR head tree, and the PR title and body.
 A commit identity may only be the GitHub noreply address `<id>+<login>@users.noreply.github.com` or the repository owner's login (`--owner-login`, which CI takes from the repository owner); every other identity value goes through the denylist and generic shape checks.
 Identity allowances never apply to file content, paths, messages, or issue and PR text.
+The generic email shape rule skips one exact quoted synthetic credentialed-URL fixture in `lane_record_test.go`; the denylist and every other check still apply to that file.
 Local prepublication scans can also check an issue's title and body by passing `--event-file` a JSON file shaped `{"issue": {"title": ..., "body": ...}}`.
 A file with no `issue` or `pull_request` object fails the scan.
 CI does not scan issues.
