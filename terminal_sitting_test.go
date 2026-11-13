@@ -305,3 +305,25 @@ func TestTerminalDeliveryReportSurvivesRefreshAndRefusedAnswersCanBeResent(t *te
 		t.Fatalf("refused answer could not be resent alone: pending=%t answers=%+v", m.pendingSend, m.answers)
 	}
 }
+
+func TestReturnedAsksShowTheirCountInTheTerminalWithoutCards(t *testing.T) {
+	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	row, _ := stationLane(Lane{ID: "example", Title: "Example", OwnerDir: "/home", State: "needs-decision", Decisions: []Decision{{Key: "route", Verb: "needs-decision", At: now.Add(-time.Hour), Text: "Pick north or south?"}}}, now)
+	const count = "1 ask not in the ask form went back to the crew."
+	m := model{fleet: Fleet{Stations: []StationLane{row}}, view: 1, w: 120, h: 30, selected: map[string]bool{}}
+	list := m.View()
+	m.view = 3
+	lane := m.View()
+	for name, view := range map[string]string{"list": list, "lane": lane} {
+		if !strings.Contains(view, count) {
+			t.Fatalf("%s view does not show the returned count:\n%s", name, view)
+		}
+	}
+	if !strings.Contains(list, "1 not in form") {
+		t.Fatalf("board header does not show the returned count:\n%s", list)
+	}
+	m.openSitting()
+	if len(m.sitting.items) != 0 {
+		t.Fatalf("returned ask took a sitting place: %+v", m.sitting.items)
+	}
+}

@@ -66,3 +66,24 @@ test('an ask is overdue from 5.5 days, and that is the day its sixth segment lig
  expect(ageDays(5.4*day)).toBe(5);
  expect(ageDays(5.5*day)).toBe(6);
 });
+
+const returnedLane=(id:string,returnedSince:string,updatedAt:string,asked='')=>({...lane(id,'needs you','build',asked),invalidAsks:1,returnedSince,updatedAt});
+const boardOf=(...stationLanes:ReturnType<typeof returnedLane>[])=>({updatedAt:'2026-01-10T12:00:00Z',hiddenAsks:0,autonomyShare:0,changedLanes:[],stationLanes}) as unknown as Fleet;
+const ageOf=(board:Fleet,id:string)=>{const {quick,read}=listRows(board,'',Date.parse(board.updatedAt));return [...quick,...read].find(r=>r.lane.id===id)?.age;};
+
+test('a lane whose open asks are all returned waits from its oldest decision, not its latest note',()=>{
+ const board=boardOf(returnedLane('ann','2026-01-10T11:00:00Z','2026-01-10T08:00:00Z'),returnedLane('zed','2026-01-05T12:00:00Z','2026-01-10T11:59:00Z'));
+ expect(fleetOrder(board).map(l=>l.id)).toEqual(['zed','ann']);
+ expect(ageOf(board,'zed')).toBe(5*1440);
+});
+
+test('a returned ask without a decision time stays unknown, neither borrowing the note time nor leading a dated lane',()=>{
+ const board=boardOf(returnedLane('recent','2026-01-10T11:00:00Z','2026-01-10T08:00:00Z'),returnedLane('undated','0001-01-01T00:00:00Z','2026-01-10T11:59:00Z'));
+ expect(fleetOrder(board).map(l=>l.id)).toEqual(['undated','recent']);
+ expect(Number.isNaN(ageOf(board,'undated'))).toBe(true);
+});
+
+test('a lane with a card and a returned ask ages from the older of the two',()=>{
+ const board=boardOf(returnedLane('mixed','2026-01-05T12:00:00Z','2026-01-10T11:59:00Z','2026-01-08T12:00:00Z'));
+ expect(ageOf(board,'mixed')).toBe(5*1440);
+});

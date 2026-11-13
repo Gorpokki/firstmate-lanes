@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -233,5 +234,34 @@ func TestAutonomyIncludesStructuredAskHistory(t *testing.T) {
 	}
 	if got := BuildFleet(lanes, now).AutonomyShare; got != 0.25 {
 		t.Fatalf("autonomy=%v, want one untouched lane out of four", got)
+	}
+}
+
+func TestReturnedAsksWaitFromTheirOwnDecision(t *testing.T) {
+	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	oldAt := now.Add(-72 * time.Hour)
+	events := ParseLog(fmt.Sprintf("needs-decision [key=route] [at=%d]: Pick north or south?\nworking [key=other] [at=%d]: Unrelated note", oldAt.Unix(), now.Add(-time.Minute).Unix()))
+	old := Lane{ID: "old", OwnerDir: "/home", State: "needs-decision", UpdatedAt: now.Add(-time.Minute), Events: events, Decisions: OpenDecisions(events, "ship")}
+	newer := Lane{ID: "newer", OwnerDir: "/home", State: "needs-decision", UpdatedAt: now.Add(-2 * time.Hour), Decisions: []Decision{{Key: "fresh", Verb: "needs-decision", At: now.Add(-time.Hour)}}}
+	mixedAsk := LaneRecordAsk{Form: "discussion", Key: "fresh", Topic: "Fresh", MustDecide: []string{"Fresh"}, Reason: "Pick", Effort: "read", Asked: now.Add(-30 * time.Minute)}
+	mixed := Lane{ID: "mixed", OwnerDir: "/home", State: "needs-decision", UpdatedAt: now, Record: &LaneRecord{Asks: []LaneRecordAsk{mixedAsk}}, Decisions: []Decision{{Key: "route", Verb: "needs-decision", At: now.Add(-48 * time.Hour)}}}
+
+	rows, _, _ := stationFleet([]Lane{newer, mixed, old}, now)
+	got := make([]string, len(rows))
+	for i, row := range rows {
+		got[i] = row.ID
+	}
+	if !slices.Equal(got, []string{"old", "mixed", "newer"}) {
+		t.Fatalf("returned asks must order by their own decision time, got %v", got)
+	}
+	row := rows[0]
+	if row.ReturnedSince == nil || !row.ReturnedSince.Equal(oldAt) {
+		t.Fatalf("returned since %v, want the decision time %v", row.ReturnedSince, oldAt)
+	}
+	if row.State != "needs you" || len(row.Asks) != 0 || row.InvalidAsks != 1 {
+		t.Fatalf("returned-only lane state=%q asks=%d count=%d; want needs you, no cards, one returned", row.State, len(row.Asks), row.InvalidAsks)
+	}
+	if !slices.ContainsFunc(row.History, func(h StationChange) bool { return h.Text == "Pick north or south?" }) {
+		t.Fatalf("returned text not kept in the log: %+v", row.History)
 	}
 }

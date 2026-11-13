@@ -302,14 +302,15 @@ func frame(title, color, tag string, body []string, w, h int) []string {
 	return out
 }
 func (m model) header() []string {
-	needs, asks := 0, 0
+	needs, asks, returned := 0, 0, 0
 	for _, lane := range m.fleet.Stations {
 		if lane.State == "needs you" {
 			needs++
 		}
 		asks += len(lane.Asks)
+		returned += lane.InvalidAsks
 	}
-	top := fmt.Sprintf("FLEET BOARD · %d needs you · %d asks · %.0f%% autonomy · %d changed", needs, asks, m.fleet.AutonomyShare*100, len(m.fleet.ChangedLanes))
+	top := fmt.Sprintf("FLEET BOARD · %d needs you · %d asks · %d not in form · %.0f%% autonomy · %d changed", needs, asks, returned, m.fleet.AutonomyShare*100, len(m.fleet.ChangedLanes))
 	if m.err != nil {
 		top += " · " + clean(m.err.Error())
 	}
@@ -377,6 +378,9 @@ func (m model) listView(w, h int) []string {
 		rows = append(rows, text.Render(cursor+" "+check+" "+l.Name)+dim.Render(" · "+l.SecondMate), dim.Render("    "+oneLine(l.Now)))
 		for _, ask := range l.Asks {
 			rows = append(rows, "    "+pill(ask.Effort, cGold)+" "+oneLine(askQuestion(ask)))
+		}
+		if l.InvalidAsks > 0 {
+			rows = append(rows, dim.Render("    "+returnedWords(l.InvalidAsks)))
 		}
 	}
 	if len(lanes) == 0 {
@@ -464,7 +468,17 @@ func (m model) laneView(w, h int) []string {
 		}
 		rows = append(rows, line)
 	}
+	if l.InvalidAsks > 0 {
+		rows = append(rows, dim.Render(returnedWords(l.InvalidAsks)))
+	}
 	return frame("Lane", stateColor(l.State), "space spins / pauses", rows, w, h)
+}
+
+func returnedWords(n int) string {
+	if n == 1 {
+		return "1 ask not in the ask form went back to the crew."
+	}
+	return fmt.Sprintf("%d asks not in the ask form went back to the crew.", n)
 }
 func (m model) askView(w, h int) []string {
 	if w < 90 {
