@@ -33,12 +33,17 @@ type Decision struct {
 
 // Lane is one supervised unit of work: a task or a second mate.
 type Lane struct {
-	ID, Kind, Title string
-	State           string // needs-decision, blocked, working, paused, done, failed, unknown
-	UpdatedAt       time.Time
-	Events          []Event
-	Decisions       []Decision
-	Hold            string // backlog hold note, if any
+	ID, Kind, Title  string
+	Home, SecondMate string
+	OwnerDir         string
+	Record           *LaneRecord
+	InvalidAsks      int
+	HadRecordAsks    bool
+	State            string // needs-decision, blocked, working, paused, done, failed, unknown
+	UpdatedAt        time.Time
+	Events           []Event
+	Decisions        []Decision
+	Hold             string // backlog hold note, if any
 }
 
 func (l Lane) Latest() (Event, bool) {
@@ -157,7 +162,7 @@ func laneState(events []Event, open []Decision) string {
 	}
 	for i := len(events) - 1; i >= 0; i-- {
 		switch v := events[i].Verb; v {
-		case "working", "paused", "done", "failed":
+		case "working", "waiting", "paused", "parked", "holding", "done", "failed":
 			return v
 		}
 	}
@@ -200,7 +205,7 @@ func ReadBacklog(path string) map[string]entry {
 			section = strings.TrimSpace(line[3:])
 		}
 		m := backlogRe.FindStringSubmatch(line)
-		if m == nil {
+		if m == nil || !slugRe.MatchString(m[1]) {
 			continue
 		}
 		e := entry{Section: section, Title: m[2]}
@@ -227,7 +232,7 @@ func ReadSecondmates(path string) map[string]entry {
 	out := map[string]entry{}
 	for _, line := range lines(path) {
 		m := mateRe.FindStringSubmatch(line)
-		if m == nil {
+		if m == nil || !slugRe.MatchString(m[1]) {
 			continue
 		}
 		e := entry{Kind: "secondmate", Title: m[2]}
@@ -267,8 +272,11 @@ type cachedLog struct {
 
 // Reader keeps parsed status logs and re-reads a log only when its size or mtime changes.
 type Reader struct {
-	mu    sync.Mutex
-	cache map[string]cachedLog
+	mu          sync.Mutex
+	cache       map[string]cachedLog
+	accepted    map[string]time.Time
+	receiptPath string
+	DropIn      string
 }
 
 func NewReader() *Reader { return &Reader{cache: map[string]cachedLog{}} }
@@ -308,6 +316,13 @@ func (r *Reader) Load(home string) ([]Lane, error) {
 			ids[id] = true
 		}
 	}
+	records, _ := filepath.Glob(filepath.Join(stateDir, "*.lane.json"))
+	for _, path := range records {
+		id := strings.TrimSuffix(filepath.Base(path), ".lane.json")
+		if slugRe.MatchString(id) && !strings.HasPrefix(id, ".") {
+			ids[id] = true
+		}
+	}
 	for id, e := range backlog {
 		if e.Section == "In flight" {
 			ids[id] = true
@@ -318,7 +333,12 @@ func (r *Reader) Load(home string) ([]Lane, error) {
 	}
 	lanes := make([]Lane, 0, len(ids))
 	for id := range ids {
-		lanes = append(lanes, r.lane(home, id, backlog[id], mates[id]))
+		lane := r.lane(home, id, backlog[id], mates[id])
+		lane.OwnerDir = home
+		if err := loadLaneRecord(home, id, &lane); err != nil {
+			return nil, err
+		}
+		lanes = append(lanes, lane)
 	}
 	sort.Slice(lanes, func(i, j int) bool {
 		a, b := lanes[i], lanes[j]
@@ -338,8 +358,8 @@ func (r *Reader) lane(home, id string, b, mate entry) Lane {
 	l := Lane{ID: id, Kind: first(meta["kind"], b.Kind, mate.Kind, "unknown"), Title: first(b.Title, mate.Title, id), Hold: b.Hold}
 	l.Events, l.UpdatedAt = r.events(filepath.Join(home, "state", id+".status"))
 	l.Decisions = OpenDecisions(l.Events, l.Kind)
-	if b.HoldKind == "captain" && b.Section != "Done" && !hasCaptainHold(l.Decisions) {
-		l.Decisions = append(l.Decisions, Decision{Key: "captain-hold", Verb: "captain-hold", Text: b.Hold})
+	if b.HoldKind == "captain" && b.Section != "Done" && !hasHoldAsk(l.Decisions, id) {
+		l.Decisions = append(l.Decisions, Decision{Key: id, Verb: "captain-hold", Text: b.Hold})
 	}
 	l.State = laneState(l.Events, l.Decisions)
 	if e, ok := l.Latest(); ok && !e.At.IsZero() {
@@ -348,9 +368,13 @@ func (r *Reader) lane(home, id string, b, mate entry) Lane {
 	return l
 }
 
-func hasCaptainHold(ds []Decision) bool {
+func nativeTaskKey(key string) bool {
+	return slugRe.MatchString(key) && len(key) <= 128 && key != "default" && key != "captain-hold"
+}
+
+func hasHoldAsk(ds []Decision, id string) bool {
 	for _, d := range ds {
-		if strings.HasPrefix(d.Key, "captain-hold") {
+		if d.Key == id || strings.HasPrefix(d.Key, "captain-hold") {
 			return true
 		}
 	}

@@ -1,7 +1,3 @@
-// LCARS lane board TUI for one Firstmate home, built on the lane
-// board web canvas: the same panels (health, red alert, waiting on captain,
-// lane board, crew, timeline), view pills, and LCARS elbows, drawn in a terminal.
-// Data comes from the read-only home reader through BuildFleet (fleet.go).
 package main
 
 import (
@@ -13,16 +9,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// The lane board canvas palette.
 const (
 	cOrange, cPeach, cLav, cBlue, cSky = "#FF9900", "#FFCC99", "#CC99CC", "#9999FF", "#99CCFF"
 	cGold, cTan, cRed, cGray, cText    = "#FFCC66", "#DDAA77", "#FF5555", "#777799", "#FFE6CC"
 	cDim, cInk                         = "#B8A898", "#000000"
 )
-
-var statusColor = map[string]string{"blocked": cRed, "failed": cRed, "waiting": cOrange, "in-progress": cSky, "parked": cGray, "queued": cLav, "done": cBlue}
-var toneColor = map[string]string{"ok": cSky, "warn": cGold, "alert": cRed, "info": cBlue, "idle": cGray}
-var verbColor = map[string]string{"needs-decision": cOrange, "blocked": cRed, "failed": cRed, "working": cSky, "paused": cGray, "done": cBlue, "resolved": cLav}
 
 func fg(c string) lipgloss.Style { return lipgloss.NewStyle().Foreground(lipgloss.Color(c)) }
 func pill(label, c string) string {
@@ -37,68 +28,247 @@ var (
 
 type view struct{ key, label, color string }
 
-var views = []view{{"all", "All", cPeach}, {"alert", "Alert", cRed}, {"health", "Health", cOrange}, {"captain", "Captain", cPeach},
-	{"lanes", "Lanes", cSky}, {"crew", "Crew", cTan}, {"log", "Log", cLav}, {"holo", "Holo", cBlue}}
+var views = []view{{"ask", "Ask", cPeach}, {"list", "List", cSky}, {"fleet", "Fleet", cOrange}, {"lane", "Lane", cLav}}
 
 type model struct {
-	r         *Reader
-	home      string
-	fleet     Fleet
-	err       error
-	view, sel int
-	filter    int // 0 = all, else index+1 into StatusOrder
-	w, h      int
-	every     time.Duration
-	tick      int
-	prog      map[string]float64 // hologram build progress per lane
-	open      bool
+	r             *Reader
+	home          string
+	fleet         Fleet
+	err           error
+	view          int
+	selID         string
+	w, h          int
+	every         time.Duration
+	tick          int
+	selected      map[string]bool
+	sitting       sitting
+	pendingSend   bool
+	answers       []SittingAnswer
+	answerService *AnswerService
+	look          *lastLook
+	spinPaused    bool
+	mateFilter    string
+	fleetShipyard bool
+	fleetFilter   string
 }
 
-// key applies one key press.
 func (m model) key(k string) (model, bool) {
-	prev := m.view
-	switch k {
-	case "q", "ctrl+c":
+	if k == "ctrl+c" {
 		return m, true
-	case "tab", "right":
-		m.view = (m.view + 1) % len(views)
-	case "shift+tab", "left":
-		m.view = (m.view + len(views) - 1) % len(views)
-	case "enter":
-		m.open = true
-	case "esc":
-		m.open = false
-	case "up", "k":
-		m.sel = max(0, m.sel-1)
-	case "down", "j":
-		m.sel = max(0, min(len(m.lanes())-1, m.sel+1))
-	case "f":
-		m.filter, m.sel = (m.filter+1)%(len(StatusOrder)+1), 0
-	default:
-		if len(k) == 1 && k[0] >= '1' && int(k[0]-'1') < len(views) {
-			m.view = int(k[0] - '1')
-		}
 	}
-	if m.view != prev {
-		m.open = false
+	if m.pendingSend {
+		return m, false
 	}
+	if m.view == 0 && m.sitting.ownMode {
+		m.sitting.key(&m, k, m.askLanes())
+		return m, false
+	}
+	if k == "q" {
+		return m, true
+	}
+	m.keyApply(k)
+	m.clampSelection()
 	return m, false
 }
 
-func (m model) lanes() []BoardLane {
-	if m.filter == 0 {
-		return m.fleet.Lanes
+// keySitting forwards a key to the sitting when the Ask station is showing.
+func (m *model) keySitting(k string) {
+	if m.view == 0 {
+		m.sitting.key(m, k, m.askLanes())
 	}
-	var out []BoardLane
-	for _, l := range m.fleet.Lanes {
-		if l.Status == StatusOrder[m.filter-1] {
+}
+
+func (m *model) keyApply(k string) {
+	switch k {
+	case "a":
+		m.enterView(0)
+	case "l":
+		m.view = 1
+	case "f":
+		m.view = 2
+	case "enter":
+		m.view = 3
+	case "tab", "right":
+		m.enterView((m.view + 1) % len(views))
+	case "shift+tab", "left":
+		m.enterView((m.view + len(views) - 1) % len(views))
+	case "o":
+		m.keyOpenAnswer()
+	case " ", "space":
+		m.keySpace()
+	case "m":
+		m.cycleMate()
+	case "s":
+		m.keyShipyard(k)
+	case "1", "2", "3", "4", "5":
+		m.keyFleetFilter(k)
+	case "b":
+		m.keySaveLook()
+	case "up", "k":
+		m.keyMove(k, -1)
+	case "down", "j":
+		m.keyMove(k, 1)
+	default:
+		m.keySitting(k)
+	}
+}
+
+func (m *model) keyOpenAnswer() {
+	if m.view != 0 {
+		return
+	}
+	if len(m.sitting.items) == 0 {
+		m.openSitting()
+	}
+	m.sitting.key(m, "o", m.askLanes())
+}
+
+func (m *model) keySpace() {
+	if m.view == 1 {
+		m.toggleSelected()
+	} else if m.view == 0 || m.view == 3 {
+		m.spinPaused = !m.spinPaused
+	}
+}
+
+func (m *model) keyShipyard(k string) {
+	if m.view == 2 {
+		m.fleetShipyard = !m.fleetShipyard
+	} else {
+		m.keySitting(k)
+	}
+}
+
+func (m *model) keyFleetFilter(k string) {
+	if m.view != 2 {
+		m.keySitting(k)
+		return
+	}
+	states := []string{"needs you", "waiting", "working", "holding", "done"}
+	state := states[int(k[0]-'1')]
+	if m.fleetFilter == state {
+		m.fleetFilter = ""
+	} else {
+		m.fleetFilter = state
+	}
+	m.setSel(0)
+}
+
+func (m *model) keySaveLook() {
+	if m.look == nil {
+		return
+	}
+	m.err = m.look.save(m.fleet)
+	if m.err == nil {
+		m.fleet.ChangedLanes = nil
+	}
+}
+
+func (m *model) keyMove(k string, delta int) {
+	if m.view == 0 {
+		m.sitting.key(m, k, m.askLanes())
+	} else {
+		m.setSel(m.selIndex() + delta)
+	}
+}
+func (m *model) clampSelection() { m.setSel(m.selIndex()) }
+func (m model) selIndex() int {
+	for i, l := range m.listLanes() {
+		if l.ID == m.selID {
+			return i
+		}
+	}
+	return 0
+}
+func (m *model) setSel(i int) {
+	lanes := m.listLanes()
+	m.selID = ""
+	if len(lanes) > 0 {
+		m.selID = lanes[min(max(0, i), len(lanes)-1)].ID
+	}
+}
+func (m model) lanes() []StationLane { return m.fleet.Stations }
+func (m model) mateHidden(l StationLane) bool {
+	return m.mateFilter != "" && l.SecondMate != m.mateFilter
+}
+func (m model) listLanes() []StationLane {
+	var out []StationLane
+	for _, l := range m.lanes() {
+		if m.mateHidden(l) {
+			continue
+		}
+		if m.view == 2 && m.fleetFilter != "" && l.State != m.fleetFilter {
+			continue
+		}
+		out = append(out, l)
+	}
+	return out
+}
+func (m model) selectedLane() (StationLane, bool) {
+	lanes := m.listLanes()
+	if len(lanes) == 0 {
+		return StationLane{}, false
+	}
+	return lanes[m.selIndex()], true
+}
+func (m *model) toggleSelected() {
+	l, ok := m.selectedLane()
+	if !ok {
+		return
+	}
+	if m.selected == nil {
+		m.selected = map[string]bool{}
+	}
+	if m.selected[l.ID] {
+		delete(m.selected, l.ID)
+	} else {
+		m.selected[l.ID] = true
+	}
+}
+func (m *model) openSitting() { m.sitting = sitting{}; m.sitting.load(m.askLanes()) }
+func (m *model) enterView(v int) {
+	m.view = v
+	if v == 0 && (m.sitting.finished || m.sitting.untouched()) {
+		m.openSitting()
+	}
+}
+func (m model) askLanes() []StationLane {
+	var out []StationLane
+	for _, l := range m.lanes() {
+		if len(m.selected) == 0 || m.selected[l.ID] {
 			out = append(out, l)
 		}
 	}
 	return out
 }
+func (m model) hiddenSelected() int {
+	n := 0
+	for _, l := range m.lanes() {
+		if m.selected[l.ID] && m.mateHidden(l) {
+			n++
+		}
+	}
+	return n
+}
+func (m *model) cycleMate() {
+	mates := []string{""}
+	seen := map[string]bool{}
+	for _, l := range m.lanes() {
+		if l.SecondMate != "" && !seen[l.SecondMate] {
+			seen[l.SecondMate] = true
+			mates = append(mates, l.SecondMate)
+		}
+	}
+	for i, mate := range mates {
+		if mate == m.mateFilter {
+			m.mateFilter = mates[(i+1)%len(mates)]
+			m.setSel(0)
+			return
+		}
+	}
+	m.mateFilter = ""
+}
 
-// fit truncates or pads s to exactly w cells.
 func fit(s string, w int) string {
 	if w <= 0 {
 		return ""
@@ -106,12 +276,9 @@ func fit(s string, w int) string {
 	s = ansi.Truncate(s, w, "…")
 	return s + strings.Repeat(" ", max(0, w-ansi.StringWidth(s)))
 }
-
 func wrap(s string, w int) []string {
 	return strings.Split(ansi.Wrap(oneLine(s), max(1, w), " "), "\n")
 }
-
-// frame is the LCARS elbow: a half-block top bar with the title, and a solid left bar.
 func frame(title, color, tag string, body []string, w, h int) []string {
 	c := fg(color)
 	head := c.Render("▄▄▄▄") + " " + lab(color).Render(strings.ToUpper(title)) + " "
@@ -134,282 +301,205 @@ func frame(title, color, tag string, body []string, w, h int) []string {
 	}
 	return out
 }
-
-func joinH(a, b []string) []string {
-	out := make([]string, len(a))
-	for i := range a {
-		out[i] = a[i] + " " + b[i]
-	}
-	return out
-}
-
-func stack(parts ...[]string) []string {
-	var out []string
-	for _, p := range parts {
-		out = append(out, p...)
-	}
-	return out
-}
-
-func stardate(t time.Time) string {
-	frac := (t.Hour()*60 + t.Minute()) * 10 / 1440
-	return fmt.Sprintf("STARDATE %d.%03d.%d", t.Year(), t.YearDay(), frac)
-}
-
 func (m model) header() []string {
-	t := m.fleet.UpdatedAt
-	right := lab(cSky).Render(stardate(t)) + "  " + lab(cPeach).Render(strings.ToUpper(t.Format("Mon Jan 2, 3:04 PM")))
-	left := fg(cOrange).Render("██████") + " " + lab(cOrange).Render("FIRSTMATE FLEET OPS") + "  " + dim.Render("READ-ONLY")
+	needs, asks := 0, 0
+	for _, lane := range m.fleet.Stations {
+		if lane.State == "needs you" {
+			needs++
+		}
+		asks += len(lane.Asks)
+	}
+	top := fmt.Sprintf("FLEET BOARD · %d needs you · %d asks · %.0f%% autonomy · %d changed", needs, asks, m.fleet.AutonomyShare*100, len(m.fleet.ChangedLanes))
 	if m.err != nil {
-		left += "  " + lab(cRed).Render("STALE: "+m.err.Error())
+		top += " · " + clean(m.err.Error())
 	}
-	gap := m.w - ansi.StringWidth(left) - ansi.StringWidth(right)
-	top := left + strings.Repeat(" ", max(1, gap)) + right
-	if gap < 1 {
-		top = left
-	}
+	keys := []string{"a", "l", "f", "enter"}
 	var tabs []string
 	for i, v := range views {
-		p := pill(fmt.Sprintf("%d %s", i+1, v.label), v.color)
+		label := keys[i] + " " + v.label
+		p := pill(label, v.color)
 		if i == m.view {
-			p = lipgloss.NewStyle().Background(lipgloss.Color(cText)).Foreground(lipgloss.Color(cInk)).Bold(true).Underline(true).Render(" " + strings.ToUpper(fmt.Sprintf("%d %s", i+1, v.label)) + " ")
+			p = lipgloss.NewStyle().Reverse(true).Bold(true).Render(" " + label + " ")
 		}
 		tabs = append(tabs, p)
 	}
-	return []string{fit(top, m.w), fit(fg(cOrange).Render("██████")+" "+strings.Join(tabs, " "), m.w)}
+	reading := "not read"
+	if !m.fleet.UpdatedAt.IsZero() {
+		reading = m.fleet.UpdatedAt.Local().Format("15:04")
+	}
+	return []string{fit(top, m.w), fit(strings.Join(tabs, " ")+dim.Render(fmt.Sprintf(" · read %s · %d old hidden", reading, m.fleet.HiddenAsks)), m.w)}
 }
-
 func (m model) footer() string {
-	keys := " 1-8/tab view · ↑↓ select · enter open · esc back · f filter · q quit "
-	return fit(fg(cOrange).Render(strings.Repeat("▀", 6))+dim.Render(keys)+fg(cOrange).Render(strings.Repeat("▀", max(0, m.w-6-ansi.StringWidth(keys)))), m.w)
+	return fit(fg(cOrange).Render("▀▀▀▀▀▀")+dim.Render(" a Ask · l List · f Fleet · enter Lane · ↑↓ select · m mate · o answer · space select/spin · q quit "), m.w)
 }
-
 func (m model) View() string {
 	if m.w < 40 || m.h < 10 {
 		return "fmlanes needs at least 40x10. q quits."
 	}
-	bh := m.h - 3
+	if m.view == 0 {
+		return strings.Join(m.askView(m.w, m.h), "\n")
+	}
+	height := m.h - 3
 	var body []string
-	switch views[m.view].key {
-	case "all":
-		body = m.all(m.w, bh)
-	case "alert":
-		body = m.alert(m.w, bh)
-	case "health":
-		body = m.health(m.w, bh)
-	case "captain":
-		body = m.captain(m.w, bh)
-	case "lanes":
-		hh := min(24, bh*6/10)
-		if m.w >= 100 {
-			lw := m.w * 50 / 100
-			body = joinH(m.board(lw, bh), stack(m.holo(m.w-lw-1, hh), m.detail(m.w-lw-1, bh-hh)))
-		} else if m.open {
-			body = stack(m.holo(m.w, hh), m.detail(m.w, bh-hh))
-		} else {
-			body = m.board(m.w, bh)
-		}
-	case "holo":
-		lw := min(44, m.w*38/100)
-		body = joinH(m.board(lw, bh), m.holo(m.w-lw-1, bh))
-	case "crew":
-		body = m.crew(m.w, bh)
-	case "log":
-		body = m.timeline(m.w, bh)
+	switch m.view {
+	case 1:
+		body = m.listView(m.w, height)
+	case 2:
+		body = m.fleetView(m.w, height)
+	case 3:
+		body = m.laneView(m.w, height)
 	}
 	return strings.Join(append(append(m.header(), body...), m.footer()), "\n")
 }
-
-// all is the canvas's "All" view: left column health, alert, captain; right column lane board and timeline.
-func (m model) all(w, h int) []string {
-	if w < 100 {
-		hh := min(7, h/3)
-		ah := min(max(3, 1+2*len(m.fleet.Blockers)+1), (h-hh)/3)
-		return stack(m.health(w, hh), m.alert(w, ah), m.board(w, h-hh-ah))
+func (m model) listView(w, h int) []string {
+	lanes := m.listLanes()
+	mate := "all"
+	if m.mateFilter != "" {
+		mate = m.mateFilter
 	}
-	lw := w * 42 / 100
-	hh, ah := min(9, h/3), min(max(3, 3*len(m.fleet.Blockers)+2), h/4)
-	left := stack(m.health(lw, hh), m.alert(lw, ah), m.captain(lw, h-hh-ah))
-	th := h * 35 / 100
-	right := stack(m.board(w-lw-1, h-th), m.timeline(w-lw-1, th))
-	return joinH(left, right)
-}
-
-func (m model) health(w, h int) []string {
-	f := m.fleet
-	var rows []string
-	line := ""
-	for _, k := range f.KPIs {
-		p := pill(k.Value, toneColor[k.Tone]) + " " + lab(cPeach).Render(strings.ToUpper(k.Label)) + " " + dim.Render(k.Detail) + "   "
-		if line != "" && ansi.StringWidth(line+p) > w-4 {
-			rows, line = append(rows, line), ""
+	rows := []string{dim.Render(fmt.Sprintf("%d lanes · %d selected · %d quick · %d read · mate %s", len(lanes), len(m.selected), askCount(lanes, "quick"), askCount(lanes, "read"), mate)), ""}
+	state := ""
+	focusRow := 0
+	sel := m.selIndex()
+	for i, l := range lanes {
+		if l.State != state {
+			state = l.State
+			rows = append(rows, lab(stateColor(state)).Render(strings.ToUpper(state)))
 		}
-		line += p
-	}
-	rows = append(rows, line, "")
-	// status bar: one coloured segment per status, width by lane count
-	bw, total := w-4, len(f.Lanes)
-	bar, legend := "", ""
-	if total > 0 {
-		used := 0
-		for i, s := range StatusOrder {
-			n := 0
-			for _, l := range f.Lanes {
-				if l.Status == s {
-					n++
-				}
-			}
-			if n == 0 {
-				continue
-			}
-			seg := n * bw / total
-			if i == len(StatusOrder)-1 || used+seg > bw {
-				seg = bw - used
-			}
-			seg = max(1, seg)
-			used += seg
-			bar += fg(statusColor[s]).Render(strings.Repeat("█", seg))
-			legend += fg(statusColor[s]).Render("●") + " " + text.Render(fmt.Sprintf("%s %d", strings.ToUpper(StatusLabel[s]), n)) + "  "
+		check, cursor := "□", " "
+		if m.selected[l.ID] {
+			check = "✓"
 		}
-	}
-	rows = append(rows, bar, legend)
-	return frame("Fleet health", cOrange, fmt.Sprintf("%d lanes tracked", total), rows, w, h)
-}
-
-func (m model) alert(w, h int) []string {
-	b := m.fleet.Blockers
-	title, color := "Blockers", cBlue
-	if len(b) > 0 {
-		title, color = "Red alert · blockers", cRed
-	}
-	var rows []string
-	for _, x := range b {
-		rows = append(rows, lab(cRed).Render(strings.ToUpper(x.Title))+dim.Render(" · "+x.Age))
-		for i, s := range wrap(x.Detail, w-6) {
-			if i < 2 {
-				rows = append(rows, "  "+text.Render(s))
-			}
+		if i == sel {
+			cursor = "›"
+			focusRow = len(rows)
 		}
-	}
-	if len(rows) == 0 {
-		rows = []string{dim.Render("NO BLOCKERS ON RECORD")}
-	}
-	return frame(title, color, fmt.Sprintf("%d active", len(b)), rows, w, h)
-}
-
-func (m model) captain(w, h int) []string {
-	var rows []string
-	for _, x := range m.fleet.Waiting {
-		rows = append(rows, fg(cPeach).Render("▌ ")+lab(cPeach).Render(x.Lane)+dim.Render(" · "+x.Key+" · "+x.Age))
-		for i, s := range wrap(x.Ask, w-8) {
-			if i < 3 {
-				rows = append(rows, fg(cPeach).Render("▌ ")+"  "+text.Render(s))
-			}
+		rows = append(rows, text.Render(cursor+" "+check+" "+l.Name)+dim.Render(" · "+l.SecondMate), dim.Render("    "+oneLine(l.Now)))
+		for _, ask := range l.Asks {
+			rows = append(rows, "    "+pill(ask.Effort, cGold)+" "+oneLine(askQuestion(ask)))
 		}
-		rows = append(rows, "")
-	}
-	if len(rows) == 0 {
-		rows = []string{dim.Render("NO ITEMS WAITING ON YOU")}
-	}
-	return frame("Waiting on captain", cPeach, fmt.Sprintf("%d items", len(m.fleet.Waiting)), rows, w, h)
-}
-
-// board is the lane board: filter pills, then one card row pair per lane.
-func (m model) board(w, h int) []string {
-	lanes := m.lanes()
-	cur := "All"
-	if m.filter > 0 {
-		cur = StatusLabel[StatusOrder[m.filter-1]]
-	}
-	rows := []string{dim.Render("FILTER ") + pill(cur, cPeach) + dim.Render("  f cycles"), ""}
-	start := 0
-	if per := (h - 3) / 2; m.sel >= per {
-		start = m.sel - per + 1
-	}
-	for i := start; i < len(lanes); i++ {
-		l := lanes[i]
-		c := statusColor[l.Status]
-		badge := pill(StatusLabel[l.Status], c)
-		name := l.ID
-		if l.Mate {
-			name += " ▸"
-		}
-		meta := dim.Render(fmt.Sprintf(" %s", l.Age))
-		if l.Decisions > 0 {
-			meta += fg(cOrange).Render(fmt.Sprintf(" ◆%d", l.Decisions))
-		}
-		mark := fg(c).Render("▌")
-		left := mark + " " + lab(cPeach).Render(strings.ToUpper(name)) + meta
-		if i == m.sel {
-			left = fg(c).Render("▶") + " " + lipgloss.NewStyle().Reverse(true).Bold(true).Render(strings.ToUpper(name)) + meta
-		}
-		gap := w - 4 - ansi.StringWidth(left) - ansi.StringWidth(badge)
-		rows = append(rows, left+strings.Repeat(" ", max(1, gap))+badge, fg(c).Render("▌")+" "+dim.Render(ansi.Truncate(oneLine(l.Note), w-7, "…")))
 	}
 	if len(lanes) == 0 {
 		rows = append(rows, dim.Render("NO LANES ON RECORD"))
 	}
-	return frame("Lane board", cSky, fmt.Sprintf("%d shown", len(lanes)), rows, w, h)
+	start := max(0, focusRow-max(1, h-5))
+	return frame("List", cSky, "space selects · a starts sitting", rows[start:], w, h)
 }
-
-func (m model) detail(w, h int) []string {
-	lanes := m.lanes()
-	if m.sel >= len(lanes) {
-		return frame("Lane", cGray, "", nil, w, h)
+func (m model) fleetView(w, h int) []string {
+	lanes := m.listLanes()
+	selected, _ := m.selectedLane()
+	sel := m.selIndex()
+	rows := []string{dim.Render("1 needs you · 2 waiting · 3 working · 4 holding · 5 done"), dim.Render("s heat / shipyard · ↑↓ select · filter " + m.fleetFilter + " · " + selected.Name), ""}
+	if m.fleetShipyard {
+		cellWidth := min(32, max(24, w/2))
+		cols := max(1, w/cellWidth)
+		cellHeight := max(5, min(10, h-4))
+		start := 0
+		if sel >= cols {
+			start = (sel / cols) * cols
+		}
+		for first := start; first < len(lanes) && len(rows) < h-1; first += cols {
+			cells := []string{}
+			for i := first; i < min(first+cols, len(lanes)); i++ {
+				lane := lanes[i]
+				title := lane.Name
+				if i == sel {
+					title = "› " + title
+				}
+				body := shipLines(lane, m.tick, cellWidth-4, cellHeight-3)
+				body = append(body, dim.Render(shipFor(lane.ID)))
+				cells = append(cells, strings.Join(frame(title, stateColor(lane.State), lane.State, body, cellWidth, cellHeight), "\n"))
+			}
+			rows = append(rows, strings.Split(lipgloss.JoinHorizontal(lipgloss.Top, cells...), "\n")...)
+		}
+	} else {
+		cellWidth := max(20, min(28, w))
+		cols := max(1, w/cellWidth)
+		start := 0
+		if sel >= cols*max(1, (h-5)/2) {
+			start = (sel / cols) * cols
+		}
+		for first := start; first < len(lanes); first += cols {
+			names, states := []string{}, []string{}
+			for i := first; i < min(first+cols, len(lanes)); i++ {
+				lane := lanes[i]
+				mark := " "
+				if i == sel {
+					mark = "›"
+				}
+				if lane.State == "working" && m.tick%2 == 0 {
+					mark = "*"
+				}
+				names = append(names, fit(fg(stateColor(lane.State)).Render(mark+" "+lane.Name), cellWidth))
+				states = append(states, fit(dim.Render("  "+lane.State), cellWidth))
+			}
+			rows = append(rows, strings.Join(names, ""), strings.Join(states, ""))
+		}
 	}
-	l := lanes[m.sel]
-	rows := []string{lab(cPeach).Render(strings.ToUpper(l.Title)), dim.Render(strings.ToUpper(l.Kind) + " · UPDATED " + l.Age + " AGO"), ""}
-	var log []string
-	for _, e := range l.Log {
-		for j, s := range wrap(e.Verb+": "+e.Text, w-12) {
-			if j == 0 {
-				log = append(log, pill(e.At, cLav)+" "+fg(verbColor[e.Verb]).Render(s))
-			} else {
-				log = append(log, "        "+text.Render(s))
+	if len(lanes) == 0 {
+		rows = append(rows, dim.Render("NO LANES MATCH"))
+	}
+	return frame("Fleet", cOrange, selected.Name, rows, w, h)
+}
+func (m model) laneView(w, h int) []string {
+	l, ok := m.selectedLane()
+	if !ok {
+		return frame("Lane", cGray, "", []string{dim.Render("NO LANE SELECTED")}, w, h)
+	}
+	rows := []string{pill(l.State, stateColor(l.State)) + " " + lab(cPeach).Render(l.Name) + dim.Render(" · "+shipFor(l.ID))}
+	rows = append(rows, shipLines(l, m.tick, max(1, w-4), max(2, h/3))...)
+	rows = append(rows, text.Render("CREW'S LAST WORD  "+oneLine(l.Now)), lab(cLav).Render("HISTORY"))
+	for _, event := range tail(l.History, max(1, (h-len(rows)-4)/2)) {
+		when := "time unknown"
+		if !event.At.IsZero() {
+			when = event.At.Format("Jan 2 15:04")
+		}
+		rows = append(rows, dim.Render(when)+" "+pill(event.State, stateColor(event.State))+" "+oneLine(event.Text))
+	}
+	rows = append(rows, lab(cPeach).Render(fmt.Sprintf("ASKS %d · a starts sitting", len(l.Asks))))
+	for _, ask := range l.Asks {
+		line := pill(ask.Effort, cGold) + " " + oneLine(askQuestion(ask))
+		if !ask.Answerable {
+			line += dim.Render(" · " + readOnlyReason(l))
+		}
+		rows = append(rows, line)
+	}
+	return frame("Lane", stateColor(l.State), "space spins / pauses", rows, w, h)
+}
+func (m model) askView(w, h int) []string {
+	if w < 90 {
+		return m.sitting.view(w, h, m.hiddenSelected())
+	}
+	it, ok := m.sitting.current()
+	if !ok {
+		return m.sitting.view(w, h, m.hiddenSelected())
+	}
+	left := strings.Join(m.sitting.view(w*2/3, h, m.hiddenSelected()), "\n")
+	ship := frame(shipFor(it.lane.ID), stateColor(it.lane.State), "space spins / pauses", shipLines(it.lane, m.tick, w-w*2/3-4, max(1, h-3)), w-w*2/3, h)
+	return strings.Split(lipgloss.JoinHorizontal(lipgloss.Top, left, strings.Join(ship, "\n")), "\n")
+}
+func stateColor(s string) string {
+	switch s {
+	case "needs you":
+		return cOrange
+	case "waiting":
+		return cGold
+	case "working":
+		return cSky
+	case "done":
+		return cBlue
+	default:
+		return cGray
+	}
+}
+func askCount(lanes []StationLane, effort string) int {
+	n := 0
+	for _, l := range lanes {
+		for _, a := range l.Asks {
+			if a.Effort == effort {
+				n++
 			}
 		}
 	}
-	rows = append(rows, tail(log, h-5)...)
-	return frame(l.ID, statusColor[l.Status], StatusLabel[l.Status], rows, w, h)
-}
-
-func (m model) crew(w, h int) []string {
-	var rows []string
-	for _, c := range m.fleet.Crew {
-		rows = append(rows, fg(cTan).Render("▌ ")+lab(cPeach).Render(strings.ToUpper(c.ID)+" · SECOND MATE")+"  "+pill(StatusLabel[c.Status], cTan))
-		for _, s := range wrap(c.Title, w-8) {
-			rows = append(rows, fg(cTan).Render("▌ ")+"  "+text.Render(s))
-		}
-		rows = append(rows, "")
-	}
-	if len(rows) == 0 {
-		rows = []string{dim.Render("NO CREW ON RECORD")}
-	}
-	return frame("Crew", cTan, fmt.Sprintf("%d stations", len(m.fleet.Crew)), rows, w, h)
-}
-
-func (m model) timeline(w, h int) []string {
-	var rows []string
-	for i, e := range m.fleet.Timeline {
-		c := cLav
-		if i == len(m.fleet.Timeline)-1 {
-			c = cPeach
-		}
-		rows = append(rows, pill(e.At, c)+" "+lab(cPeach).Render(e.Lane)+" "+fg(verbColor[e.Verb]).Render(e.Verb)+dim.Render(": "+oneLine(e.Text)))
-	}
-	if len(rows) == 0 {
-		rows = []string{dim.Render("NO EVENTS ON RECORD")}
-	}
-	return frame("Timeline", cLav, "local time", tail(rows, h-1), w, h)
-}
-
-// holo is the selected lane's hologram pane.
-func (m model) holo(w, h int) []string {
-	lanes := m.lanes()
-	if m.sel >= len(lanes) {
-		return frame("Holo", cGray, "", nil, w, h)
-	}
-	l := lanes[m.sel]
-	p := m.prog[l.ID]
-	return frame(holoTitle(l, p), statusColor[l.Status], l.ID, holoLines(l, m.tick, p, w-4, h-1), w, h)
+	return n
 }

@@ -62,14 +62,14 @@ func TestSampleHome(t *testing.T) {
 			t.Errorf("%s: state %q, want %q", id, got[id].State, state)
 		}
 	}
+	if d := got["deps-bump"].Decisions; len(d) != 1 || d[0].Verb != "captain-hold" || d[0].Key != "deps-bump" {
+		t.Errorf("captain hold decisions %+v, want one keyed by its backlog task ID", d)
+	}
 	if len(lanes) != len(want) || lanes[0].State != "needs-decision" || lanes[len(lanes)-1].ID != "cache-research" {
 		t.Errorf("lanes or order wrong: %d lanes, first %s, last %s", len(lanes), lanes[0].ID, lanes[len(lanes)-1].ID)
 	}
 	if l := got["api-retry"]; l.Title != "Retry failed API calls with backoff in the widgets service" {
 		t.Errorf("api-retry title %q", l.Title)
-	}
-	if crew := BuildFleet(lanes, time.Now()).Crew; len(crew) != 1 || crew[0].ID != "docs-mate" {
-		t.Errorf("crew = %+v, want only docs-mate", crew)
 	}
 	if got["docs-mate"].Title != "Persistent second mate for the documentation site" {
 		t.Errorf("docs-mate title %q", got["docs-mate"].Title)
@@ -100,57 +100,14 @@ func TestViewFillsTerminal(t *testing.T) {
 	}
 }
 
-// Moving down an empty lane list keeps the selection at zero, so no lane view indexes a missing lane.
+// Empty fleet remains navigable in the Lane station.
 func TestSelectionOnEmptyList(t *testing.T) {
-	m, _ := model{w: 120, h: 34, view: 4}.key("j")
-	if m.sel != 0 {
-		t.Fatalf("sel = %d after j on an empty list, want 0", m.sel)
+	m, _ := model{w: 120, h: 34, view: 3}.key("j")
+	if m.selIndex() != 0 {
+		t.Fatalf("selection = %d, want 0", m.selIndex())
 	}
-	m.View()
-}
-
-// The timeline orders events by instant: 01:30 CDT comes before 01:10 CST on the fall-back night.
-func TestTimelineOrderAcrossFallBack(t *testing.T) {
-	chicago, err := time.LoadLocation("America/Chicago")
-	if err != nil {
-		t.Fatal(err)
-	}
-	earlier := time.Date(2026, 11, 1, 6, 30, 0, 0, time.UTC).In(chicago)
-	later := time.Date(2026, 11, 1, 7, 10, 0, 0, time.UTC).In(chicago)
-	lanes := []Lane{
-		{ID: "a", Events: []Event{{Verb: "working", At: later, Text: "later"}}},
-		{ID: "b", Events: []Event{{Verb: "working", At: earlier, Text: "earlier"}}},
-	}
-	tl := BuildFleet(lanes, time.Now()).Timeline
-	if len(tl) != 2 || tl[0].Text != "earlier" || tl[1].Text != "later" {
-		t.Fatalf("timeline order = %+v, want earlier then later", tl)
-	}
-}
-
-// Below 100 columns, Enter opens the selected lane's log in the Lanes view and Esc returns to the board.
-func TestNarrowLanesEnterOpensLog(t *testing.T) {
-	lanes, err := NewReader().Load("testdata/sample-home")
-	if err != nil {
-		t.Fatal(err)
-	}
-	m := model{fleet: BuildFleet(lanes, time.Now()), view: 4, w: 80, h: 24}
-	m.step()
-	for i, l := range m.fleet.Lanes {
-		if l.ID == "api-retry" {
-			m.sel = i
-		}
-	}
-	const title = "RETRY FAILED API CALLS WITH BACKOFF IN THE WIDGETS SERVICE"
-	if strings.Contains(m.View(), title) {
-		t.Fatal("the board shows a lane's log before Enter")
-	}
-	m, _ = m.key("enter")
-	if !strings.Contains(m.View(), title) {
-		t.Fatal("Enter does not open the selected lane")
-	}
-	m, _ = m.key("esc")
-	if strings.Contains(m.View(), title) {
-		t.Fatal("Esc does not return to the board")
+	if got := m.View(); !strings.Contains(got, "NO LANE SELECTED") {
+		t.Fatalf("empty lane station: %s", got)
 	}
 }
 
@@ -171,11 +128,46 @@ func TestServeHostGuard(t *testing.T) {
 	}
 }
 
-// Every lane picks a ship that ships in this build.
-func TestShipFor(t *testing.T) {
-	for _, id := range []string{"api-retry", "docs-mate", "x", ""} {
-		if len(generatedShipFrames[shipFor(id)]) == 0 {
-			t.Errorf("%q picks %q, which has no frames", id, shipFor(id))
+func TestTerminalShipRotationPauseAndFiniteBreakup(t *testing.T) {
+	for _, id := range []string{"sample-a", "sample-b"} {
+		lane := StationLane{ID: id, State: "working", SourceState: "working", Progress: 1}
+		m := model{}
+		start := strings.Join(shipLines(lane, m.tick, 52, 18), "\n")
+		for range 16 {
+			m.step()
+		}
+		rotated := strings.Join(shipLines(lane, m.tick, 52, 18), "\n")
+		if start == rotated {
+			t.Fatal("working ship did not rotate")
+		}
+		m.spinPaused = true
+		m.step()
+		if strings.Join(shipLines(lane, m.tick, 52, 18), "\n") != rotated {
+			t.Fatal("paused ship moved")
+		}
+		pixels := func(lines []string) map[[2]int]bool {
+			result := map[[2]int]bool{}
+			for row, line := range lines {
+				for col, char := range []rune(line) {
+					if char != ' ' {
+						result[[2]int{row, col}] = true
+					}
+				}
+			}
+			return result
+		}
+		intact := pixels(shipLines(lane, 12, 52, 18))
+		lane.SourceState = "failed"
+		escaped := false
+		for point := range pixels(shipLines(lane, 12, 52, 18)) {
+			escaped = escaped || !intact[point]
+		}
+		if !escaped {
+			t.Fatal("failed ship changed glyphs without separating pieces")
+		}
+		end := strings.Join(shipLines(lane, 24, 52, 18), "\n")
+		if strings.Join(shipLines(lane, 48, 52, 18), "\n") != end {
+			t.Fatal("breakup did not reach a finite resting frame")
 		}
 	}
 }
