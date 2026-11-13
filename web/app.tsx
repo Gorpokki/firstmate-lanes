@@ -2,11 +2,11 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
 	boardSummary,
-	deriveBoard,
 	findFoot,
 	findLanes,
 	fleetOrder,
 	freshness,
+	hiddenTicked,
 	isOld,
 	laneWords,
 	stateChanges,
@@ -18,6 +18,7 @@ import {
 import { FleetStation } from "./FleetStation";
 import { LaneStation } from "./LaneStation";
 import { AskStation } from "./AskStation";
+import { ListStation } from "./ListStation";
 import { Simulation } from "./Simulation";
 import { assignedShip, loadCatalog, type ShipMesh } from "./mesh-catalog";
 
@@ -515,6 +516,12 @@ function App() {
 	const [meshes, setMeshes] = useState<ShipMesh[]>([]),
 		[modelWarnings, setModelWarnings] = useState<string[]>([]);
 	const simulation = location.pathname === "/simulation";
+	const tick = (id: string) =>
+		setChecked((old) => {
+			const next = new Set(old);
+			next.has(id) ? next.delete(id) : next.add(id);
+			return next;
+		});
 	useEffect(() => {
 		const controller = new AbortController();
 		loadCatalog(controller.signal)
@@ -583,11 +590,7 @@ function App() {
 			}
 			if (e.code === "Space" && station === "list" && selected) {
 				e.preventDefault();
-				setChecked((old) => {
-					const next = new Set(old);
-					next.has(selected) ? next.delete(selected) : next.add(selected);
-					return next;
-				});
+				tick(selected);
 			}
 		};
 		window.addEventListener("keydown", key);
@@ -605,8 +608,12 @@ function App() {
 			</main>
 		);
 	if (!fleet) return <main role="status">{error || "Reading fleet…"}</main>;
-	const board = deriveBoard(fleet, mate),
-		lane = fleet.stationLanes.find((l) => l.id === selected) || board.rows[0];
+	const lane =
+		fleet.stationLanes.find((l) => l.id === selected) || fleet.stationLanes[0];
+	const openLane = (id: string) => {
+		setSelected(id);
+		setStation("lane");
+	};
 	const ship = lane ? assignedShip(lane.id, meshes) : undefined;
 	const saveLook = async () => {
 		try {
@@ -624,117 +631,24 @@ function App() {
 			fleet={fleet}
 			station={station}
 			go={setStation}
-			openLane={(id) => {
-				setSelected(id);
-				setStation("lane");
-			}}
+			openLane={openLane}
 			saveLook={saveLook}
 		>
-			<style>{`.station .actions{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}.station button,.station select{background:#17131B;color:var(--text);border:1px solid #4A4252;border-radius:8px;padding:10px;cursor:pointer}.station header{border-bottom:1px solid var(--line);padding-bottom:16px}.station h1{font-size:26px}.list{overflow:auto}.station table{width:100%;border-collapse:collapse}.station th,.station td{text-align:left;padding:12px 8px;border-bottom:1px solid var(--line)}.station th{white-space:nowrap}.station td button{padding:5px;border:0;background:none;text-align:left}.station input[type=checkbox]{width:22px;height:22px}.station article{margin:20px 0;padding:18px;border:1px solid #4A4252;border-radius:12px}.state{text-transform:capitalize;white-space:nowrap}.station p{line-height:1.5}.station a{color:var(--peach)}@media(max-width:600px){.station th,.station td{padding:10px 5px;font-size:14px}.last-word{min-width:160px}}`}</style>
+			<style>{`.station button,.station select{background:#17131B;color:var(--text);border:1px solid #4A4252;border-radius:8px;padding:10px;cursor:pointer}.station header{border-bottom:1px solid var(--line);padding-bottom:16px}.station h1{font-size:26px}.station article{margin:20px 0;padding:18px;border:1px solid #4A4252;border-radius:12px}.station p{line-height:1.5}.station a{color:var(--peach)}`}</style>
 			{error && <p role="alert">{error}</p>}
 			<div className="station">
 				{station === "list" && (
-					<section>
-						<h2>List</h2>
-						<div className="actions">
-							<label>
-								Second mate{" "}
-								<select value={mate} onChange={(e) => setMate(e.target.value)}>
-									<option value="">All</option>
-									{board.mates.map((m) => (
-										<option key={m}>{m}</option>
-									))}
-								</select>
-							</label>
-							<button
-								disabled={!checked.size}
-								onClick={() => setStation("ask")}
-							>
-								Ask selected lanes ({checked.size})
-							</button>
-						</div>
-						<div className="list">
-							<table>
-								<thead>
-									<tr>
-										<th>Select</th>
-										<th>Lane</th>
-										<th>State</th>
-										<th>Second mate</th>
-										<th>Quick asks</th>
-										<th>To read</th>
-										<th>Crew's last word</th>
-									</tr>
-								</thead>
-								<tbody>
-									{board.rows.map((row, index) => (
-										<React.Fragment key={row.id}>
-											{(index === 0 ||
-												board.rows[index - 1].state !== row.state) && (
-												<tr>
-													<th colSpan={7} scope="rowgroup" className="state">
-														{row.state}
-													</th>
-												</tr>
-											)}
-											<tr onFocus={() => setSelected(row.id)}>
-												<td>
-													<input
-														type="checkbox"
-														aria-label={`Select ${row.name}`}
-														checked={checked.has(row.id)}
-														onChange={() =>
-															setChecked((old) => {
-																const next = new Set(old);
-																next.has(row.id)
-																	? next.delete(row.id)
-																	: next.add(row.id);
-																return next;
-															})
-														}
-													/>
-												</td>
-												<td>
-													<button
-														onClick={() => {
-															setSelected(row.id);
-															setStation("lane");
-														}}
-													>
-														{row.name}
-													</button>
-												</td>
-												<td
-													className="state"
-													style={{ color: stateColors[row.state] }}
-												>
-													{row.state}
-												</td>
-												<td>{row.secondMate || "Main"}</td>
-												{["quick", "read"].map((effort) => (
-													<td key={effort}>
-														{row.asks
-															.filter((a) => a.effort === effort)
-															.map((a) => (
-																<p key={a.key}>{a.question || a.topic}</p>
-															))}
-													</td>
-												))}
-												<td className="last-word">
-													{row.now}
-													{!!row.invalidAsks && (
-														<p role="status">
-															{row.invalidAsks} malformed asks omitted
-														</p>
-													)}
-												</td>
-											</tr>
-										</React.Fragment>
-									))}
-								</tbody>
-							</table>
-						</div>
-					</section>
+					<ListStation
+						fleet={fleet}
+						mate={mate}
+						setMate={setMate}
+						ticked={checked}
+						tick={tick}
+						selected={selected}
+						select={setSelected}
+						openLane={openLane}
+						decide={() => setStation("ask")}
+					/>
 				)}
 				{station === "lane" &&
 					(lane ? (
@@ -754,11 +668,7 @@ function App() {
 					fleet={fleet}
 					meshes={meshes}
 					selectedLaneIds={checked.size ? [...checked] : undefined}
-					hiddenSelected={
-						fleet.stationLanes.filter(
-							(l) => checked.has(l.id) && !board.rows.includes(l),
-						).length
-					}
+					hiddenSelected={hiddenTicked(fleet, checked, mate)}
 					onBack={() => setStation("list")}
 					onConfirm={async (answers) => {
 						const response = await fetch("/answers", {
