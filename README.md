@@ -51,7 +51,7 @@ The simulation keeps idle and hidden performance budgets, recorded in `web/perf/
 - **Shipyard:** with its drones and the side ship turning, and while dragged, the yard stays within the active frame and script budgets. With Motion off it draws no frames; while the page is hidden it draws no frames and makes no requests of its own.
 
 Lane and Ask ships also stop spinning while the page is hidden.
-`web/perf/simulation-budget.mjs` serves `testdata/sample-home` with a built `fmlanes` and runs `/simulation` and the Fleet shipyard in headless Chromium, on a copy of the sample home with a lane in work.
+`web/perf/simulation-budget.mjs` serves `testdata/sample-home` with a built `fmlanes` and runs `/simulation` and the Fleet shipyard in headless Chromium, on a copy of the sample home with a lane in work. It also opens the Ask station at 390x844 on a touch phone with synthetic asks and fails when the ship's box overlaps a question, reason, choice or button, or leaves the first screen.
 It counts ship canvas paints, requests, simulation steps and Chromium script time over fixed windows, and fails when any budget is exceeded:
 
 ```sh
