@@ -1,5 +1,5 @@
 import {test,expect} from 'bun:test';
-import {boardSummary,findFoot,findLanes,fleetOrder,freshness,hiddenTicked,isOld,keepNeedingTicks,laneWords,listRows,overdue,stateChanges} from './stations';
+import {ageDays,boardSummary,findFoot,findLanes,fleetOrder,freshness,hiddenTicked,isOld,keepNeedingTicks,laneWords,listRows,overdue,stateChanges} from './stations';
 import {buildSitting} from './sitting';
 
 const lane=(id:string,state:string,secondMate:string,asked:string)=>({id,name:id,state,secondMate,home:'main',now:'Example',history:[],asks:asked?[{key:id,form:'discussion',question:'Example?',reason:'Choose',effort:'quick',asked,answerable:true}]:[]});
@@ -59,8 +59,10 @@ test('freshness names old data as a save',()=>{
  expect(isOld(fleet.updatedAt,at+10*60000)).toBe(true);
 });
 
-test('an ask is overdue from 5.5 days on the rule both the List and the Ask station use',()=>{
+test('an ask is overdue from 5.5 days, and that is the day its sixth segment lights tall',()=>{
  const day=1440;
  expect(overdue(5.4*day)).toBe(false);
  expect(overdue(5.5*day)).toBe(true);
+ expect(ageDays(5.4*day)).toBe(5);
+ expect(ageDays(5.5*day)).toBe(6);
 });
