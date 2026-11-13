@@ -34,6 +34,7 @@ export function deferForLater(fleet:Fleet,refs:readonly string[]):SittingItem[]{
 // One batch: send only once every ask still in the sitting has a choice, own answer, skip or grill. Deferred asks have left the sitting.
 export const unansweredCount=(items:readonly SittingItem[],answers:Readonly<Record<string,SittingAnswer>>)=>items.filter(item=>!answers[item.ref]).length;
 export const batchReady=(items:readonly SittingItem[],answers:Readonly<Record<string,SittingAnswer>>)=>items.length>0&&unansweredCount(items,answers)===0;
+export const acceptedKeys=(results:readonly DeliveryResult[]|null)=>new Set((results??[]).filter(result=>result.accepted).map(result=>result.key));
 
 export function undoAnswer(answers:Record<string,SittingAnswer>,ref:string):Record<string,SittingAnswer>{
  const next={...answers};

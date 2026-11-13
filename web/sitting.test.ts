@@ -1,10 +1,15 @@
 import {expect,test} from 'bun:test';
-import {answerFor,batchReady,buildSitting,deferForLater,readOnlyReason,reviewAnswers,undoAnswer,type SittingAnswer} from './sitting';
+import {acceptedKeys,answerFor,batchReady,buildSitting,deferForLater,readOnlyReason,reviewAnswers,undoAnswer,type SittingAnswer} from './sitting';
 import type {Fleet,Lane} from './stations';
 
 const lane=(id:string,secondMate:string,asks:Lane['asks']):Lane=>({id,name:`Lane ${id}`,home:'main',secondMate,state:'needs you',now:'',history:[],asks});
 const ask=(key:string,effort='quick',form='choice',asked='2026-01-01T00:00:00Z'):Lane['asks'][number]=>({key,form,question:`Question ${key}?`,topic:`Topic ${key}`,reason:'Reason',choices:[{label:'Yes',effect:'Do it'},{label:'No',effect:'Stop'}],pick:0,pick_reason:'Crew reason',no_pick_reason:'Dashboard reason',effort,asked,answerable:true});
 const fleet=(...stationLanes:Lane[]):Fleet=>({updatedAt:'2026-01-02T00:00:00Z',stationLanes,hiddenAsks:0,autonomyShare:0,changedLanes:[]});
+
+test('only accepted delivery results count as sent, so a refused answer stays pending for correction and resend',()=>{
+ expect([...acceptedKeys([{lane:'a',key:'A',accepted:true,reason:'applied'},{lane:'a',key:'B',accepted:false,reason:'stale'}])]).toEqual(['A']);
+ expect(acceptedKeys(null).size).toBe(0);
+});
 
 test('sitting starts with each lane next ask, quick first, groups by mate, and restricts selected lanes',()=>{
  const data=fleet(lane('a','Zed',[ask('a1','read'),ask('a2')]),lane('b','Alpha',[ask('b1')]),lane('c','Alpha',[ask('c1','read')]));

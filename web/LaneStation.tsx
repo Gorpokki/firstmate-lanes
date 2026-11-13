@@ -1,7 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {laneWords,stateColors,type Ask,type Lane} from './stations';
 import {Holo} from './Holo';
-import {answerFor,batchReady,readOnlyReason,undoAnswer,unansweredCount,type DeliveryResult,type SittingAnswer,type SittingItem} from './sitting';
+import {acceptedKeys,answerFor,batchReady,readOnlyReason,undoAnswer,unansweredCount,type DeliveryResult,type SittingAnswer,type SittingItem} from './sitting';
 import type {TriangleMesh} from './holo-renderer';
 
 type LaneProps={lane:Lane;mesh?:TriangleMesh;shipName?:string;onBack?:()=>void;onConfirm?:(answers:SittingAnswer[])=>Promise<DeliveryResult[]>};
@@ -54,7 +54,7 @@ function LaneAsk(p:CardProps){
   {ask.reason&&<p className="why">{ask.reason}</p>}
   {ask.answerable&&!p.locked?<React.Fragment>
    <Choices ask={ask} answer={answer} save={p.save}/>
-   <OwnAnswer answer={answer} save={p.save} ownRef={p.ownRef}/>
+   <OwnAnswer key={answer?.kind??''} answer={answer} save={p.save} ownRef={p.ownRef}/>
    <div className="hint">
     <button type="button" className="link" aria-pressed={answer?.kind==='skip'} onClick={()=>p.save('skip')}>{answer?.kind==='skip'?'✓ skipped: crew decides':'skip: crew decides'}<kbd>s</kbd></button>
     <button type="button" className="link" onClick={p.defer}>defer: ask me later<kbd>w</kbd></button>
@@ -67,7 +67,7 @@ function LaneAsk(p:CardProps){
 type BatchProps={lane:Lane;answers:Answers;left:number;deferred:number;ready:boolean;sending:boolean;delivery:DeliveryResult[]|null;error:string;canSend:boolean;send:()=>void};
 // The lane's answers under the card. They go as one batch, once every ask of the lane has an answer, a skip, a grill or is deferred.
 function LaneBatch(p:BatchProps){
- const sent=new Set(p.delivery?.map(r=>r.key));
+ const sent=acceptedKeys(p.delivery);
  const rows=Object.values(p.answers).flatMap(answer=>{const ask=p.lane.asks.find(a=>a.key===answer.key);return ask?[{key:ask.key,q:question(ask),a:answerWords(ask,answer),sent:sent.has(ask.key)}]:[];});
  const pending=rows.filter(row=>!row.sent).length;
  if(!rows.length&&!p.delivery&&!p.error)return null;
@@ -108,9 +108,10 @@ function laneAct(p:LaneKeys,key:string):Act{
  if(key==='Escape')return document.querySelector('.frame .pop')?undefined:p.back;
  if(key==='ArrowUp'||key==='ArrowDown')return ()=>p.move(key==='ArrowUp'?-1:1);
  if(key==='i')return p.openIndex;
+ if(key==='y')return p.ready?p.send:undefined;
  if(!p.answerable)return undefined;
  if(key.length===1&&'123456789'.includes(key))return ()=>p.choose(Number(key)-1);
- const acts:Acts={s:()=>p.save('skip'),w:p.defer,g:()=>p.save('grill'),u:p.undo,o:()=>p.ownRef.current?.focus(),y:p.ready?p.send:undefined};
+ const acts:Acts={s:()=>p.save('skip'),w:p.defer,g:()=>p.save('grill'),u:p.undo,o:()=>p.ownRef.current?.focus()};
  return acts[key];
 }
 // The Lane station's keys, in the capture phase, so esc is decided before the board's own key handler runs.
@@ -128,7 +129,7 @@ function useLaneKeys(k:LaneKeys){
 }
 function useLaneAnswers(lane:Lane,onConfirm:LaneProps['onConfirm']){
  const [answers,setAnswers]=useState<Answers>({}),[deferred,setDeferred]=useState<string[]>([]),[delivery,setDelivery]=useState<DeliveryResult[]|null>(null),[sending,setSending]=useState(false),[error,setError]=useState('');
- const sent=new Set(delivery?.map(r=>r.key));
+ const sent=acceptedKeys(delivery);
  const items:SittingItem[]=lane.asks.filter(ask=>ask.answerable&&!deferred.includes(ask.key)&&!sent.has(ask.key)).map(ask=>({lane,ask,ref:ask.key,round:0}));
  const ready=batchReady(items,answers),sentTo=(ask:Ask)=>sent.has(ask.key),isLocked=(ask:Ask)=>sending||sentTo(ask);
  // the same answer again takes it back; an own answer with no words takes his own answer back
