@@ -1,5 +1,5 @@
 import {expect,test} from 'bun:test';
-import {acceptedKeys,answerFor,batchReady,buildSitting,deferForLater,readOnlyReason,reviewAnswers,undoAnswer,type SittingAnswer} from './sitting';
+import {acceptedKeys,answerFor,answeredLanes,batchReady,buildSitting,deferForLater,readOnlyReason,reviewAnswers,undoAnswer,type SittingAnswer} from './sitting';
 import type {Fleet,Lane} from './stations';
 
 const lane=(id:string,secondMate:string,asks:Lane['asks']):Lane=>({id,name:`Lane ${id}`,home:'main',secondMate,state:'needs you',now:'',history:[],asks});
@@ -55,4 +55,11 @@ test('a sitting is sendable only when every ask still in it is answered, skipped
  expect(batchReady(items,undoAnswer(both,second.ref))).toBe(false);
  expect(batchReady(items.filter(item=>item.ref!==second.ref),one)).toBe(true);
  expect(batchReady([],{})).toBe(false);
+});
+
+test('a lane is hollow only when each of its asks has an answer',()=>{
+ const data=fleet(lane('a','Mate',[ask('a1'),ask('a2')]),lane('b','Mate',[ask('b1')]),lane('c','Mate',[]));
+ const [a1,b1,a2]=buildSitting(data);
+ expect(answeredLanes(data,{[a1.ref]:answerFor(a1,'choice',0),[b1.ref]:answerFor(b1,'skip')})).toEqual(['b']);
+ expect(answeredLanes(data,{[a1.ref]:answerFor(a1,'choice',0),[a2.ref]:answerFor(a2,'own',undefined,'Mine')})).toEqual(['a']);
 });
