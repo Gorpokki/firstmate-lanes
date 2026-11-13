@@ -1,14 +1,26 @@
 import {test,expect} from 'bun:test';
-import {boardSummary,deriveBoard,findFoot,findLanes,fleetOrder,freshness,isOld,laneWords,stateChanges} from './stations';
+import {boardSummary,findFoot,findLanes,fleetOrder,freshness,hiddenTicked,isOld,keepNeedingTicks,laneWords,listRows,stateChanges} from './stations';
+import {buildSitting} from './sitting';
 
 const lane=(id:string,state:string,secondMate:string,asked:string)=>({id,name:id,state,secondMate,home:'main',now:'Example',history:[],asks:asked?[{key:id,form:'discussion',question:'Example?',reason:'Choose',effort:'quick',asked,answerable:true}]:[]});
 const fleet={updatedAt:'2026-01-10T12:00:00Z',stationLanes:[lane('old','needs you','build','2026-01-09T12:00:00Z'),lane('new','needs you','design','2026-01-10T11:00:00Z'),lane('work','working','design',''),lane('parked','holding','','')],hiddenAsks:2,autonomyShare:0.5,changedLanes:['work']};
 const words=(row:{t:[string,string][]}[])=>row.map(part=>part.t.map(([w])=>w).join(''));
 
-test('List filters by second mate',()=>{
- const board=deriveBoard(fleet);
- expect(board.mates).toEqual(['build','design']);
- expect(deriveBoard(fleet,'design').rows.map(l=>l.id).toSorted()).toEqual(['new','work']);
+test('the mate filter scopes the List only: a hidden ticked lane stays ticked, is counted and enters the sitting',()=>{
+ const all=listRows(fleet,'',Date.parse(fleet.updatedAt));
+ expect(all.quick.map(r=>r.lane.id)).toEqual(['old','new']);
+ expect(all.mates).toEqual([['build',1],['design',1]]);
+ const ticked=new Set(['old','new']),design=listRows(fleet,'design');
+ expect(design.quick.map(r=>r.lane.id)).toEqual(['new']);
+ expect(hiddenTicked(fleet,ticked,'design')).toBe(1);
+ expect(hiddenTicked(fleet,ticked,'')).toBe(0);
+ expect(buildSitting(fleet,[...ticked]).map(item=>item.lane.id).toSorted()).toEqual(['new','old']);
+});
+
+test('a tick survives only while its lane needs you',()=>{
+ expect([...keepNeedingTicks(fleet,new Set(['old','new','work','parked','unknown']))].toSorted()).toEqual(['new','old']);
+ const answered={...fleet,stationLanes:fleet.stationLanes.map(l=>l.id==='old'?{...l,state:'working'}:l)};
+ expect([...keepNeedingTicks(answered,new Set(['old','new']))]).toEqual(['new']);
 });
 
 test('the summary brightens only the need-you numbers and names what changed',()=>{
