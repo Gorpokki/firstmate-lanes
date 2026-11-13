@@ -1,5 +1,5 @@
 import {expect,test} from 'bun:test';
-import {acceptedKeys,answerFor,answeredLanes,batchReady,buildSitting,deferForLater,readOnlyReason,reviewAnswers,undoAnswer,type SittingAnswer} from './sitting';
+import {acceptedKeys,answerFor,answeredLanes,batchReady,buildSitting,deferForLater,laneBatch,readOnlyReason,reviewAnswers,undoAnswer,type SittingAnswer} from './sitting';
 import type {Fleet,Lane} from './stations';
 
 const lane=(id:string,secondMate:string,asks:Lane['asks']):Lane=>({id,name:`Lane ${id}`,home:'main',secondMate,state:'needs you',now:'',history:[],asks});
@@ -62,4 +62,14 @@ test('a lane is hollow only when each of its asks has an answer',()=>{
  const [a1,b1,a2]=buildSitting(data);
  expect(answeredLanes(data,{[a1.ref]:answerFor(a1,'choice',0),[b1.ref]:answerFor(b1,'skip')})).toEqual(['b']);
  expect(answeredLanes(data,{[a1.ref]:answerFor(a1,'choice',0),[a2.ref]:answerFor(a2,'own',undefined,'Mine')})).toEqual(['a']);
+});
+
+test('a lane batch takes at most four asks and keeps them until none is pending',()=>{
+ const five=['a','b','c','d','e'];
+ expect(laneBatch(five,[])).toEqual(['a','b','c','d']);
+ expect(laneBatch(['a','b'],[])).toEqual(['a','b']);
+ expect(laneBatch(['b','c','d','e'],['a','b','c','d'])).toEqual(['a','b','c','d']);
+ expect(laneBatch(['a','c','d','e'],['a','b','c','d'])).toEqual(['a','b','c','d']);
+ expect(laneBatch(['e'],['a','b','c','d'])).toEqual(['e']);
+ expect(laneBatch([],['a','b','c','d'])).toEqual([]);
 });
