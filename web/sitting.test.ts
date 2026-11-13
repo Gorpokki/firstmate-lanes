@@ -1,5 +1,5 @@
 import {expect,test} from 'bun:test';
-import {ageBar,answerFor,answeredLanes,batchReady,buildSitting,deferForLater,readOnlyReason,reviewAnswers,undoAnswer,type SittingAnswer} from './sitting';
+import {answerFor,answeredLanes,batchReady,buildSitting,deferForLater,readOnlyReason,reviewAnswers,undoAnswer,type SittingAnswer} from './sitting';
 import type {Fleet,Lane} from './stations';
 
 const lane=(id:string,secondMate:string,asks:Lane['asks']):Lane=>({id,name:`Lane ${id}`,home:'main',secondMate,state:'needs you',now:'',history:[],asks});
@@ -52,13 +52,7 @@ test('a sitting is sendable only when every ask still in it is answered, skipped
  expect(batchReady([],{})).toBe(false);
 });
 
-test('an ask is overdue from 5.5 days, and a lane is hollow only when each of its asks has an answer',()=>{
- const day=1440;
- expect(ageBar(5.4*day)).toMatchObject({overdue:false,past:false});
- expect(ageBar(5.4*day).segments).not.toContain('overdue');
- expect(ageBar(5.5*day)).toMatchObject({overdue:true});
- expect(ageBar(5.5*day).segments).toContain('overdue');
- expect(ageBar(8*day).past).toBe(true);
+test('a lane is hollow only when each of its asks has an answer',()=>{
  const data=fleet(lane('a','Mate',[ask('a1'),ask('a2')]),lane('b','Mate',[ask('b1')]),lane('c','Mate',[]));
  const [a1,b1,a2]=buildSitting(data);
  expect(answeredLanes(data,{[a1.ref]:answerFor(a1,'choice',0),[b1.ref]:answerFor(b1,'skip')})).toEqual(['b']);

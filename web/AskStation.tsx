@@ -1,8 +1,8 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {stateColors,type Fleet,type Lane,type Link} from './stations';
+import {AGE_DAYS,ageDays,ageTone,ageWords,overdue,stateColors,type Fleet,type Lane,type Link} from './stations';
 import {assignedShip,type ShipMesh} from './mesh-catalog';
 import {Holo} from './Holo';
-import {ageBar,ageWords,answerFor,answeredLanes,batchReady,buildSitting,deferForLater,minutesSince,reviewAnswers,undoAnswer,type DeliveryResult,type SittingAnswer,type SittingItem} from './sitting';
+import {answerFor,answeredLanes,batchReady,buildSitting,deferForLater,minutesSince,reviewAnswers,undoAnswer,type DeliveryResult,type SittingAnswer,type SittingItem} from './sitting';
 
 export type {DeliveryResult,SittingAnswer} from './sitting';
 type AskStationProps={fleet:Fleet;active:boolean;selectedLaneIds?:string[];hiddenSelected:number;meshes?:ShipMesh[];onBack:()=>void;onConfirm?:(answers:SittingAnswer[])=>Promise<DeliveryResult[]>;onOpenLane?:(id:string)=>void;onAnswered?:(laneIds:string[])=>void};
@@ -21,8 +21,8 @@ function linksOf(lane:Lane,item:SittingItem):[string,Link][]{
 }
 function AgeBar({minutes}:{minutes:number}){
  if(!Number.isFinite(minutes))return null;
- const bar=ageBar(minutes);
- return <span className="agebar" role="img" aria-label={bar.overdue?'Overdue':'Age'}>{bar.segments.map((segment,i)=><i key={i} className={segment==='overdue'?'od':undefined} style={{background:segment==='off'?'#2A2630':segment==='overdue'?'#FF9900':bar.color}}/>)}{bar.past&&<b className="ovf"/>}</span>;
+ const days=ageDays(minutes);
+ return <span className="agebar" role="img" aria-label={overdue(minutes)?'Overdue':'Age'}>{Array.from({length:AGE_DAYS},(_,i)=><i key={i} className={i<days&&i>=5?'od':undefined} style={{background:i>=days?'#2A2630':i>=5?'#FF9900':ageTone(minutes)}}/>)}</span>;
 }
 // The lane's ticket, pull requests and grill pages, and what waits on the answer: not part of the decision, so out of sight
 // until the pointer rests on the widget or it has focus. A click or a tap holds it open.
@@ -181,7 +181,6 @@ const CSS=`
 .ask .agebar{display:inline-flex;gap:2px;align-items:center}
 .ask .agebar i{width:13px;height:9px;border-radius:1px}
 .ask .agebar i.od{height:17px}
-.ask .agebar .ovf{width:13px;height:17px;background:#FF9900;border-radius:0 9px 9px 0;margin-left:1px}
 .ask .qa{display:flex;flex-direction:column;gap:14px}
 .frame.v-ask .ask .card:not(.calm) .qa{min-height:150px;justify-content:center}
 .ask .q{font:500 38px/1.16 var(--body);margin:0;max-width:23em;text-wrap:balance;color:#FFF4DC}
