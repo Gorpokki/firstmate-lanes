@@ -261,6 +261,9 @@ def self_test():
             (EMAIL_EXCEPTION_PATH, '"https://' + 'user:secret@' + 'example.test/x"', 1),
             (EMAIL_EXCEPTION_PATH, '"https://' + 'user:other@' + 'example.test/"', 1),
             (EMAIL_EXCEPTION_PATH, '"HTTPS://' + 'USER:SECRET@' + 'EXAMPLE.TEST/"', 1),
+            (EMAIL_EXCEPTION_PATH, 'https://' + 'user:secret@' + 'example.test/', 1),
+            (EMAIL_EXCEPTION_PATH, '"x' + 'https://' + 'user:secret@' + 'example.test/"', 1),
+            (EMAIL_EXCEPTION_PATH, '"https://' + 'user:secret@' + 'example.org/"', 1),
             ("notes.txt", literal, 1),
             ("sub/" + EMAIL_EXCEPTION_PATH, literal, 1),
         ):
@@ -308,6 +311,11 @@ def self_test():
         result = run(base=start)
         assert result.returncode == 1
         assert "example.invalid" not in result.stdout + result.stderr
+        start = git("rev-parse", "HEAD", cwd=directory).strip()
+        commit(literal)
+        result = run(base=start)
+        assert result.returncode == 1
+        assert literal not in result.stdout + result.stderr
     with tempfile.TemporaryDirectory() as directory:
         subprocess.run(["git", "init", "-q"], cwd=directory, check=True)
         sample = Path(directory) / "sample.txt"
