@@ -200,11 +200,11 @@ export function blastPhase(b:Blast,t:number,V:BlastView):BlastPhase{
 // Motion means news: the yard is drawn at this fixed time, so its lights and sparks hold still; only the drones move.
 export const STILL=300;
 // yard: how far the berth's ship is built: scaffold (a frame, nothing built), hull (in work), lit (needs you or waits),
-// launched (done), stalled (blocked or failed). heatHex: the lane's state colour (its pad); color: its hull's colour.
-export type YardLane={id:string;name:string;yard:string;heatHex:string;color:string;hot:boolean;failed:boolean};
+// launched (done), stalled (blocked or failed). color: its hull's colour.
+export type YardLane={id:string;name:string;yard:string;color:string;hot:boolean;failed:boolean};
 const S=7,GX=20,GZ=18; // ship scale (radius 7), berth pitch along and across the keel
 const PROG:Record<string,number>={scaffold:0,hull:.55,lit:1,launched:1,stalled:.5};
-const FRAME='#E09A45',CLAMP='#C8D2E6',FLOOR='#1a1728',PEACH='#FFCC99';
+const FRAME='#E09A45',CLAMP='#C8D2E6';
 export type Berth={lane:YardLane;i:number;mesh:Mesh|null;at:V3;x0:number;x1:number;zf:number;y1:number;ym:number;segs:Seg[];clamps:Seg[];lights:V3[]};
 export const ISO={yaw:.16,pitch:.8},TOP={yaw:0,pitch:Math.PI/2};
 
@@ -231,17 +231,14 @@ function berth(lane:YardLane,i:number,mesh:Mesh|null,c:[number,number]):Berth{
  });
  for(const y of [ym,y1]){seg([x0,y,z0],[x1,y,z0]);seg([x0,y,z1],[x1,y,z1]);} // keel-wise rails
  const pz0=z0-1,pz1=z1+1,px0=x0-1,px1=x1+1;
- for(const [a,b] of [[[px0,0,pz0],[px1,0,pz0]],[[px1,0,pz0],[px1,0,pz1]],[[px1,0,pz1],[px0,0,pz1]],[[px0,0,pz1],[px0,0,pz0]]] as [V3,V3][])segs.push({a,b,color:lane.heatHex,id:i,ch:'═',back:true});
+ for(const [a,b] of [[[px0,0,pz0],[px1,0,pz0]],[[px1,0,pz0],[px1,0,pz1]],[[px1,0,pz1],[px0,0,pz1]],[[px0,0,pz1],[px0,0,pz0]]] as [V3,V3][])segs.push({a,b,color,id:i,ch:'═',back:true});
  return {lane,i,mesh,at,x0,x1,zf,y1,ym,segs,clamps,lights};
 }
-// the berths in a grid of `cols`, and the dotted dock floor under them
+// the berths in a grid of `cols`
 export function yardLayout(lanes:YardLane[],meshOf:(l:YardLane)=>Mesh|null,cols:number,gx=GX,gz=GZ){ // gx, gz: the berth pitch, wider when every berth has a name above it
  const rows=Math.max(1,Math.ceil(lanes.length/cols));
  const berths=lanes.map((l,i)=>berth(l,i,meshOf(l),[(i%cols-(cols-1)/2)*gx,(Math.floor(i/cols)-(rows-1)/2)*gz]));
- const ex=cols*gx/2+4,ez=rows*gz/2+4,floor:Seg[]=[];
- for(let x=-ex;x<=ex;x+=4)floor.push({a:[x,-.05,-ez],b:[x,-.05,ez],color:FLOOR,id:-1,ch:'·',back:true});
- for(let z=-ez;z<=ez;z+=4)floor.push({a:[-ex,-.05,z],b:[ex,-.05,z],color:FLOOR,id:-1,ch:'·',back:true});
- return {berths,floor,rows};
+ return {berths};
 }
 export const yardCols=(n:number)=>Math.max(1,Math.ceil(Math.sqrt(n*1.4)));
 // scale and centre that fit every berth in w x h px from this camera angle
@@ -256,11 +253,11 @@ export function fitYard(berths:Berth[],yaw:number,pitch:number,wPx:number,hPx:nu
 }
 // One frame of the yard at time `now` (ms): build states, sparks, thrust, lights. Its sparks come from a fixed seed, so a
 // yard at rest is the same frame every time it is drawn.
-export function yardScene(berths:Berth[],floor:Seg[],sel:string,now:number):Scene{
- const objs:Obj[]=[],segs:Seg[]=[...floor],dots:Dot[]=[],labels:Label[]=[],rnd=rng(7);
+export function yardScene(berths:Berth[],now:number):Scene{
+ const objs:Obj[]=[],segs:Seg[]=[],dots:Dot[]=[],labels:Label[]=[],rnd=rng(7);
  for(const b of berths){
-  const y=b.lane.yard,isSel=b.lane.id===sel;
-  segs.push(...b.segs.map(s=>s.ch==='═'&&isSel?{...s,color:Math.floor(now/250)%2?PEACH:s.color}:s));
+  const y=b.lane.yard;
+  segs.push(...b.segs);
   if(y!=='launched')segs.push(...b.clamps);
   b.lights.forEach((q,k)=>{if(Math.sin(now/330+k+b.i)>0)dots.push({p:q,ch:'•',color:k%2?'#FFFFFF':'#FFCC66',id:b.i});});
   if(!b.mesh)continue;

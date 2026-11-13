@@ -1,4 +1,5 @@
 import React,{forwardRef,useEffect,useImperativeHandle,useRef} from 'react';
+import {spinFrameDue} from './animation-budget';
 import {extras,frame,labelAt,paint,render,shipMesh,view,type Frame,type Mode} from './ascii3d';
 import {ISO,STILL,TOP,droneScene,fitYard,yardCols,yardLayout,yardScene,type Berth,type YardLane} from './scenes';
 import {shipHex} from './Holo';
@@ -9,19 +10,19 @@ import {stateColors,type Lane} from './stations';
 
 const MONO="Menlo, 'SF Mono', Consolas, monospace",FONT_PX=9,LABEL_PX=15,GX=26,GZ=27; // berths stand apart, so a name fits between them
 type Kept={f:Frame;glyph:string[];color:string[];depth:Float32Array;id:Int16Array;quad:Uint8Array};
-type Cam={yaw:number;pitch:number;zoom:number;base:number;px:number;py:number;key:string;sel:string;size:string;all:boolean;drawn:string;t:number;changed:number;keep:Kept|null};
-type Loop={ctx:CanvasRenderingContext2D|null;f:Frame|null;cw:number;ch:number;w:number;h:number;raf:number};
+type Cam={yaw:number;pitch:number;zoom:number;base:number;px:number;py:number;key:string;sel:string;size:string;all:boolean;drawn:string;changed:number;keep:Kept|null};
+type Loop={ctx:CanvasRenderingContext2D|null;f:Frame|null;cw:number;ch:number;w:number;h:number;raf:number;last:number;dirty:boolean;more:boolean};
 type Props={lanes:Lane[];meshes:ShipMesh[];selected:string;top:boolean;mode:Mode;motion:boolean;onPick:(id:string)=>void};
 export type YardCamera={zoom:(by:'in'|'out')=>void;fit:()=>void};
 const clamp=(v:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,v));
-const yardLane=(lane:Lane):YardLane=>{const hex=stateColors[lane.state]??stateColors.holding!;return {id:lane.id,name:lane.name,yard:yardOf(lane),heatHex:hex,color:shipHex(hex),hot:lane.state==='needs you',failed:lane.sourceState==='failed'};};
+const yardLane=(lane:Lane):YardLane=>{const hex=stateColors[lane.state]??stateColors.holding!;return {id:lane.id,name:lane.name,yard:yardOf(lane),color:shipHex(hex),hot:lane.state==='needs you',failed:lane.sourceState==='failed'};};
 
 // One frame of the yard. It is drawn in full for each change (and for 0.7 s after it, while the renderer's exposure
-// settles) and kept; a drone step, about ten a second, puts the kept frame back and draws only the drones over it.
-// It returns whether the loop goes on: only while drones fly (Motion on, a ship in work in sight) or a change settles.
+// settles) and kept; a drone step puts the kept frame back and draws only the drones over it. step gives each draw the
+// spin-frame budget. It returns whether the loop goes on: only while drones fly (Motion on, a ship in work in sight) or a change settles.
 function drawYard(L:Loop,c:Cam,p:Props,now:number):boolean{
  const ctx=L.ctx!,f=L.f!,W=L.w*L.cw,H=L.h*L.ch;
- const {berths,floor}=yardLayout(p.lanes.map(yardLane),l=>{const ship=assignedShip(l.id,p.meshes);return ship?shipMesh(ship.mesh,0):null;},yardCols(p.lanes.length),GX,GZ);
+ const {berths}=yardLayout(p.lanes.map(yardLane),l=>{const ship=assignedShip(l.id,p.meshes);return ship?shipMesh(ship.mesh,0):null;},yardCols(p.lanes.length),GX,GZ);
  if(!berths.length){ctx.clearRect(0,0,W,H);c.keep=null;return false;}
  if(c.key!==`${p.top}`)Object.assign(c,{...(p.top?TOP:ISO),zoom:0,key:`${p.top}`}); // a preset: from the top, or from an angle
  const fit=fitYard(berths,c.yaw,c.pitch,W,H),size=`${W}x${H}x${berths.length}`;
@@ -49,11 +50,9 @@ function drawYard(L:Loop,c:Cam,p:Props,now:number):boolean{
  if(key!==c.drawn){c.drawn=key;c.changed=now;}
  const full=!c.keep||c.keep.f!==f||now-c.changed<700;
  if(!full&&!live)return false; // nothing moved: the canvas keeps its frame
- if(!full&&now-c.t<95)return true; // nothing moved but the clock: wait for the next drone step
- c.t=now;
  const cam={yaw:c.yaw,pitch:c.pitch,ppu,px:c.px,py:c.py},ids=new Set(seen.map(b=>b.i)),near=GX*ppu>=84;
  if(full){
-  const named=berthNames(yardScene(seen,floor,p.selected,STILL),berths,p.selected,Math.max(8,Math.floor((GX*ppu-12)/6.1)));
+  const named=berthNames(yardScene(seen,STILL),berths,p.selected,Math.max(8,Math.floor((GX*ppu-12)/6.1)));
   render(f,{...named,labels:named.labels!.filter(l=>near?ids.has(l.id):l.id===me.i)},cam,p.mode); // from far away only the selected berth keeps its name
   c.keep={f,glyph:f.glyph.slice(),color:f.color.slice(),depth:f.depth.slice(),id:f.id.slice(),quad:f.quad.slice()};
  }else{const k=c.keep!;for(let i=0;i<k.glyph.length;i++){f.glyph[i]=k.glyph[i]!;f.color[i]=k.color[i]!;}f.depth.set(k.depth);f.id.set(k.id);f.quad.set(k.quad);}
@@ -67,19 +66,22 @@ function drawYard(L:Loop,c:Cam,p:Props,now:number):boolean{
 // or a double tap goes back to the start. A click or a tap selects a lane. Hidden, it draws nothing.
 export const Shipyard=forwardRef<YardCamera,Props>(function Shipyard(p,ref){
  const canvas=useRef<HTMLCanvasElement>(null),hidden=usePageHidden();
- const live=useRef(p),loop=useRef<Loop>({ctx:null,f:null,cw:5.4,ch:11,w:0,h:0,raf:0});
- const cam=useRef<Cam>({yaw:0,pitch:0,zoom:0,base:0,px:0,py:0,key:'',sel:'',size:'',all:false,drawn:'',t:0,changed:0,keep:null});
+ const live=useRef(p),loop=useRef<Loop>({ctx:null,f:null,cw:5.4,ch:11,w:0,h:0,raf:0,last:0,dirty:true,more:false});
+ const cam=useRef<Cam>({yaw:0,pitch:0,zoom:0,base:0,px:0,py:0,key:'',sel:'',size:'',all:false,drawn:'',changed:0,keep:null});
  live.current=p;
  const hide=useRef(hidden);hide.current=hidden;
  const step=(now:number)=>{
   const L=loop.current;L.raf=0;
-  if(hide.current||!L.ctx)return;
+  if(hide.current||!L.ctx||!(L.dirty||L.more))return;
+  if(L.last&&!spinFrameDue(now,L.last)){L.raf=requestAnimationFrame(step);return;}
+  L.dirty=false;L.last=now;
   L.f=frame(L.f,L.w,L.h,L.cw,L.ch);
   let more=false;
   try{more=drawYard(L,cam.current,live.current,now);}catch(error){console.error(error);}
+  L.more=more;
   if(more)L.raf=requestAnimationFrame(step);
  };
- const kick=()=>{const L=loop.current;if(!L.raf&&!hide.current)L.raf=requestAnimationFrame(step);};
+ const kick=()=>{const L=loop.current;L.dirty=true;if(!L.raf&&!hide.current)L.raf=requestAnimationFrame(step);};
  useEffect(()=>{
   const cv=canvas.current!,ctx=cv.getContext('2d'),L=loop.current;L.ctx=ctx;
   if(ctx){ctx.font=`${FONT_PX}px ${MONO}`;L.cw=ctx.measureText('M').width||5.4;L.ch=Math.round(FONT_PX*1.25);}

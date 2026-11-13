@@ -34,11 +34,11 @@ export function nameRows(t:string,w:number,rows=2):string[]{
 }
 // The yard at rest: the needs-you hulls are the lit things, every scaffold rests in one faint grey, and only the selected
 // berth keeps its floor-level frame, lights and trail; a done ship's trail is green, its state's colour.
-const NAME_HOT='#C9BCAB',NAME_REST='#9C9184',REST='#2A2730';
+const NAME_HOT='#C9BCAB',NAME_REST='#9C9184';
 function calm(sc:Scene,on:number|undefined,hot:(id:number)=>boolean):Scene{
  return {...sc,
   objs:sc.objs.map(o=>({...o,glow:(o.glow??1)*(hot(o.id)?1.3:1)})),
-  segs:(sc.segs??[]).filter(s=>s.id!==-1&&!(s.back&&s.id!==on)).map(s=>s.back?{...s,color:s.id===on?'#4A4450':REST}:s),
+  segs:(sc.segs??[]).filter(s=>!(s.back&&s.id!==on)).map(s=>s.back?{...s,color:'#4A4450'}:s),
   dots:(sc.dots??[]).filter(d=>!(d.id!==on&&'•≈~·'.includes(d.ch))).map(d=>{const m=/^rgb\((\d+),(\d+),255\)$/.exec(d.color);return m?{...d,color:`rgb(${Number(m[2])>>3},${Number(m[2])>>1},${Number(m[2])>>2})`}:d;}),
  };
 }
