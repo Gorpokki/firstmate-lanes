@@ -5,7 +5,7 @@ export type DeliveryResult={lane:string;key:string;accepted:boolean;reason:strin
 export type SittingItem={lane:Fleet['stationLanes'][number];ask:Ask;ref:string;round:number};
 export type ReviewRow={lane:string;key:string;question:string;answer:string};
 
-export const refFor=(lane:string,key:string)=>`${lane}\0${key}`;
+const refFor=(lane:string,key:string)=>`${lane}\0${key}`;
 const effortRank=(ask:Ask)=>ask.effort==='quick'?0:1;
 const askedAt=(ask:Ask)=>{const time=Date.parse(ask.asked);return Number.isFinite(time)?time:0;};
 export const readOnlyReason=(lane:Fleet['stationLanes'][number],ask:Ask)=>ask.answerable?'':lane.home==='local'&&!lane.secondMate?'Local drop-in lanes have no owning home, so this ask cannot be answered here.':'This ask has no verifiable task ID, so it cannot be answered here.';
