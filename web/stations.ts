@@ -1,6 +1,6 @@
 export type Link={id:string;title:string;url:string};
 export type Ask={key:string;form:string;question?:string;topic?:string;must_decide?:string[];reason:string;choices?:{label:string;effect:string}[];pick?:number;pick_reason?:string;no_pick_reason?:string;effort:string;detail?:string;tickets?:Link[];pull_requests?:Link[];grill_pages?:Link[];waits_on_this?:string;asked:string;answerable:boolean};
-export type Lane={id:string;name:string;home:string;secondMate:string;state:string;sourceState?:string;now:string;updatedAt?:string;start?:string;ticket?:Link;invalidAsks?:number;progress?:number;history:{at:string;state:string;text:string}[];asks:Ask[]};
+export type Lane={id:string;name:string;title?:string;home:string;secondMate:string;state:string;sourceState?:string;now:string;updatedAt?:string;start?:string;ticket?:Link;invalidAsks?:number;progress?:number;history:{at:string;state:string;text:string}[];asks:Ask[]};
 export type Fleet={updatedAt:string;stationLanes:Lane[];hiddenAsks:number;autonomyShare:number;changedLanes:string[]};
 export const states=['needs you','waiting','working','done','holding'];
 export type Station='ask'|'list'|'fleet'|'lane';
@@ -65,7 +65,7 @@ export function boardSummary(fleet:Fleet):SummaryPart[][] {
 export const FIND_LIMIT=6;
 export function findLanes(fleet:Fleet,query:string) {
  const words=query.toLowerCase().split(/\s+/).filter(Boolean);
- const all=words.length?fleetOrder(fleet).filter(l=>words.every(w=>l.name.toLowerCase().includes(w))):[];
+ const all=words.length?fleetOrder(fleet).filter(l=>{const text=`${l.name} ${l.title??''}`.toLowerCase();return words.every(w=>text.includes(w));}):[];
  return {rows:all.slice(0,FIND_LIMIT),n:all.length};
 }
 export const findFoot=(query:string,shown:number,n:number)=>!query.trim()?'esc closes':!n?'No lane has this name.':`${n>shown?`${shown} of ${n} lanes · type more to narrow · `:''}↑ ↓ choose · enter opens the lane · esc closes`;

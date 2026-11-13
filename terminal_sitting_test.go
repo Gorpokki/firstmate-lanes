@@ -67,6 +67,22 @@ func TestTerminalSittingUndoDeferAndSearch(t *testing.T) {
 	}
 }
 
+func TestTerminalSittingSearchFindsFallbackSentence(t *testing.T) {
+	stations := terminalFixture()
+	stations[1].Name = "lane-b"
+	stations[1].Title = "Compare three cache layers in the report"
+	m := model{fleet: Fleet{Stations: stations}, view: 0, w: 80, h: 24}
+	m.openSitting()
+	m.sitting.key(&m, "/", m.askLanes())
+	for _, r := range "cache layers" {
+		m.sitting.key(&m, string(r), m.askLanes())
+	}
+	m.sitting.key(&m, "enter", m.askLanes())
+	if m.sitting.items[m.sitting.index].ask.Key != "read-b" {
+		t.Fatalf("search did not find the lane by its sentence: %s", m.sitting.items[m.sitting.index].ask.Key)
+	}
+}
+
 func TestTerminalMultipleSelectionKeepsUncheckedLanesVisible(t *testing.T) {
 	m := model{fleet: Fleet{Stations: terminalFixture()}, view: 1, w: 100, h: 30}
 	m, _ = m.key("space")

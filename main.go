@@ -447,6 +447,9 @@ func (m model) laneView(w, h int) []string {
 		return frame("Lane", cGray, "", []string{dim.Render("NO LANE SELECTED")}, w, h)
 	}
 	rows := []string{pill(l.State, stateColor(l.State)) + " " + lab(cPeach).Render(l.Name) + dim.Render(" · "+shipFor(l.ID))}
+	if l.Title != "" {
+		rows = append(rows, dim.Render(oneLine(l.Title)))
+	}
 	rows = append(rows, shipLines(l, m.tick, max(1, w-4), max(2, h/3))...)
 	rows = append(rows, text.Render("CREW'S LAST WORD  "+oneLine(l.Now)), lab(cLav).Render("HISTORY"))
 	for _, event := range tail(l.History, max(1, (h-len(rows)-4)/2)) {
