@@ -12,6 +12,9 @@ import sys
 SCANNER_PATH = "scripts/leak-check.py"
 SAFE_FIXTURE = 'for safe_text in ("https://github.com/users/synthetic/projects/1", "https://github.com/home/synthetic", "time.Local"):'
 FIXTURE_ASSIGNMENT = 'fixture_denylist = "' + SAFE_FIXTURE.split('"')[1] + '"'
+# Reason: one synthetic credentialed-URL rejection fixture in a Go test; only the generic email shape rule skips it.
+EMAIL_EXCEPTION_PATH = "lane_record_test.go"
+EMAIL_EXCEPTION = '"' + "https://" + "user:secret@" + "example.test/" + '"'
 
 
 def scanned_text(name, text):
@@ -40,7 +43,7 @@ def scan_tree(tree, denylist, seen):
             data = subprocess.run(
                 ["git", "cat-file", "blob", oid], check=True, capture_output=True
             ).stdout.decode(errors="replace")
-            failed |= report(scanned_text(name, data), denylist)
+            failed |= report(scanned_text(name, data), denylist, name)
     return failed
 
 
@@ -51,7 +54,7 @@ def scan_worktree(denylist):
         path = Path(name)
         failed |= report(name, denylist)
         if path.is_file():
-            failed |= report(scanned_text(name, path.read_text(errors="replace")), denylist)
+            failed |= report(scanned_text(name, path.read_text(errors="replace")), denylist, name)
     return failed
 
 
@@ -64,8 +67,8 @@ PATTERNS = (
     re.compile(r"(?:(?<![\w./-])|(?<=file://))(?:/[\w.-]+)*" + re.escape(HOME_MARKERS[1]) + r"[^/\s]+(?:/|\b)"),
     re.compile(r"\b(?:[A-Za-z0-9-]+\.)+(?:" + PRIVATE_SUFFIX_FORMS + r")\b"),
     re.compile(r"\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b"),
-    re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I),
 )
+EMAIL = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
 
 
 def denylist_entries(value):
@@ -75,13 +78,23 @@ def denylist_entries(value):
     return values or None
 
 
-def matches(text, denylist):
+def email_candidate(name, text):
+    if name == EMAIL_EXCEPTION_PATH:
+        return text.replace(EMAIL_EXCEPTION, " ")
+    return text
+
+
+def matches(text, denylist, name=None):
     folded = text.casefold()
-    return any(pattern.search(text) for pattern in PATTERNS) or any(item.casefold() in folded for item in denylist)
+    return (
+        any(pattern.search(text) for pattern in PATTERNS)
+        or EMAIL.search(email_candidate(name, text)) is not None
+        or any(item.casefold() in folded for item in denylist)
+    )
 
 
-def report(text, denylist):
-    if matches(text, denylist):
+def report(text, denylist, name=None):
+    if matches(text, denylist, name):
         print("leak detected (content redacted)", file=sys.stderr)
         return 1
     return 0
@@ -239,6 +252,62 @@ def self_test():
         result = run(event={"title": "safe", "body": "person@" + "example.invalid"})
         assert result.returncode == 2
         assert "example.invalid" not in result.stdout + result.stderr
+    def email_exception_checks():
+        literal = EMAIL_EXCEPTION
+        Path(directory, "sub").mkdir(exist_ok=True)
+        for name, content, expected in (
+            (EMAIL_EXCEPTION_PATH, literal, 0),
+            (EMAIL_EXCEPTION_PATH, literal + "\n" + '"person@' + 'example.invalid"', 1),
+            (EMAIL_EXCEPTION_PATH, '"https://' + 'user:secret@' + 'example.test/x"', 1),
+            (EMAIL_EXCEPTION_PATH, '"https://' + 'user:other@' + 'example.test/"', 1),
+            (EMAIL_EXCEPTION_PATH, '"HTTPS://' + 'USER:SECRET@' + 'EXAMPLE.TEST/"', 1),
+            ("notes.txt", literal, 1),
+            ("sub/" + EMAIL_EXCEPTION_PATH, literal, 1),
+        ):
+            Path(directory, name).write_text(content)
+            commit()
+            result = run()
+            assert result.returncode == expected
+            assert "user:secret" not in result.stdout + result.stderr
+            if expected:
+                assert "leak detected (content redacted)" in result.stderr
+            else:
+                assert not result.stdout and not result.stderr
+            Path(directory, name).unlink()
+            commit()
+        Path(directory, EMAIL_EXCEPTION_PATH).write_text(literal)
+        commit()
+        for result in (run(denylist="user:secret"), run(denylist="user:secret", tree=None)):
+            assert result.returncode == 1
+            assert "leak detected (content redacted)" in result.stderr
+            assert "user:secret" not in result.stdout + result.stderr
+        Path(directory, EMAIL_EXCEPTION_PATH).unlink()
+        commit()
+        start = git("rev-parse", "HEAD", cwd=directory).strip()
+        Path(directory, EMAIL_EXCEPTION_PATH).write_text(literal)
+        commit()
+        Path(directory, EMAIL_EXCEPTION_PATH).unlink()
+        commit()
+        assert run(base=start).returncode == 0
+        result = run(base=start, denylist="user:secret")
+        assert result.returncode == 1
+        assert "user:secret" not in result.stdout + result.stderr
+        commit(literal)
+        result = run(base=start)
+        assert result.returncode == 1
+        assert literal not in result.stdout + result.stderr
+        result = run(event={"issue": {"title": "safe", "body": literal}})
+        assert result.returncode == 1
+        assert literal not in result.stdout + result.stderr
+        Path(directory, "event.json").unlink()
+        start = git("rev-parse", "HEAD", cwd=directory).strip()
+        Path(directory, EMAIL_EXCEPTION_PATH).write_text('"person@' + 'example.invalid"')
+        commit()
+        Path(directory, EMAIL_EXCEPTION_PATH).unlink()
+        commit()
+        result = run(base=start)
+        assert result.returncode == 1
+        assert "example.invalid" not in result.stdout + result.stderr
     with tempfile.TemporaryDirectory() as directory:
         subprocess.run(["git", "init", "-q"], cwd=directory, check=True)
         sample = Path(directory) / "sample.txt"
@@ -265,12 +334,14 @@ def self_test():
                 capture_output=True,
             )
 
-        def run(denylist="Synthetic-Private-Token", event=None, base=None, owner=None):
+        def run(denylist="Synthetic-Private-Token", event=None, base=None, owner=None, tree="HEAD"):
             env = os.environ.copy()
             env.pop("LEAK_DENYLIST", None)
             if denylist is not None:
                 env["LEAK_DENYLIST"] = denylist
-            args = [sys.executable, scanner, "--tree", "HEAD"]
+            args = [sys.executable, scanner]
+            if tree is not None:
+                args.extend(["--tree", tree])
             if base is not None:
                 args.extend(["--base", base])
             if owner is not None:
@@ -294,7 +365,10 @@ def self_test():
         identity_checks()
         tree_and_history_checks()
         fixture_checks()
+        email_exception_checks()
         event_text_checks()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--self-test", action="store_true")
