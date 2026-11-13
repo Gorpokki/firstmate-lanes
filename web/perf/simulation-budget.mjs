@@ -27,18 +27,21 @@ const freePort=()=>new Promise((ok,fail)=>{const server=createServer();server.un
 const sleep=ms=>new Promise(ok=>setTimeout(ok,ms));
 
 // A copy of the sample home and its registered sample-mate, side by side, whose working lane is stamped now: lanes
-// older than two hours are not working, so the committed fixture would show no hull in work and no drones.
-function fixtureHome(){
+// older than two hours are not working, so the committed fixture would show no hull in work and no drones. Extra lanes
+// are copies of that working lane, so the yard and its bar carry about 100 real lanes.
+function fixtureHome(extraLanes){
  const dir=mkdtempSync(join(tmpdir(),'fmlanes-home-')),home=join(dir,'sample-home');
  cpSync(join(root,'testdata/sample-home'),home,{recursive:true});
  cpSync(join(root,'testdata/sample-mate'),join(dir,'sample-mate'),{recursive:true});
  const status=join(home,'state/api-retry.status');
  writeFileSync(status,readFileSync(status,'utf8').replace(/\[at=\d+\]/g,`[at=${Math.floor(Date.now()/1000)}]`));
+ const stamped=readFileSync(status,'utf8'),meta=readFileSync(join(home,'state/api-retry.meta'),'utf8');
+ for(let i=0;i<extraLanes;i++){writeFileSync(join(home,'state',`lane-${i}.status`),stamped);writeFileSync(join(home,'state',`lane-${i}.meta`),meta);}
  return {dir,home};
 }
 
-async function startServer(){
- const port=await freePort(),state=mkdtempSync(join(tmpdir(),'fmlanes-budget-')),{dir,home}=fixtureHome();
+async function startServer(extraLanes=0){
+ const port=await freePort(),state=mkdtempSync(join(tmpdir(),'fmlanes-budget-')),{dir,home}=fixtureHome(extraLanes);
  const child=spawn(binary,['--home',home,'--serve',`127.0.0.1:${port}`],{env:{...process.env,XDG_STATE_HOME:state,FM_LANES_CONFIG:''},stdio:['ignore','inherit','inherit']});
  const base=`http://127.0.0.1:${port}`,stop=()=>{child.kill();rmSync(state,{recursive:true,force:true});rmSync(dir,{recursive:true,force:true});};
  for(let i=0;i<100;i++){
@@ -80,6 +83,39 @@ async function measure(page,cdp,requests,ms,act,during){
 }
 
 const results=[],check=(name,ok,detail)=>{results.push({name,ok,detail});console.log(`${ok?'pass':'FAIL'}  ${name}  ${JSON.stringify(detail)}`);};
+
+async function openShipyard(page,base){
+ const fleetLoaded=page.waitForResponse(response=>new URL(response.url()).pathname==='/fleet.json');
+ await page.goto(`${base}/`);
+ await fleetLoaded;
+ await page.waitForFunction(()=>!document.querySelector('main[role="status"]'));
+ await page.locator('nav.rail').getByRole('button',{name:/^Fleet/}).click();
+ await page.waitForSelector('section[aria-label="Fleet"]');
+ await page.getByRole('group',{name:'Fleet display'}).getByRole('button',{name:'Shipyard',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('canvas[aria-label^="Shipyard:"]')&&window.__yardFrames>0);
+ await fitAll(page);
+}
+
+const fitAll=page=>page.getByRole('group',{name:'Yard zoom'}).getByRole('button',{name:'fit all'}).click();
+
+// The shipyard ends inside the frame and the station does not scroll at 1440 x 900 and 1280 x 720, with the sample's lanes
+// and with about 100 lanes, after fit all at each size.
+async function checkShipyardFit(browser,extraLanes){
+ const server=await startServer(extraLanes),page=await browser.newPage({viewport:{width:1440,height:900}});
+ try{
+  await page.addInitScript(visibilityControl);
+  await openShipyard(page,server.base);
+  const lanes=Number((await page.locator('section[aria-label="Fleet"] .vtitle .lab').textContent()).match(/\d+/)[0]);
+  for(const [width,height] of [[1440,900],[1280,720]]){
+   await page.setViewportSize({width,height});await sleep(300);
+   await fitAll(page);await sleep(300);
+   const fit=await page.evaluate(()=>{const main=document.querySelector('main.main'),yard=document.querySelector('canvas[aria-label^="Shipyard:"]');return {yardBottom:Math.round(yard.getBoundingClientRect().bottom),frameBottom:Math.round(main.getBoundingClientRect().bottom),stationScroll:main.scrollHeight-main.clientHeight};});
+   check(`shipyard fits the frame at ${width} x ${height} with ${lanes} lanes`,fit.yardBottom<=fit.frameBottom&&fit.stationScroll<=0,fit);
+  }
+ }finally{
+  await page.close();server.stop();
+ }
+}
 
 const report={limits,windowMs,results,measurements:{}};
 let server,browser;
@@ -144,15 +180,7 @@ try{
  // The Fleet shipyard: the default state first (Motion on, two drones, the side ship spinning), then with the side ship
  // stopped so each yard window measures the yard alone: a drag, the drones, Motion off, then hidden.
  const combinedRates=m=>({panelFramesPerSecond:+(m.frames*1000/m.ms).toFixed(1),yardFramesPerSecond:+(m.yardFrames*1000/m.ms).toFixed(1),scriptMsPerSecond:Math.round(m.scriptMs*1000/m.ms)});
- const fleetLoaded=page.waitForResponse(response=>new URL(response.url()).pathname==='/fleet.json');
- await page.goto(`${server.base}/`);
- await fleetLoaded;
- await page.waitForFunction(()=>!document.querySelector('main[role="status"]'));
- await page.locator('nav.rail').getByRole('button',{name:/^Fleet/}).click();
- await page.waitForSelector('section[aria-label="Fleet"]');
- await page.getByRole('group',{name:'Fleet display'}).getByRole('button',{name:'Shipyard',exact:true}).click();
- await page.waitForFunction(()=>document.querySelector('canvas[aria-label^="Shipyard:"]')&&window.__yardFrames>0);
- await page.getByRole('group',{name:'Yard zoom'}).getByRole('button',{name:'fit all'}).click();
+ await openShipyard(page,server.base);
  await sleep(500);
  const combined=await measure(page,cdp,requests,windowMs);
  const rates=combinedRates(combined);
@@ -192,13 +220,8 @@ try{
  check('hidden shipyard makes no requests of its own',yardRequests.length<=limits.hiddenRequests,{requests:yardRequests});
  check('hidden shipyard stays within the script budget',yardHidden.scriptMs<=limits.hiddenScriptMs,{scriptMs:yardHidden.scriptMs,max:limits.hiddenScriptMs});
 
- // The shipyard ends inside the frame and the station does not scroll, so fit all fits the yard that is in view.
- await page.evaluate(()=>window.__setHidden(false));
- for(const [width,height] of [[1440,900],[1280,720]]){
-  await page.setViewportSize({width,height});await sleep(300);
-  const fit=await page.evaluate(()=>{const main=document.querySelector('main.main'),yard=document.querySelector('canvas[aria-label^="Shipyard:"]');return {yardBottom:Math.round(yard.getBoundingClientRect().bottom),frameBottom:Math.round(main.getBoundingClientRect().bottom),stationScroll:main.scrollHeight-main.clientHeight};});
-  check(`shipyard fits the frame at ${width} x ${height}`,fit.yardBottom<=fit.frameBottom&&fit.stationScroll<=0,fit);
- }
+ await checkShipyardFit(browser,0);
+ await checkShipyardFit(browser,100);
 }finally{
  await browser?.close();server?.stop();
 }
