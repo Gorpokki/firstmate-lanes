@@ -163,6 +163,7 @@ export function LaneStation({lane,mesh,shipName,onBack,onConfirm}:LaneProps){
   <div className="side">
    {onBack&&<div><button type="button" className="link" onClick={onBack}>‹ back<kbd>esc</kbd></button></div>}
    <h2>{lane.name}</h2>
+   {lane.title&&<p className="now">{lane.title}</p>}
    <div className="state"><i style={{background:stateColors[lane.state]}}/><b>{lane.state}</b><span>{laneWords(lane)}</span></div>
    {ask?<LaneAsk key={ask.key} lane={lane} ask={ask} index={index} count={count} answer={batch.answers[ask.key]} locked={batch.isLocked(ask)} sent={batch.sentTo(ask)} save={save} defer={defer} undo={undo} openIndex={()=>setIdx(true)} ownRef={ownRef}/>:<p className="now big">{lane.invalidAsks?returnedWords(lane.invalidAsks):'Nothing needs you on this lane.'}</p>}
    <LaneBatch lane={lane} answers={batch.answers} batchKeys={batch.batchKeys} left={batch.left} after={batch.after} sendCount={batch.sendCount} deferred={batch.deferred.length} ready={batch.ready} sending={batch.sending} delivery={batch.delivery} error={batch.error} canSend={!!onConfirm} send={batch.send}/>

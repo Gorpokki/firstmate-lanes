@@ -131,7 +131,7 @@ func (s *sitting) closeOwnInput() {
 func (s *sitting) findAskByOwnText() {
 	needle := strings.ToLower(strings.TrimSpace(s.own))
 	for i, it := range s.items {
-		if needle != "" && strings.Contains(strings.ToLower(it.lane.Name+" "+it.ask.Question+" "+it.ask.Topic), needle) {
+		if needle != "" && strings.Contains(strings.ToLower(it.lane.Name+" "+it.ask.Question+" "+it.ask.Topic+" "+it.lane.Title), needle) {
 			s.index = i
 			break
 		}

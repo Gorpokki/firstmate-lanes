@@ -9,6 +9,7 @@ import (
 type StationLane struct {
 	ID            string          `json:"id"`
 	Name          string          `json:"name"`
+	Title         string          `json:"title,omitempty"` // the backlog sentence of a lane without a record
 	Home          string          `json:"home"`
 	SecondMate    string          `json:"secondMate"`
 	State         string          `json:"state"`
@@ -38,7 +39,8 @@ func readOnlyReason(lane StationLane) string {
 }
 
 func stationLane(l Lane, at time.Time) (StationLane, int) {
-	out := StationLane{ID: l.ID, Name: l.Title, SourceState: l.State, UpdatedAt: l.UpdatedAt, Asks: []StationAsk{}, History: []StationChange{}}
+	// A lane without a record is named by its ID, as the reference board does; its sentence stays as Title.
+	out := StationLane{ID: l.ID, Name: l.ID, SourceState: l.State, UpdatedAt: l.UpdatedAt, Asks: []StationAsk{}, History: []StationChange{}}
 	out.Home, out.SecondMate = l.Home, l.SecondMate
 	if e, ok := l.Latest(); ok {
 		out.Now = e.Text
@@ -63,7 +65,11 @@ func stationLane(l Lane, at time.Time) (StationLane, int) {
 	}
 	out.InvalidAsks = l.InvalidAsks + returned
 	out.ReturnedSince = returnedSince
+	if l.Record == nil && l.Title != l.ID {
+		out.Title = l.Title
+	}
 	if l.Record != nil {
+		out.Name = l.Title
 		out.Start, out.Ticket = l.Record.Start, l.Record.Ticket
 		out.Now = l.Record.Now
 		for _, ask := range l.Record.Asks {
