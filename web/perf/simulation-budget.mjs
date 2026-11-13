@@ -106,6 +106,7 @@ async function checkShipyardFit(browser,extraLanes){
   await page.addInitScript(visibilityControl);
   await openShipyard(page,server.base);
   const lanes=Number((await page.locator('section[aria-label="Fleet"] .vtitle .lab').textContent()).match(/\d+/)[0]);
+  check(`fleet shows the ${extraLanes} extra lanes`,lanes>=extraLanes,{lanes,extraLanes});
   for(const [width,height] of [[1440,900],[1280,720]]){
    await page.setViewportSize({width,height});await sleep(300);
    await fitAll(page);await sleep(300);
