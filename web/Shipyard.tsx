@@ -45,7 +45,7 @@ function drawYard(L:Loop,c:Cam,p:Props,now:number):boolean{
  const seen=berths.filter(b=>{const q=V(b),x=W/2+c.px+q[0]*ppu,y=H/2+c.py-q[1]*ppu,m=16*ppu;return x>-m&&x<W+m&&y>-m&&y<H+m;}); // only the berths in sight are drawn
  if(!seen.length){ctx.clearRect(0,0,W,H);c.keep=null;return false;}
  const live=p.motion&&seen.some(b=>b.lane.yard==='hull'&&b.mesh);
- const key=`${c.yaw}|${c.pitch}|${ppu}|${c.px}|${c.py}|${p.selected}|${p.mode}|${size}|${seen.length}|${seen.filter(b=>b.mesh).length}|${p.lanes.map(l=>yardOf(l)[0]+l.state[0]).join('')}`;
+ const key=`${c.yaw}|${c.pitch}|${ppu}|${c.px}|${c.py}|${p.selected}|${p.mode}|${size}|${seen.length}|${seen.filter(b=>b.mesh).length}|${p.lanes.map(l=>[l.id,l.name,yardOf(l),l.state,l.sourceState,assignedShip(l.id,p.meshes)?.id].join('|')).join(';')}`;
  if(key!==c.drawn){c.drawn=key;c.changed=now;}
  const full=!c.keep||c.keep.f!==f||now-c.changed<700;
  if(!full&&!live)return false; // nothing moved: the canvas keeps its frame
@@ -87,7 +87,7 @@ export const Shipyard=forwardRef<YardCamera,Props>(function Shipyard(p,ref){
    const r=cv.getBoundingClientRect(),d=Math.min(2,devicePixelRatio||1);
    cv.width=Math.max(1,r.width*d);cv.height=Math.max(1,r.height*d);ctx?.setTransform(d,0,0,d,0,0);
    L.w=Math.max(4,Math.floor(r.width/L.cw));L.h=Math.max(2,Math.floor(r.height/L.ch));
-   kick();
+   cam.current.keep=null;kick();
   };
   const observer=new ResizeObserver(fit);observer.observe(cv);fit();
   const wheel=(e:WheelEvent)=>{e.preventDefault();const r=cv.getBoundingClientRect();zoomAt(Math.exp(-e.deltaY*.0015),e.clientX-r.left-r.width/2,e.clientY-r.top-r.height/2);};
