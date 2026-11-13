@@ -88,14 +88,15 @@ function LaneIndex({lane,current,open,close}:{lane:Lane;current:number;open:(ind
  const matches=lane.asks.map((ask,i)=>({ask,i})).filter(({ask})=>words.every(w=>(question(ask)+' '+ask.reason).toLowerCase().includes(w)));
  const [chosen,setChosen]=useState(current),at=Math.max(0,matches.findIndex(m=>m.i===chosen)),pick=matches[at];
  const key=(event:React.KeyboardEvent)=>{
+  if(event.key==='Enter'&&event.target instanceof HTMLButtonElement)return;
   const step=(by:number)=>setChosen(matches[Math.max(0,Math.min(matches.length-1,at+by))]?.i??chosen);
   const acts:Acts={Escape:close,ArrowDown:()=>step(1),ArrowUp:()=>step(-1),Enter:()=>{if(pick)open(pick.i);}},act=acts[event.key];
   if(!act)return;
   event.preventDefault();act();
  };
- return <React.Fragment><div className="veil" onClick={close}/><div className="pop names idx" role="dialog" aria-label={`Asks of ${lane.name}`}>
+ return <React.Fragment><div className="veil" onClick={close}/><div className="pop names idx" role="dialog" aria-label={`Asks of ${lane.name}`} onKeyDown={key}>
   <span className="lab">{lane.name} · {lane.asks.length} {lane.asks.length===1?'ask':'asks'}</span>
-  <input autoFocus value={query} onChange={event=>setQuery(event.target.value)} onKeyDown={key} placeholder="Find in this lane: words of a question or its reason" aria-label="Find in this lane"/>
+  <input autoFocus value={query} onChange={event=>setQuery(event.target.value)} placeholder="Find in this lane: words of a question or its reason" aria-label="Find in this lane"/>
   {matches.map(({ask,i})=><button key={ask.key} type="button" className={i===pick?.i?'tw on':'tw'} onClick={()=>open(i)}><b>{i+1}</b><span className="e">{ask.effort==='quick'?'quick':'to read'}</span><span className="iq">{question(ask)}</span></button>)}
   {!matches.length&&<p>No ask in this lane has those words.</p>}
   {pick&&<p className="pv">{question(pick.ask)}</p>}
