@@ -114,8 +114,10 @@ Error generating stack: `+l.message+`
 .ask .shipbox{position:absolute;top:0;right:0;width:112px;flex:none;gap:0}
 .ask .shipbox>section{min-height:0!important;gap:0!important}
 .ask .shipbox pre{font-size:6px!important}
+/* a small ship at the top right: the card's top row is at least as tall as the ship, so the question starts below it */
+.ask .shipbox canvas.ship{height:46px}
 .ask .shipbox>section>:not(:first-child),.ask .lstate,.ask .last{display:none}
-.ask .ctop{padding-right:116px;gap:6px 10px;line-height:1.2}
+.ask .ctop{padding-right:116px;min-height:46px;gap:6px 10px;line-height:1.2}
 .ask .who{font-size:18px}
 .ask .age{font-size:15px;flex-wrap:wrap;gap:2px 10px}
 .ask .agebar i{width:10px}
