@@ -251,6 +251,26 @@ export function fitYard(berths:Berth[],yaw:number,pitch:number,wPx:number,hPx:nu
  const fit=x1>x0?Math.min(wPx*.96/(x1-x0),hPx*.92/(y1-y0)):0;
  return {fit,bx:-(x0+x1)/2*fit,by:(y0+y1)/2*fit};
 }
+// one berth's ship: its build, glow and colour by its yard state, welding sparks on a hull in work, thrust behind a launched one
+function berthShip(b:Berth,m:Mesh,now:number,rnd:()=>number,objs:Obj[],dots:Dot[]){
+ const y=b.lane.yard;
+ const at:V3=[...b.at];
+ let prog=PROG[y]??0,glow=1,rgb=hex(b.lane.color);
+ if(y==='hull')prog+=.06*Math.sin(now/1250);
+ if(y==='lit')glow=1.1+.15*Math.sin(now/400);
+ if(y==='stalled')rgb=STALLED;
+ if(y==='launched'){at[1]+=8+Math.sin(now/800)*.6;at[0]+=3;}
+ objs.push({mesh:m,at,s:S,id:b.i,rgb,prog,glow,broken:b.lane.failed});
+ const xl=(u:number)=>at[0]+(m.lo[0]+u*(m.hi[0]-m.lo[0]))*S;
+ if(y==='hull'||y==='stalled'){ // welding sparks along the build frontier
+  const u=Math.max(0,Math.min(1,(prog-.075)/.85)),sl=slab(m,u);
+  for(let k=0;k<7;k++)if(rnd()<(y==='hull'?.7:.15))dots.push({p:[xl(u)+(rnd()-.5)*.8,at[1]+(rnd()-.3)*sl.yHi*S,at[2]+(rnd()-.5)*2*sl.z*S],ch:"*+'`."[k%5]!,color:'#FFF2A8',id:b.i});
+ }
+ if(y==='launched')for(let k=1;k<=14;k++){ // thrust trail behind the stern
+  const sh=Math.floor(70+150*(1-k/14));
+  dots.push({p:[xl(0)-k*.7-rnd()*.4,at[1]+(rnd()-.5)*.6,at[2]+(rnd()-.5)*1.2],ch:k<5?'≈':k<10?'~':'·',color:`rgb(${sh>>1},${sh},255)`,id:b.i});
+ }
+}
 // One frame of the yard at time `now` (ms): build states, sparks, thrust, lights. Its sparks come from a fixed seed, so a
 // yard at rest is the same frame every time it is drawn.
 export function yardScene(berths:Berth[],now:number):Scene{
@@ -260,23 +280,7 @@ export function yardScene(berths:Berth[],now:number):Scene{
   segs.push(...b.segs);
   if(y!=='launched')segs.push(...b.clamps);
   b.lights.forEach((q,k)=>{if(Math.sin(now/330+k+b.i)>0)dots.push({p:q,ch:'•',color:k%2?'#FFFFFF':'#FFCC66',id:b.i});});
-  if(!b.mesh)continue;
-  const m=b.mesh,at:V3=[...b.at];
-  let prog=PROG[y]??0,glow=1,rgb=hex(b.lane.color);
-  if(y==='hull')prog+=.06*Math.sin(now/1250);
-  if(y==='lit')glow=1.1+.15*Math.sin(now/400);
-  if(y==='stalled')rgb=STALLED;
-  if(y==='launched'){at[1]+=8+Math.sin(now/800)*.6;at[0]+=3;}
-  objs.push({mesh:m,at,s:S,id:b.i,rgb,prog,glow,broken:b.lane.failed});
-  const xl=(u:number)=>at[0]+(m.lo[0]+u*(m.hi[0]-m.lo[0]))*S;
-  if(y==='hull'||y==='stalled'){ // welding sparks along the build frontier
-   const u=Math.max(0,Math.min(1,(prog-.075)/.85)),sl=slab(m,u);
-   for(let k=0;k<7;k++)if(rnd()<(y==='hull'?.7:.15))dots.push({p:[xl(u)+(rnd()-.5)*.8,at[1]+(rnd()-.3)*sl.yHi*S,at[2]+(rnd()-.5)*2*sl.z*S],ch:"*+'`."[k%5]!,color:'#FFF2A8',id:b.i});
-  }
-  if(y==='launched')for(let k=1;k<=14;k++){ // thrust trail behind the stern
-   const sh=Math.floor(70+150*(1-k/14));
-   dots.push({p:[xl(0)-k*.7-rnd()*.4,at[1]+(rnd()-.5)*.6,at[2]+(rnd()-.5)*1.2],ch:k<5?'≈':k<10?'~':'·',color:`rgb(${sh>>1},${sh},255)`,id:b.i});
-  }
+  if(b.mesh)berthShip(b,b.mesh,now,rnd,objs,dots);
  }
  return {objs,segs,dots,labels};
 }

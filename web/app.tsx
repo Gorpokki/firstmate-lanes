@@ -77,6 +77,16 @@ const SIM_TITLE =
 const Key = ({ k }: { k: string }) => <kbd className="k">{k}</kbd>;
 const phone = () => matchMedia("(max-width: 760px)").matches;
 
+// Motion: the flashes of a lane that changed and the shipyard's drones; a ship's spin has its own switch. motionOn is the
+// switch; motion is what moves, off too when the system asks for reduced motion.
+function useMotion() {
+	const [motionOn, setMotionOn] = useState(true),
+		flipMotion = useCallback(() => setMotionOn((on) => !on), []),
+		motion =
+			motionOn && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+	return { motionOn, flipMotion, motion };
+}
+
 function StationButtons(p: { station: Station; go: (s: Station) => void }) {
 	return (
 		<>
@@ -620,11 +630,7 @@ function App() {
 	const [have, setHave] = useState<string[]>([]);
 	const [meshes, setMeshes] = useState<ShipMesh[]>([]),
 		[modelWarnings, setModelWarnings] = useState<string[]>([]);
-	// Motion: the flashes of a lane that changed and the shipyard's drones; a ship's spin has its own switch.
-	const [motionOn, setMotionOn] = useState(true),
-		flipMotion = useCallback(() => setMotionOn((on) => !on), []),
-		motion =
-			motionOn && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+	const { motionOn, flipMotion, motion } = useMotion();
 	const flash = useFlash(fleet);
 	const simulation = location.pathname === "/simulation";
 	// The Lane station's esc goes back to the station that opened it.
@@ -819,7 +825,7 @@ function App() {
 					<FleetStation
 						fleet={fleet}
 						meshes={meshes}
-						selected={lane?.id ?? ""}
+						lane={lane}
 						motion={motion}
 						flash={flash}
 						onSelect={setSelected}

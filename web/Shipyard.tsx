@@ -17,13 +17,23 @@ export type YardCamera={zoom:(by:'in'|'out')=>void;fit:()=>void};
 const clamp=(v:number,lo:number,hi:number)=>Math.max(lo,Math.min(hi,v));
 const yardLane=(lane:Lane):YardLane=>{const hex=stateColors[lane.state]??stateColors.holding!;return {id:lane.id,name:lane.name,yard:yardOf(lane),color:shipHex(hex),hot:lane.state==='needs you',failed:lane.sourceState==='failed'};};
 
-// One frame of the yard. It is drawn in full for each change (and for 0.7 s after it, while the renderer's exposure
-// settles) and kept; a drone step puts the kept frame back and draws only the drones over it. step gives each draw the
-// spin-frame budget. It returns whether the loop goes on: only while drones fly (Motion on, a ship in work in sight) or a change settles.
-function drawYard(L:Loop,c:Cam,p:Props,now:number):boolean{
- const ctx=L.ctx!,f=L.f!,W=L.w*L.cw,H=L.h*L.ch;
- const {berths}=yardLayout(p.lanes.map(yardLane),l=>{const ship=assignedShip(l.id,p.meshes);return ship?shipMesh(ship.mesh,0):null;},yardCols(p.lanes.length),GX,GZ);
- if(!berths.length){ctx.clearRect(0,0,W,H);c.keep=null;return false;}
+// A new selection out of sight comes to the middle; at the start the selected berth is in the middle, or the yard's middle
+// when it is hidden. A berth at the yard's edge does not leave half the field empty: the yard's own edge stops at the field's edge.
+function centre(c:Cam,berths:Berth[],V:(b:Berth)=>number[],me:Berth|undefined,ppu:number,W:number,H:number,selected:string){
+ const q=me?V(me):[0,0,0],x=W/2+c.px+q[0]!*ppu,y=H/2+c.py-q[1]!*ppu;
+ if(c.sel===''||x<60||x>W-60||y<60||y>H-60){
+  let X0=Infinity,X1=-Infinity,Y0=Infinity,Y1=-Infinity;
+  for(const b of berths){const v=V(b);X0=Math.min(X0,v[0]!-15);X1=Math.max(X1,v[0]!+15);Y0=Math.min(Y0,v[1]!-15);Y1=Math.max(Y1,v[1]!+17);}
+  c.px=(X1-X0)*ppu<=W?-(X0+X1)/2*ppu:clamp(-q[0]!*ppu,W/2-X1*ppu,-W/2-X0*ppu);
+  c.py=(Y1-Y0)*ppu<=H?(Y0+Y1)/2*ppu:clamp(q[1]!*ppu,H/2+Y0*ppu,Y1*ppu-H/2);
+ }
+ c.sel=selected;
+}
+// put the kept yard frame back, so a drone step draws only the drones over it
+function restore(f:Frame,k:Kept){for(let i=0;i<k.glyph.length;i++){f.glyph[i]=k.glyph[i]!;f.color[i]=k.color[i]!;}f.depth.set(k.depth);f.id.set(k.id);f.quad.set(k.quad);}
+
+// The camera for this frame: a preset on a new angle, the fit on a new size, the start or the whole yard, and a new selection brought into sight.
+function aim(c:Cam,berths:Berth[],p:Props,W:number,H:number){
  if(c.key!==`${p.top}`)Object.assign(c,{...(p.top?TOP:ISO),zoom:0,key:`${p.top}`}); // a preset: from the top, or from an angle
  const fit=fitYard(berths,c.yaw,c.pitch,W,H),size=`${W}x${H}x${berths.length}`;
  if(!c.zoom||c.size!==size){c.base=fit.fit;c.size=size;}
@@ -31,18 +41,17 @@ function drawYard(L:Loop,c:Cam,p:Props,now:number):boolean{
  if(c.all){c.zoom=fit.fit/c.base;c.px=fit.bx;c.py=fit.by;c.all=false;c.sel=p.selected;} // the whole yard on one screen
  if(!c.zoom){c.zoom=Math.max(1,190/Math.max(1,GX*c.base));c.sel='';} // the start: large ships, about 190 px from berth to berth
  const ppu=c.base*c.zoom;
- if(c.sel!==p.selected){ // a new selection out of sight comes to the middle; at the start the selected berth is in the middle, or the yard's middle when it is hidden
-  const q=me?V(me):[0,0,0],x=W/2+c.px+q[0]*ppu,y=H/2+c.py-q[1]*ppu;
-  if(c.sel===''||x<60||x>W-60||y<60||y>H-60){
-   c.px=-q[0]*ppu;c.py=q[1]*ppu;
-   // a berth at the yard's edge does not leave half the field empty: the yard's own edge stops at the field's edge
-   let X0=Infinity,X1=-Infinity,Y0=Infinity,Y1=-Infinity;
-   for(const b of berths){const v=V(b);X0=Math.min(X0,v[0]-15);X1=Math.max(X1,v[0]+15);Y0=Math.min(Y0,v[1]-15);Y1=Math.max(Y1,v[1]+17);}
-   c.px=(X1-X0)*ppu<=W?-(X0+X1)/2*ppu:clamp(c.px,W/2-X1*ppu,-W/2-X0*ppu);
-   c.py=(Y1-Y0)*ppu<=H?(Y0+Y1)/2*ppu:clamp(c.py,H/2+Y0*ppu,Y1*ppu-H/2);
-  }
-  c.sel=p.selected;
- }
+ if(c.sel!==p.selected)centre(c,berths,V,me,ppu,W,H,p.selected);
+ return {V,me,ppu,size};
+}
+// One frame of the yard. It is drawn in full for each change (and for 0.7 s after it, while the renderer's exposure
+// settles) and kept; a drone step puts the kept frame back and draws only the drones over it. step gives each draw the
+// spin-frame budget. It returns whether the loop goes on: only while drones fly (Motion on, a ship in work in sight) or a change settles.
+function drawYard(L:Loop,c:Cam,p:Props,now:number):boolean{
+ const ctx=L.ctx!,f=L.f!,W=L.w*L.cw,H=L.h*L.ch;
+ const {berths}=yardLayout(p.lanes.map(yardLane),l=>{const ship=assignedShip(l.id,p.meshes);return ship?shipMesh(ship.mesh,0):null;},yardCols(p.lanes.length),GX,GZ);
+ if(!berths.length){ctx.clearRect(0,0,W,H);c.keep=null;return false;}
+ const {V,me,ppu,size}=aim(c,berths,p,W,H);
  const seen=berths.filter(b=>{const q=V(b),x=W/2+c.px+q[0]*ppu,y=H/2+c.py-q[1]*ppu,m=16*ppu;return x>-m&&x<W+m&&y>-m&&y<H+m;}); // only the berths in sight are drawn
  if(!seen.length){ctx.clearRect(0,0,W,H);c.keep=null;return false;}
  const live=p.motion&&seen.some(b=>b.lane.yard==='hull'&&b.mesh);
@@ -55,7 +64,7 @@ function drawYard(L:Loop,c:Cam,p:Props,now:number):boolean{
   const named=berthNames(yardScene(seen,STILL),berths,p.selected,Math.max(8,Math.floor((GX*ppu-12)/6.1)));
   render(f,{...named,labels:named.labels!.filter(l=>near?ids.has(l.id):l.id===me?.i)},cam,p.mode); // from far away only the selected berth keeps its name
   c.keep={f,glyph:f.glyph.slice(),color:f.color.slice(),depth:f.depth.slice(),id:f.id.slice(),quad:f.quad.slice()};
- }else{const k=c.keep!;for(let i=0;i<k.glyph.length;i++){f.glyph[i]=k.glyph[i]!;f.color[i]=k.color[i]!;}f.depth.set(k.depth);f.id.set(k.id);f.quad.set(k.quad);}
+ }else restore(f,c.keep!);
  extras(f,droneScene(seen,STILL,live?now:STILL),cam); // Motion off: the drones hold still
  paint(ctx,f,`${FONT_PX}px ${MONO}`,'#000',LABEL_PX);
  return live||now-c.changed<700;
