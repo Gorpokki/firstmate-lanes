@@ -2,7 +2,7 @@ import React,{useEffect,useRef,useState} from 'react';
 import type {Fleet,Link} from './stations';
 import {assignedShip,type ShipMesh} from './mesh-catalog';
 import {Holo} from './Holo';
-import {answerFor,batchReady,buildSitting,deferForLater,reviewAnswers,undoAnswer,type DeliveryResult,type SittingAnswer,type SittingItem} from './sitting';
+import {answerFor,batchReady,buildSitting,deferForLater,reviewAnswers,undoAnswer,unansweredCount,type DeliveryResult,type SittingAnswer,type SittingItem} from './sitting';
 
 export type {DeliveryResult,SittingAnswer} from './sitting';
 type AskStationProps={fleet:Fleet;active:boolean;selectedLaneIds?:string[];hiddenSelected:number;meshes?:ShipMesh[];onBack:()=>void;onConfirm?:(answers:SittingAnswer[])=>Promise<DeliveryResult[]>};
@@ -11,7 +11,7 @@ const isEditing=(target:EventTarget|null)=>target instanceof HTMLElement&&!!targ
 
 export function AskStation({fleet,active,selectedLaneIds,hiddenSelected,meshes,onBack,onConfirm}:AskStationProps){
  const [items,setItems]=useState<SittingItem[]>([]),[index,setIndex]=useState(0),[answers,setAnswers]=useState<Record<string,SittingAnswer>>({}),[ownText,setOwnText]=useState<Record<string,string>>({}),[later,setLater]=useState<SittingItem[]>([]),[delivery,setDelivery]=useState<DeliveryResult[]|null>(null),[sending,setSending]=useState(false),[error,setError]=useState(''),ownRef=useRef<HTMLTextAreaElement>(null);
- const item=items[index],answerList=Object.values(answers),reviewed=answerList.filter(answer=>reviewAnswers(fleet,[answer]).length>0),reviews=reviewAnswers(fleet,reviewed),ready=batchReady(items,answers),unanswered=items.filter(entry=>!answers[entry.ref]).length,linkGroups:[string,Link[]][]=item?[['Tickets',item.ask.tickets||[]],['Pull requests',item.ask.pull_requests||[]],['Grill pages',item.ask.grill_pages||[]]]:[];
+ const item=items[index],answerList=Object.values(answers),reviewed=answerList.filter(answer=>reviewAnswers(fleet,[answer]).length>0),reviews=reviewAnswers(fleet,reviewed),ready=batchReady(items,answers),unanswered=unansweredCount(items,answers),linkGroups:[string,Link[]][]=item?[['Tickets',item.ask.tickets||[]],['Pull requests',item.ask.pull_requests||[]],['Grill pages',item.ask.grill_pages||[]]]:[];
  const ship=item?assignedShip(item.lane.id,meshes):undefined;
  useEffect(()=>{if(active&&!answerList.length&&!later.length&&!delivery&&!Object.values(ownText).some(Boolean)){setItems(buildSitting(fleet,selectedLaneIds));setIndex(0);}},[active]);
  useEffect(()=>{if(!item||!active)return;const key=(event:KeyboardEvent)=>{if(event.key.toLowerCase()==='o'&&!event.repeat&&!event.metaKey&&!event.ctrlKey&&!event.altKey&&!isEditing(event.target)){event.preventDefault();ownRef.current?.focus();}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[item?.ref,active]);

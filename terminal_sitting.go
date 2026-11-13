@@ -330,8 +330,7 @@ func (s *sitting) undo() {
 		i = min(s.reviewIndex, i)
 	}
 	s.editAnswer(i)
-	s.answers = append(s.answers[:i], s.answers[i+1:]...)
-	s.reviewIndex = min(s.reviewIndex, max(0, len(s.answers)-1))
+	s.dropAnswer(answerKey(s.answers[i]))
 	s.message = "Answer undone; nothing sent"
 }
 func (m *model) applyAnswerResult(msg answerResultMsg) {
