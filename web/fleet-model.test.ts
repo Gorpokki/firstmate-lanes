@@ -24,6 +24,16 @@ test('the shipyard shows the lanes it has when the stored filter hides them all'
  expect(shownStates(['working'],['working','done'])).toEqual(['working']);
 });
 
+test('a refused yard click keeps the holding-hidden default for a fleet that later works',()=>{
+ const held:Fleet={...fleet,stationLanes:[lane('q','holding','working'),lane('p','holding','parked')]};
+ const present=deriveFleet(held).shares.map(share=>share.state);
+ const showing=shownStates(YARD_SHOWN,present);
+ expect(showing).toEqual(['holding']);
+ expect(toggleShown(showing,'holding',present)).toBe(showing);
+ const worked:Fleet={...fleet,stationLanes:[lane('w','working'),lane('q','holding','working'),lane('p','holding','parked')]};
+ expect(shownStates(YARD_SHOWN,deriveFleet(worked).shares.map(share=>share.state))).toEqual(YARD_SHOWN);
+});
+
 test('the yard filter keeps a working lane shown in a fleet of working and holding lanes',()=>{
  const worked:Fleet={...fleet,stationLanes:[lane('w','working'),lane('q','holding','working')]};
  const present=deriveFleet(worked).shares.map(share=>share.state);
