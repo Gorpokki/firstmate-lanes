@@ -37,8 +37,9 @@ export function freshness(updated:string,now=Date.now()) {
  return minutes<1?'Live':minutes<OLD_MINUTES?`Updated ${Math.floor(minutes)} min ago`:`Saved ${elapsed(minutes)} ago`;
 }
 // Lanes in the board's one order: need you (oldest ask first), waiting, working, done, holding.
-const oldestWait=(lane:Lane)=>Math.min(...[...lane.asks.map(a=>a.asked),lane.returnedSince].map(iso=>Date.parse(iso||'')).filter(Number.isFinite));
-const knownWait=(lane:Lane)=>Math.min(...[...lane.asks.map(a=>a.asked),lane.returnedSince].map(knownTime).filter(Number.isFinite));
+const waitTimes=(lane:Lane):(string|undefined)[]=>lane.asks.length?lane.asks.map(a=>a.asked):[lane.returnedSince];
+const oldestWait=(lane:Lane)=>Math.min(...waitTimes(lane).map(iso=>Date.parse(iso||'')).filter(Number.isFinite));
+const knownWait=(lane:Lane)=>Math.min(...waitTimes(lane).map(knownTime).filter(Number.isFinite));
 export const fleetOrder=(fleet:Fleet)=>fleet.stationLanes.toSorted((a,b)=>states.indexOf(a.state)-states.indexOf(b.state)||oldestWait(a)-oldestWait(b)||a.name.localeCompare(b.name));
 // The lanes whose state differs from the reading before: their strip marks light once.
 export const stateChanges=(was:Record<string,string>|null,fleet:Fleet)=>was?fleet.stationLanes.filter(l=>l.id in was&&was[l.id]!==l.state).map(l=>l.id):[];

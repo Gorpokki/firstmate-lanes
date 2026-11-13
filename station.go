@@ -55,7 +55,7 @@ func stationLane(l Lane, at time.Time) (StationLane, int) {
 			continue
 		}
 		returned++
-		if returnedSince == nil || d.At.Before(*returnedSince) {
+		if returnedSince == nil || returnedSince.IsZero() || (!d.At.IsZero() && d.At.Before(*returnedSince)) {
 			since := d.At
 			returnedSince = &since
 		}
@@ -97,7 +97,7 @@ func (l StationLane) waitSince() time.Time {
 			t = ask.Asked
 		}
 	}
-	if l.ReturnedSince != nil && (len(l.Asks) == 0 || l.ReturnedSince.Before(t)) {
+	if len(l.Asks) == 0 && l.ReturnedSince != nil {
 		t = *l.ReturnedSince
 	}
 	return t

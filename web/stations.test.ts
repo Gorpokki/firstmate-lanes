@@ -85,8 +85,3 @@ test('a returned ask without a decision time stays unknown and sorts ahead of da
  expect(fleetOrder(board).map(l=>l.id)).toEqual(['undated','recent']);
  expect(Number.isNaN(ageOf(board,'undated'))).toBe(true);
 });
-
-test('a lane with a card and a returned ask ages from the older of the two',()=>{
- const board=boardOf(returnedLane('mixed','2026-01-05T12:00:00Z','2026-01-10T11:59:00Z','2026-01-08T12:00:00Z'));
- expect(ageOf(board,'mixed')).toBe(5*1440);
-});

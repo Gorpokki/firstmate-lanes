@@ -237,21 +237,52 @@ func TestAutonomyIncludesStructuredAskHistory(t *testing.T) {
 	}
 }
 
+func TestUndatedCaptainHoldKeepsDatedDecisionWait(t *testing.T) {
+	home := t.TempDir()
+	for _, dir := range []string{"state", "data"} {
+		if err := os.MkdirAll(filepath.Join(home, dir), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	decidedAt := time.Date(2026, 1, 4, 12, 0, 0, 0, time.UTC)
+	files := map[string]string{
+		filepath.Join(home, "data", "backlog.md"):     "## In flight\n- [ ] legacy - Legacy lane (kind: ship) (hold: Owner picks the route) (hold-kind: captain)\n",
+		filepath.Join(home, "state", "legacy.status"): fmt.Sprintf("needs-decision [key=route] [at=%d]: Pick north or south?\n", decidedAt.Unix()),
+	}
+	for path, content := range files {
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	lanes, err := NewReader().Load(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	var legacy Lane
+	for _, lane := range lanes {
+		if lane.ID == "legacy" {
+			legacy = lane
+		}
+	}
+	row, _ := stationLane(legacy, now)
+	if row.ReturnedSince == nil || !row.ReturnedSince.Equal(decidedAt) {
+		t.Fatalf("returned since %v, want the dated decision %v", row.ReturnedSince, decidedAt)
+	}
+}
+
 func TestReturnedAsksWaitFromTheirOwnDecision(t *testing.T) {
 	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
 	oldAt := now.Add(-72 * time.Hour)
 	events := ParseLog(fmt.Sprintf("needs-decision [key=route] [at=%d]: Pick north or south?\nworking [key=other] [at=%d]: Unrelated note", oldAt.Unix(), now.Add(-time.Minute).Unix()))
 	old := Lane{ID: "old", OwnerDir: "/home", State: "needs-decision", UpdatedAt: now.Add(-time.Minute), Events: events, Decisions: OpenDecisions(events, "ship")}
 	newer := Lane{ID: "newer", OwnerDir: "/home", State: "needs-decision", UpdatedAt: now.Add(-2 * time.Hour), Decisions: []Decision{{Key: "fresh", Verb: "needs-decision", At: now.Add(-time.Hour)}}}
-	mixedAsk := LaneRecordAsk{Form: "discussion", Key: "fresh", Topic: "Fresh", MustDecide: []string{"Fresh"}, Reason: "Pick", Effort: "read", Asked: now.Add(-30 * time.Minute)}
-	mixed := Lane{ID: "mixed", OwnerDir: "/home", State: "needs-decision", UpdatedAt: now, Record: &LaneRecord{Asks: []LaneRecordAsk{mixedAsk}}, Decisions: []Decision{{Key: "route", Verb: "needs-decision", At: now.Add(-48 * time.Hour)}}}
-
-	rows, _, _ := stationFleet([]Lane{newer, mixed, old}, now)
+	rows, _, _ := stationFleet([]Lane{newer, old}, now)
 	got := make([]string, len(rows))
 	for i, row := range rows {
 		got[i] = row.ID
 	}
-	if !slices.Equal(got, []string{"old", "mixed", "newer"}) {
+	if !slices.Equal(got, []string{"old", "newer"}) {
 		t.Fatalf("returned asks must order by their own decision time, got %v", got)
 	}
 	row := rows[0]
