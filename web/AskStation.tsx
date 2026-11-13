@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {AGE_DAYS,ageDays,ageTone,ageWords,overdue,stateColors,type Fleet,type Lane,type Link} from './stations';
+import {AGE_DAYS,ageDays,ageTone,ageWords,overdue,returnedWords,stateColors,type Fleet,type Lane,type Link} from './stations';
 import {assignedShip,type ShipMesh} from './mesh-catalog';
 import {Holo} from './Holo';
 import {answerFor,answeredLanes,batchReady,buildSitting,deferForLater,minutesSince,reviewAnswers,undoAnswer,type DeliveryResult,type SittingAnswer,type SittingItem} from './sitting';
@@ -123,7 +123,8 @@ export function AskStation({fleet,active,selectedLaneIds,hiddenSelected,meshes,o
   if(action){event.preventDefault();action();}
  };
  useEffect(()=>{if(!active)return;const key=(event:KeyboardEvent)=>keyRef.current(event);window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[active]);
- const readOnly=fleet.stationLanes.filter(lane=>!selectedLaneIds||selectedLaneIds.includes(lane.id)).reduce((total,lane)=>total+lane.asks.filter(ask=>!ask.answerable).length,0);
+ const inSitting=fleet.stationLanes.filter(lane=>!selectedLaneIds||selectedLaneIds.includes(lane.id));
+ const readOnly=inSitting.reduce((total,lane)=>total+lane.asks.filter(ask=>!ask.answerable).length,0),returned=inSitting.reduce((total,lane)=>total+(lane.invalidAsks||0),0);
  const pips=<span className="pips" role="img" aria-label={`${sit.filter(item=>answers[item.ref]).length} of ${sit.length} answered`}>{items.map(item=><i key={item.ref} className={answers[item.ref]?'done':deferred.includes(item.ref)?'skip':item===cur?'cur':undefined}/>)}</span>;
  const more=(nextCount>0||quickCount>0)&&<div className="opts more"><span className="lab">More asks</span>{nextCount>0&&<button className="link" onClick={()=>nextSitting()}>next sitting: {plural(nextCount,'ask')}<K k="n"/></button>}{quickCount>0&&<button className="link" onClick={()=>nextSitting(true)}>quick sitting: {plural(quickCount,'ask')}<K k="e"/></button>}</div>;
  return <section className="ask" aria-label="Ask sitting" hidden={!active}>
@@ -131,7 +132,8 @@ export function AskStation({fleet,active,selectedLaneIds,hiddenSelected,meshes,o
   {/* only while it is shown: a hidden station keeps no holo turning */}
   {!active?null:!items.length?<div className="stage"><section className="card calm"><div className="cbar"/><div className="cmain">
    <p className="big">{later.length?`No new ask waits. ${plural(later.length,'deferred ask')} can come back.`:'No ask waits for your answer. You can stop here.'}</p>
-   {readOnly>0&&<p className="why">{readOnly} read-only {readOnly===1?'ask':'asks'} cannot be answered here; Lane shows why.</p>}{more}
+   {readOnly>0&&<p className="why">{readOnly} read-only {readOnly===1?'ask':'asks'} cannot be answered here; Lane shows why.</p>}
+   {returned>0&&<p className="why">{returnedWords(returned)} Lane shows its text.</p>}{more}
   </div></section></div>
   :!cur?<div className="stage"><div className="donecol"><section className="card calm"><div className="cbar"/><div className="cmain">
    <div className="ctop"><span className="who">{!n?'Sitting done':delivery?'Sent':'Ready to send'}</span>{pips}</div>

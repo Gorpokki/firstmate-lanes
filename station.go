@@ -42,18 +42,22 @@ func stationLane(l Lane, at time.Time) (StationLane, int) {
 	if e, ok := l.Latest(); ok {
 		out.Now = e.Text
 	}
-	hidden := 0
+	hidden, returned := 0, 0
+	// A status-line decision is free text, not a fixed-form ask (ADR 0003): it goes back to
+	// the crew and only its count shows. Its text stays in the lane's status log.
 	for _, d := range l.Decisions {
 		if !d.At.IsZero() && d.At.Before(at.Add(-7*24*time.Hour)) {
 			hidden++
 			continue
 		}
-		ask := StationAsk{Key: d.Key, Form: "discussion", Topic: d.Text, Question: d.Text, MustDecide: []string{d.Text}, Reason: "Crew needs your answer", Effort: "read", Asked: d.At}
-		ask.Answerable = l.OwnerDir != "" && nativeTaskKey(ask.Key)
-		out.Asks = append(out.Asks, ask)
+		returned++
+		if d.Verb == "captain-hold" { // a backlog hold has no status line to keep its text
+			out.History = append(out.History, StationChange{At: d.At, State: d.Verb, Text: d.Text})
+		}
 	}
+	out.InvalidAsks = l.InvalidAsks + returned
 	if l.Record != nil {
-		out.Start, out.Ticket, out.InvalidAsks = l.Record.Start, l.Record.Ticket, l.InvalidAsks
+		out.Start, out.Ticket = l.Record.Start, l.Record.Ticket
 		out.Now = l.Record.Now
 		for _, ask := range l.Record.Asks {
 			if !ask.Asked.IsZero() && ask.Asked.Before(at.Add(-7*24*time.Hour)) {
@@ -68,7 +72,7 @@ func stationLane(l Lane, at time.Time) (StationLane, int) {
 		out.History = append(out.History, StationChange{At: e.At, State: e.Verb, Text: e.Text})
 	}
 	sort.SliceStable(out.History, func(i, j int) bool { return out.History[i].At.Before(out.History[j].At) })
-	out.State = stationLaneState(l, len(out.Asks), at)
+	out.State = stationLaneState(l, len(out.Asks)+returned, at)
 	out.Progress = stationLaneProgress(out)
 	return out, hidden
 }

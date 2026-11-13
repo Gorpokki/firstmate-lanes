@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {laneWords,stateColors,type Ask,type Lane} from './stations';
+import {laneWords,returnedWords,stateColors,type Ask,type Lane} from './stations';
 import {Holo} from './Holo';
 import {acceptedKeys,answerFor,batchReady,laneBatch,readOnlyReason,undoAnswer,unansweredCount,type DeliveryResult,type SittingAnswer,type SittingItem} from './sitting';
 import type {TriangleMesh} from './holo-renderer';
@@ -164,7 +164,7 @@ export function LaneStation({lane,mesh,shipName,onBack,onConfirm}:LaneProps){
    {onBack&&<div><button type="button" className="link" onClick={onBack}>‹ back<kbd>esc</kbd></button></div>}
    <h2>{lane.name}</h2>
    <div className="state"><i style={{background:stateColors[lane.state]}}/><b>{lane.state}</b><span>{laneWords(lane)}</span></div>
-   {ask?<LaneAsk key={ask.key} lane={lane} ask={ask} index={index} count={count} answer={batch.answers[ask.key]} locked={batch.isLocked(ask)} sent={batch.sentTo(ask)} save={save} defer={defer} undo={undo} openIndex={()=>setIdx(true)} ownRef={ownRef}/>:<p className="now big">Nothing needs you on this lane.</p>}
+   {ask?<LaneAsk key={ask.key} lane={lane} ask={ask} index={index} count={count} answer={batch.answers[ask.key]} locked={batch.isLocked(ask)} sent={batch.sentTo(ask)} save={save} defer={defer} undo={undo} openIndex={()=>setIdx(true)} ownRef={ownRef}/>:<p className="now big">{lane.invalidAsks?`${returnedWords(lane.invalidAsks)} The status log keeps its text.`:'Nothing needs you on this lane.'}</p>}
    <LaneBatch lane={lane} answers={batch.answers} batchKeys={batch.batchKeys} left={batch.left} after={batch.after} sendCount={batch.sendCount} deferred={batch.deferred.length} ready={batch.ready} sending={batch.sending} delivery={batch.delivery} error={batch.error} canSend={!!onConfirm} send={batch.send}/>
    {lane.now&&<div className="last"><span className="nowlab">Crew's last word</span><p className="now">{lane.now}</p></div>}
   </div>

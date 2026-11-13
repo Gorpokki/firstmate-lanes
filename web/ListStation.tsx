@@ -7,6 +7,7 @@ import {
 	hiddenTicked,
 	listRows,
 	overdue,
+	returnedWords,
 	type Fleet,
 	type ListRow,
 } from "./stations";
@@ -25,13 +26,15 @@ type ListProps = {
 // The List's columns; the fourth is the lane's count of open asks.
 const COLS = ["Waiting", "", "Lane", "Asks", "Its oldest ask"];
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-// A block with no ask shows the crew's last word, said as a block.
+// A block with no ask shows the crew's last word, said as a block; asks not in the form show only their count.
 const question = ({ lane, ask }: ListRow) =>
 	ask
 		? ask.question || ask.topic || ask.key
-		: /^blocked\b/i.test(lane.now)
-			? lane.now
-			: `Blocked: ${lane.now || "the crew cannot clear it"}`;
+		: lane.invalidAsks
+			? returnedWords(lane.invalidAsks)
+			: /^blocked\b/i.test(lane.now)
+				? lane.now
+				: `Blocked: ${lane.now || "the crew cannot clear it"}`;
 
 // One segment per day; an overdue day is bright and tall.
 function AgeBar({ age }: { age: number }) {
@@ -87,7 +90,7 @@ function Row(p: { row: ListRow } & Omit<ListProps, "fleet" | "mate" | "setMate" 
 				<span className="m">{lane.asks.length}</span>
 				<span className="q2">
 					{question(p.row)}
-					{!!lane.invalidAsks && <em> · {lane.invalidAsks} malformed asks omitted</em>}
+					{!!lane.invalidAsks && !!p.row.ask && <em> · {lane.invalidAsks} malformed asks omitted</em>}
 				</span>
 			</button>
 		</div>

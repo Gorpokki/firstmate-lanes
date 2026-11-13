@@ -70,4 +70,6 @@ export function findLanes(fleet:Fleet,query:string) {
 }
 export const findFoot=(query:string,shown:number,n:number)=>!query.trim()?'esc closes':!n?'No lane has this name.':`${n>shown?`${shown} of ${n} lanes · type more to narrow · `:''}↑ ↓ choose · enter opens the lane · esc closes`;
 // Go sends its zero time (year 1) for a lane with no status time; that and a missing time read as unknown.
+// Asks not in a fixed form (ADR 0003) are no cards: they go back to the crew and only their count shows.
+export const returnedWords=(n:number)=>`${plural(n,'ask')} not in the ask form went back to the crew.`;
 export const laneWords=(lane:Lane,now=Date.now())=>`${lane.asks.length?`${plural(lane.asks.length,'ask')} · `:''}last word ${Date.parse(lane.updatedAt||'')>0?`${elapsed(minutesSince(lane.updatedAt,now))} ago`:'time unknown'}`;
