@@ -2,7 +2,7 @@ import React,{useEffect,useRef,useState} from 'react';
 import {stateColors,type Fleet,type Lane,type Link} from './stations';
 import {assignedShip,type ShipMesh} from './mesh-catalog';
 import {Holo} from './Holo';
-import {ageBar,ageWords,answerFor,answeredLanes,batchReady,buildSitting,deferForLater,minutesSince,refFor,reviewAnswers,undoAnswer,type DeliveryResult,type SittingAnswer,type SittingItem} from './sitting';
+import {ageBar,ageWords,answerFor,answeredLanes,batchReady,buildSitting,deferForLater,minutesSince,reviewAnswers,undoAnswer,type DeliveryResult,type SittingAnswer,type SittingItem} from './sitting';
 
 export type {DeliveryResult,SittingAnswer} from './sitting';
 type AskStationProps={fleet:Fleet;active:boolean;selectedLaneIds?:string[];hiddenSelected:number;meshes?:ShipMesh[];onBack:()=>void;onConfirm?:(answers:SittingAnswer[])=>Promise<DeliveryResult[]>;onOpenLane?:(id:string)=>void;onAnswered?:(laneIds:string[])=>void};
@@ -39,7 +39,7 @@ function ShipBox({lane,meshes,onOpenLane}:{lane:Lane;meshes?:ShipMesh[];onOpenLa
  return <div className="shipbox">
   <Holo mesh={ship?.mesh} state={lane.state} progress={lane.progress} name={ship?.name||'No admitted ship'} options={{blocks:/blocked|block/.test(source),fragments:/failed|failure|error/.test(source)?1:0}}/>
   <div className="lstate"><i style={{background:stateColors[lane.state]}}/>{lane.state!=='needs you'&&<b>{lane.state}</b>}{onOpenLane?<button className="link" onClick={()=>onOpenLane(lane.id)} title="Open the lane: its ship and its asks">{lane.asks.length===1?'open the lane':plural(lane.asks.length,'ask')} ▸<K k="enter"/></button>:<span>{plural(lane.asks.length,'ask')}</span>}</div>
-  {lane.now&&<div className="last"><span className="nowlab">Crew's last word{Number.isFinite(updated)?` · ${ageWords(updated)} ago`:''}</span><p className="now">{lane.now}</p></div>}
+  {lane.now&&<div className="last"><span className="nowlab">{"Crew's last word"}{Number.isFinite(updated)?` · ${ageWords(updated)} ago`:''}</span><p className="now">{lane.now}</p></div>}
  </div>;
 }
 type CardProps={item:SittingItem;lane:Lane;lead:boolean;raw:boolean;hinted:boolean;meshes?:ShipMesh[];ownRef:React.RefObject<HTMLInputElement>;onOpenLane?:(id:string)=>void;choose:(i:number)=>void;own:(text:string)=>void;skip:()=>void;defer:()=>void;grill:()=>void;flipRaw:()=>void};
@@ -86,7 +86,7 @@ function AnswerList({rows,sent}:{rows:[SittingItem,SittingAnswer][];sent:boolean
 }
 
 export function AskStation({fleet,active,selectedLaneIds,hiddenSelected,meshes,onBack,onConfirm,onOpenLane,onAnswered}:AskStationProps){
- const [items,setItems]=useState<SittingItem[]>([]),[answers,setAnswers]=useState<Answers>({}),[deferred,setDeferred]=useState<string[]>([]),[trail,setTrail]=useState<string[]>([]),[later,setLater]=useState<string[]>([]),[handed,setHanded]=useState<string[]>([]);
+ const [items,setItems]=useState<SittingItem[]>([]),[answers,setAnswers]=useState<Answers>({}),[deferred,setDeferred]=useState<string[]>([]),[trail,setTrail]=useState<string[]>([]),[later,setLater]=useState<string[]>([]);
  const [delivery,setDelivery]=useState<DeliveryResult[]|null>(null),[sending,setSending]=useState(false),[error,setError]=useState(''),[raw,setRaw]=useState(false),[paste,setPaste]=useState(false),ownRef=useRef<HTMLInputElement>(null);
  const sit=items.filter(item=>!deferred.includes(item.ref)),cur=sit.find(item=>!answers[item.ref]),laneOf=(item:SittingItem)=>fleet.stationLanes.find(lane=>lane.id===item.lane.id)??item.lane;
  const given=trail.flatMap(ref=>{const item=sit.find(entry=>entry.ref===ref),answer=answers[ref];return item&&answer?[[item,answer] as [SittingItem,SittingAnswer]]:[];});
@@ -97,7 +97,7 @@ export function AskStation({fleet,active,selectedLaneIds,hiddenSelected,meshes,o
  const start=(next:SittingItem[])=>{setItems(next);setAnswers({});setDeferred([]);setTrail([]);setDelivery(null);setError('');setRaw(false);setPaste(false);};
  // The next sitting leaves out deferred and sent asks; once nothing else waits, the deferred asks come back.
  const upcoming=(quick:boolean)=>{
-  const next=buildSitting(fleet,selectedLaneIds,new Set([...waitLater,...handed]));
+  const next=buildSitting(fleet,selectedLaneIds,new Set(waitLater));
   if(quick)return next.filter(item=>item.ask.effort==='quick');
   return next.length?next:deferForLater(fleet,waitLater).filter(item=>item.ask.answerable).slice(0,4);
  };
@@ -112,13 +112,14 @@ export function AskStation({fleet,active,selectedLaneIds,hiddenSelected,meshes,o
  const defer=()=>{if(!cur||locked)return;setDeferred(old=>[...old,cur.ref]);setAnswers(old=>undoAnswer(old,cur.ref));setTrail(old=>[...old.filter(ref=>ref!==cur.ref),cur.ref]);setRaw(false);};
  const undo=()=>{const ref=trail.at(-1);if(!ref||locked)return;setTrail(old=>old.slice(0,-1));setAnswers(old=>undoAnswer(old,ref));setDeferred(old=>old.filter(entry=>entry!==ref));};
  const keepPicks=()=>{if(locked||!keep.length)return;setAnswers(old=>({...old,...Object.fromEntries(keep.map(item=>[item.ref,answerFor(item,'choice',item.ask.pick)]))}));setTrail(old=>[...old.filter(ref=>!keep.some(item=>item.ref===ref)),...keep.map(item=>item.ref)]);setPaste(true);};
- const confirm=async()=>{if(!onConfirm||locked||!ready||!n)return;setSending(true);setError('');try{const results=await onConfirm(reviewed);setDelivery(results);setHanded(old=>[...old,...results.filter(result=>result.accepted).map(result=>refFor(result.lane,result.key))]);}catch(e){setError(e instanceof Error?e.message:'Could not send answers.');}finally{setSending(false);}};
+ const confirm=async()=>{if(!onConfirm||locked||!ready||!n)return;setSending(true);setError('');try{const results=await onConfirm(reviewed);setDelivery(results);}catch(e){setError(e instanceof Error?e.message:'Could not send answers.');}finally{setSending(false);}};
  const keyRef=useRef<(event:KeyboardEvent)=>void>(()=>{});
+ const enterLane=(event:KeyboardEvent)=>{if(cur&&!(event.target instanceof HTMLElement&&event.target.closest('button,a,summary')))onOpenLane?.(cur.lane.id);};
+ const keyActions=():Record<string,(()=>void)|false>=>({s:!!cur&&(()=>save(cur,answerFor(cur,'skip'))),w:!!cur&&defer,d:!!cur&&(()=>setRaw(value=>!value)),g:!!cur&&(()=>save(cur,answerFor(cur,'grill'))),o:!!cur&&(()=>ownRef.current?.focus()),u:undo,y:!cur&&confirm,k:keepPicks,n:nextCount>0&&(()=>nextSitting()),e:quickCount>0&&(()=>nextSitting(true)),p:n>0&&(()=>setPaste(value=>!value))});
  keyRef.current=event=>{
   if(event.metaKey||event.ctrlKey||event.altKey||event.repeat||isEditing(event.target))return;
-  if(event.key==='Enter'){if(cur&&!(event.target instanceof HTMLElement&&event.target.closest('button,a,summary')))onOpenLane?.(cur.lane.id);return;}
-  const run:Record<string,(()=>void)|false>={s:!!cur&&(()=>save(cur,answerFor(cur,'skip'))),w:!!cur&&defer,d:!!cur&&(()=>setRaw(value=>!value)),g:!!cur&&(()=>save(cur,answerFor(cur,'grill'))),o:!!cur&&(()=>ownRef.current?.focus()),u:undo,y:!cur&&confirm,k:keepPicks,n:nextCount>0&&(()=>nextSitting()),e:quickCount>0&&(()=>nextSitting(true)),p:n>0&&(()=>setPaste(value=>!value))};
-  const action=/^[1-9]$/.test(event.key)?()=>choose(Number(event.key)-1):run[event.key];
+  if(event.key==='Enter'){enterLane(event);return;}
+  const action=/^[1-9]$/.test(event.key)?()=>choose(Number(event.key)-1):keyActions()[event.key];
   if(action){event.preventDefault();action();}
  };
  useEffect(()=>{if(!active)return;const key=(event:KeyboardEvent)=>keyRef.current(event);window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[active]);
