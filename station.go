@@ -7,20 +7,22 @@ import (
 
 // StationLane is the lane contract shared by all four stations.
 type StationLane struct {
-	ID          string          `json:"id"`
-	Name        string          `json:"name"`
-	Home        string          `json:"home"`
-	SecondMate  string          `json:"secondMate"`
-	State       string          `json:"state"`
-	SourceState string          `json:"sourceState"`
-	Now         string          `json:"now"`
-	UpdatedAt   time.Time       `json:"updatedAt"`
-	History     []StationChange `json:"history"`
-	Asks        []StationAsk    `json:"asks"`
-	Start       time.Time       `json:"start"`
-	Ticket      *LaneRecordLink `json:"ticket,omitempty"`
-	InvalidAsks int             `json:"invalidAsks"`
-	Progress    float64         `json:"progress"`
+	ID            string          `json:"id"`
+	Name          string          `json:"name"`
+	Title         string          `json:"title,omitempty"` // the backlog sentence of a lane without a record
+	Home          string          `json:"home"`
+	SecondMate    string          `json:"secondMate"`
+	State         string          `json:"state"`
+	SourceState   string          `json:"sourceState"`
+	Now           string          `json:"now"`
+	UpdatedAt     time.Time       `json:"updatedAt"`
+	History       []StationChange `json:"history"`
+	Asks          []StationAsk    `json:"asks"`
+	Start         time.Time       `json:"start"`
+	Ticket        *LaneRecordLink `json:"ticket,omitempty"`
+	InvalidAsks   int             `json:"invalidAsks"`
+	ReturnedSince *time.Time      `json:"returnedSince,omitempty"`
+	Progress      float64         `json:"progress"`
 }
 type StationChange struct {
 	At    time.Time `json:"at"`
@@ -37,23 +39,20 @@ func readOnlyReason(lane StationLane) string {
 }
 
 func stationLane(l Lane, at time.Time) (StationLane, int) {
-	out := StationLane{ID: l.ID, Name: l.Title, SourceState: l.State, UpdatedAt: l.UpdatedAt, Asks: []StationAsk{}, History: []StationChange{}}
+	// A lane without a record is named by its ID, as the reference board does; its sentence stays as Title.
+	out := StationLane{ID: l.ID, Name: l.ID, SourceState: l.State, UpdatedAt: l.UpdatedAt, Asks: []StationAsk{}, History: []StationChange{}}
 	out.Home, out.SecondMate = l.Home, l.SecondMate
 	if e, ok := l.Latest(); ok {
 		out.Now = e.Text
 	}
-	hidden := 0
-	for _, d := range l.Decisions {
-		if !d.At.IsZero() && d.At.Before(at.Add(-7*24*time.Hour)) {
-			hidden++
-			continue
-		}
-		ask := StationAsk{Key: d.Key, Form: "discussion", Topic: d.Text, Question: d.Text, MustDecide: []string{d.Text}, Reason: "Crew needs your answer", Effort: "read", Asked: d.At}
-		ask.Answerable = l.OwnerDir != "" && nativeTaskKey(ask.Key)
-		out.Asks = append(out.Asks, ask)
+	hidden, returned := returnDecisions(l.Decisions, at, &out)
+	out.InvalidAsks = l.InvalidAsks + returned
+	if l.Record == nil && l.Title != l.ID {
+		out.Title = l.Title
 	}
 	if l.Record != nil {
-		out.Start, out.Ticket, out.InvalidAsks = l.Record.Start, l.Record.Ticket, l.InvalidAsks
+		out.Name = l.Title
+		out.Start, out.Ticket = l.Record.Start, l.Record.Ticket
 		out.Now = l.Record.Now
 		for _, ask := range l.Record.Asks {
 			if !ask.Asked.IsZero() && ask.Asked.Before(at.Add(-7*24*time.Hour)) {
@@ -68,9 +67,43 @@ func stationLane(l Lane, at time.Time) (StationLane, int) {
 		out.History = append(out.History, StationChange{At: e.At, State: e.Verb, Text: e.Text})
 	}
 	sort.SliceStable(out.History, func(i, j int) bool { return out.History[i].At.Before(out.History[j].At) })
-	out.State = stationLaneState(l, len(out.Asks), at)
+	out.State = stationLaneState(l, len(out.Asks)+returned, at)
 	out.Progress = stationLaneProgress(out)
 	return out, hidden
+}
+
+// returnDecisions folds open status-line decisions. Each is free text, not a fixed-form ask
+// (ADR 0003): it goes back to the crew and only its count shows. Its text stays in the
+// lane's status log, and its oldest known time is the lane's wait.
+func returnDecisions(ds []Decision, at time.Time, out *StationLane) (hidden, returned int) {
+	for _, d := range ds {
+		if !d.At.IsZero() && d.At.Before(at.Add(-7*24*time.Hour)) {
+			hidden++
+			continue
+		}
+		returned++
+		if out.ReturnedSince == nil || out.ReturnedSince.IsZero() || (!d.At.IsZero() && d.At.Before(*out.ReturnedSince)) {
+			since := d.At
+			out.ReturnedSince = &since
+		}
+		if d.Verb == "captain-hold" { // a backlog hold has no status line to keep its text
+			out.History = append(out.History, StationChange{At: d.At, State: d.Verb, Text: d.Text})
+		}
+	}
+	return hidden, returned
+}
+
+func (l StationLane) waitSince() time.Time {
+	var t time.Time
+	for i, ask := range l.Asks {
+		if i == 0 || ask.Asked.Before(t) {
+			t = ask.Asked
+		}
+	}
+	if len(l.Asks) == 0 && l.ReturnedSince != nil {
+		t = *l.ReturnedSince
+	}
+	return t
 }
 
 func stationLaneState(l Lane, asks int, at time.Time) string {
@@ -127,17 +160,8 @@ func stationFleet(lanes []Lane, at time.Time) ([]StationLane, int, float64) {
 		if rank[a.State] != rank[b.State] {
 			return rank[a.State] < rank[b.State]
 		}
-		oldest := func(l StationLane) time.Time {
-			var t time.Time
-			for i, ask := range l.Asks {
-				if i == 0 || ask.Asked.Before(t) {
-					t = ask.Asked
-				}
-			}
-			return t
-		}
-		if a.State == "needs you" && !oldest(a).Equal(oldest(b)) {
-			return oldest(a).Before(oldest(b))
+		if a.State == "needs you" && !a.waitSince().Equal(b.waitSince()) {
+			return a.waitSince().Before(b.waitSince())
 		}
 		return a.ID < b.ID
 	})
