@@ -2,12 +2,14 @@
 
 A private-network fleet board with four stations: **Ask, List, Fleet and Lane**.
 The web board, phone board, terminal and `--json` use the same fleet contract.
-The reading stations retain the board summary; Ask hides it.
+On the web every station sits inside the board: a top bar, a station rail and a fleet strip with one mark per lane; a lane that changes state lights its mark once. On a phone the stations sit in a bar at the foot.
+List, Fleet and Lane show the board summary. Ask hides the summary, and hides the rail and the strip until `z` shows them.
 
 ## Build and run
 
 Requires Go 1.24 or later. Bun is needed to rebuild the web bundle or convert models.
 The checked-in `web/app.js` is embedded in the executable; the board does not load remote fonts or scripts.
+Its two faces, Antonio and Barlow Semi Condensed (SIL Open Font License), are in `web/fonts/` and are embedded as well.
 
 ```sh
 go build -o fmlanes .
@@ -33,7 +35,9 @@ Other Host values receive 403, including on answer and asset routes.
 - **Lane:** a lit, rotating triangle-mesh ASCII ship, build materialization, ship name, crew's last word, timestamped history and asks. Drag turns/tilts, wheel or buttons zoom, Space pauses/resumes, and double-click resets. Blocked ships flicker red; failed ships break apart and the breakup ends.
 - **Ask:** up to four asks, quick first and grouped by the lane's second mate. Questions, reasons and choices precede the ship and expandable detail. A crew pick is labelled with its reason; a board suggestion is explicitly labelled when there is no crew pick. Discussion asks show their must-decide items and offer a grill request first. Choice, own answer, crew-decides skip, defer, grill, undo and review do not send anything. The send card identifies each answer by lane name and question. **Confirm and send sitting** is the one sending action, and it stays disabled until every ask in the sitting has a choice, own answer, skip or grill request, so the whole batch goes at once and any answer can be undone or changed before then. A deferred ask leaves the sitting and returns in a later one.
 
-`/simulation` is a web-only surface outside the station rail.
+- **Board:** Find lane (`/`) finds any lane by name, holding lanes too. Changed lanes (`c`) lists the lanes whose state changed since your last look; its **save this as your last look** link saves a new last look. The reading age at the right of the top bar opens a box that says how fresh the reading is. Keys (`?`) lists the web keys; on a phone, More holds the board switch and Lane sim.
+
+`/simulation` is a web-only surface, opened from Lane sim in the station rail.
 It exercises every state, blocked flicker, finite failure breakup, ASCII/quadrant output and every admitted model in the loaded pool.
 It uses synthetic lane data and never answers a real ask.
 
@@ -69,6 +73,8 @@ The **Simulation budget** GitHub workflow builds the web bundle from source, run
 | Key | Action |
 |---|---|
 | `a`, `l`, `f`, `enter` | Ask, List, Fleet, selected Lane |
+| `z` | Show or hide the rest of the board on the web Ask station |
+| `/`, `c`, `?`, `esc` | Web: find a lane, changed lanes, keys, close a box |
 | `space` | Tick the focused List lane; pause/resume a Lane or Ask ship |
 | `o` | Focus/type an own answer in Ask |
 | `tab`, `shift+tab` | Next/previous terminal station |
