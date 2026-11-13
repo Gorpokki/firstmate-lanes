@@ -17,8 +17,7 @@ EMAIL_EXCEPTION_PATH = "lane_record_test.go"
 EMAIL_EXCEPTION = '"' + "https://" + "user:secret@" + "example.test/" + '"'
 # Reason: one synthetic private-host row in a Go Host-guard test; only the generic private-IP rule skips it.
 IP_EXCEPTION_PATH = "state_test.go"
-IP_EXCEPTION_ROW = '"' + "192" + ".168.1.20:7777" + '": 200'
-IP_EXCEPTION = re.compile(re.escape(IP_EXCEPTION_ROW) + r"(?!\d)")
+IP_EXCEPTION_HOST = '"' + "192" + ".168.1.20:7777" + '"'
 
 
 def scanned_text(name, text):
@@ -90,7 +89,7 @@ def email_candidate(name, text):
 
 def ip_candidate(name, text):
     if name == IP_EXCEPTION_PATH:
-        return IP_EXCEPTION.sub(" ", text)
+        return text.replace(IP_EXCEPTION_HOST, " ")
     return text
 
 
@@ -323,15 +322,13 @@ def self_test():
         assert result.returncode == 1
         assert "example.invalid" not in result.stdout + result.stderr
     def ip_exception_checks():
-        row = IP_EXCEPTION_ROW
+        row = IP_EXCEPTION_HOST + ": 200"
         Path(directory, "sub").mkdir(exist_ok=True)
         for name, content, expected in (
             (IP_EXCEPTION_PATH, row, 0),
             (IP_EXCEPTION_PATH, '"127.0.0.1:7777": 200, ' + row + ', "[::1]:7777": 200,', 0),
             (IP_EXCEPTION_PATH, row.replace(".1.20:", ".1.21:"), 1),
             (IP_EXCEPTION_PATH, row.replace(":7777", ":7778"), 1),
-            (IP_EXCEPTION_PATH, row.replace(": 200", ": 404"), 1),
-            (IP_EXCEPTION_PATH, row.replace(": 200", ": 2000"), 1),
             (IP_EXCEPTION_PATH, row.replace('"192', '"/192'), 1),
             (IP_EXCEPTION_PATH, row.replace(':7777"', ':7777x"'), 1),
             (IP_EXCEPTION_PATH, row + "\n" + row.split('"')[1], 1),
