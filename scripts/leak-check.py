@@ -15,6 +15,9 @@ FIXTURE_ASSIGNMENT = 'fixture_denylist = "' + SAFE_FIXTURE.split('"')[1] + '"'
 # Reason: one synthetic credentialed-URL rejection fixture in a Go test; only the generic email shape rule skips it.
 EMAIL_EXCEPTION_PATH = "lane_record_test.go"
 EMAIL_EXCEPTION = '"' + "https://" + "user:secret@" + "example.test/" + '"'
+# Reason: one synthetic private-host row in a Go Host-guard test; only the generic private-IP rule skips it.
+IP_EXCEPTION_PATH = "state_test.go"
+IP_EXCEPTION_HOST = '"' + "192" + ".168.1.20:7777" + '"'
 
 
 def scanned_text(name, text):
@@ -66,8 +69,8 @@ PATTERNS = (
     re.compile(r"\b[A-Za-z]:\\+Users\\+[^\\\s]+", re.I),
     re.compile(r"(?:(?<![\w./-])|(?<=file://))(?:/[\w.-]+)*" + re.escape(HOME_MARKERS[1]) + r"[^/\s]+(?:/|\b)"),
     re.compile(r"\b(?:[A-Za-z0-9-]+\.)+(?:" + PRIVATE_SUFFIX_FORMS + r")\b"),
-    re.compile(r"\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b"),
 )
+PRIVATE_IP = re.compile(r"\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b")
 EMAIL = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
 
 
@@ -84,10 +87,17 @@ def email_candidate(name, text):
     return text
 
 
+def ip_candidate(name, text):
+    if name == IP_EXCEPTION_PATH:
+        return text.replace(IP_EXCEPTION_HOST, " ")
+    return text
+
+
 def matches(text, denylist, name=None):
     folded = text.casefold()
     return (
         any(pattern.search(text) for pattern in PATTERNS)
+        or PRIVATE_IP.search(ip_candidate(name, text)) is not None
         or EMAIL.search(email_candidate(name, text)) is not None
         or any(item.casefold() in folded for item in denylist)
     )
@@ -261,6 +271,9 @@ def self_test():
             (EMAIL_EXCEPTION_PATH, '"https://' + 'user:secret@' + 'example.test/x"', 1),
             (EMAIL_EXCEPTION_PATH, '"https://' + 'user:other@' + 'example.test/"', 1),
             (EMAIL_EXCEPTION_PATH, '"HTTPS://' + 'USER:SECRET@' + 'EXAMPLE.TEST/"', 1),
+            (EMAIL_EXCEPTION_PATH, 'https://' + 'user:secret@' + 'example.test/', 1),
+            (EMAIL_EXCEPTION_PATH, '"x' + 'https://' + 'user:secret@' + 'example.test/"', 1),
+            (EMAIL_EXCEPTION_PATH, '"https://' + 'user:secret@' + 'example.org/"', 1),
             ("notes.txt", literal, 1),
             ("sub/" + EMAIL_EXCEPTION_PATH, literal, 1),
         ):
@@ -308,6 +321,56 @@ def self_test():
         result = run(base=start)
         assert result.returncode == 1
         assert "example.invalid" not in result.stdout + result.stderr
+    def ip_exception_checks():
+        row = IP_EXCEPTION_HOST + ": 200"
+        Path(directory, "sub").mkdir(exist_ok=True)
+        for name, content, expected in (
+            (IP_EXCEPTION_PATH, row, 0),
+            (IP_EXCEPTION_PATH, '"127.0.0.1:7777": 200, ' + row + ', "[::1]:7777": 200,', 0),
+            (IP_EXCEPTION_PATH, row.replace(".1.20:", ".1.21:"), 1),
+            (IP_EXCEPTION_PATH, row.replace(":7777", ":7778"), 1),
+            (IP_EXCEPTION_PATH, row.replace('"192', '"/192'), 1),
+            (IP_EXCEPTION_PATH, row.replace(':7777"', ':7777x"'), 1),
+            (IP_EXCEPTION_PATH, row + "\n" + row.split('"')[1], 1),
+            ("notes.txt", row, 1),
+            ("sub/" + IP_EXCEPTION_PATH, row, 1),
+        ):
+            Path(directory, name).write_text(content)
+            commit()
+            result = run()
+            assert result.returncode == expected
+            assert content not in result.stdout + result.stderr
+            if expected:
+                assert "leak detected (content redacted)" in result.stderr
+            else:
+                assert not result.stdout and not result.stderr
+            Path(directory, name).unlink()
+            commit()
+        Path(directory, IP_EXCEPTION_PATH).write_text(row)
+        commit()
+        result = run(denylist="168.1.20")
+        assert result.returncode == 1
+        assert "leak detected (content redacted)" in result.stderr
+        assert "168.1.20" not in result.stdout + result.stderr
+        Path(directory, IP_EXCEPTION_PATH).unlink()
+        commit()
+        start = git("rev-parse", "HEAD", cwd=directory).strip()
+        Path(directory, IP_EXCEPTION_PATH).write_text(row)
+        commit()
+        Path(directory, IP_EXCEPTION_PATH).unlink()
+        commit()
+        assert run(base=start).returncode == 0
+        result = run(base=start, denylist="168.1.20")
+        assert result.returncode == 1
+        assert "168.1.20" not in result.stdout + result.stderr
+        commit(row)
+        result = run(base=start)
+        assert result.returncode == 1
+        assert row not in result.stdout + result.stderr
+        result = run(event={"pull_request": {"title": "safe", "body": row}})
+        assert result.returncode == 1
+        assert row not in result.stdout + result.stderr
+        Path(directory, "event.json").unlink()
     with tempfile.TemporaryDirectory() as directory:
         subprocess.run(["git", "init", "-q"], cwd=directory, check=True)
         sample = Path(directory) / "sample.txt"
@@ -366,6 +429,7 @@ def self_test():
         tree_and_history_checks()
         fixture_checks()
         email_exception_checks()
+        ip_exception_checks()
         event_text_checks()
 
 
