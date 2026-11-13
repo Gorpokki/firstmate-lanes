@@ -85,6 +85,7 @@ The required no-leak scan checks every outgoing commit in the PR (its file paths
 A commit identity may only be the GitHub noreply address `<id>+<login>@users.noreply.github.com` or the repository owner's login (`--owner-login`, which CI takes from the repository owner); every other identity value goes through the denylist and generic shape checks.
 Identity allowances never apply to file content, paths, messages, or issue and PR text.
 The generic email shape rule skips one exact quoted synthetic credentialed-URL fixture in `lane_record_test.go`; the denylist and every other check still apply to that file.
+The generic private-IP shape rule skips one exact quoted synthetic host row in the Host-guard test `state_test.go`, and only where that row is not followed by another digit; the denylist and every other check still apply to that file.
 Local prepublication scans can also check an issue's title and body by passing `--event-file` a JSON file shaped `{"issue": {"title": ..., "body": ...}}`.
 A file with no `issue` or `pull_request` object fails the scan.
 CI does not scan issues.
