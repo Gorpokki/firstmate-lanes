@@ -31,7 +31,7 @@ Other Host values receive 403, including on answer and asset routes.
 - **List:** state headings, needs-you lanes ordered by oldest recent ask, then waiting, working, done and holding. Filter by second mate, inspect quick/read asks, tick lanes and start their sitting. The second-mate filter scopes List only: a sitting covers every ticked lane, including ticked lanes the filter hides, and Ask shows how many there are.
 - **Fleet:** a heat grid and a caged shipyard, with state shares, state filtering, selected-lane focus, working drones and a Motion switch. Mouse drag pans; Shift-drag turns; the wheel zooms; double-click resets. Touch drag pans, two fingers turn/pinch, and double-tap resets. Labels are collision-aware; the selected lane's name remains visible.
 - **Lane:** a lit, rotating triangle-mesh ASCII ship, build materialization, ship name, crew's last word, timestamped history and asks. Drag turns/tilts, wheel or buttons zoom, Space pauses/resumes, and double-click resets. Blocked ships flicker red; failed ships break apart and the breakup ends.
-- **Ask:** up to four asks, quick first and grouped by the lane's second mate. Questions, reasons and choices precede the ship and expandable detail. A crew pick is labelled with its reason; a board suggestion is explicitly labelled when there is no crew pick. Discussion asks show their must-decide items and offer a grill request first. Choice, own answer, crew-decides skip, defer, grill, undo and review do not send anything. The send card identifies each answer by lane name and question. **Confirm and send sitting** is the one sending action. Deferred asks return in later sittings.
+- **Ask:** up to four asks, quick first and grouped by the lane's second mate. Questions, reasons and choices precede the ship and expandable detail. A crew pick is labelled with its reason; a board suggestion is explicitly labelled when there is no crew pick. Discussion asks show their must-decide items and offer a grill request first. Choice, own answer, crew-decides skip, defer, grill, undo and review do not send anything. The send card identifies each answer by lane name and question. **Confirm and send sitting** is the one sending action, and it stays disabled until every ask in the sitting has a choice, own answer, skip or grill request, so the whole batch goes at once and any answer can be undone or changed before then. A deferred ask leaves the sitting and returns in a later one.
 
 `/simulation` is a web-only surface outside the station rail.
 It exercises every state, blocked flicker, finite failure breakup, ASCII/quadrant output and every admitted model in the loaded pool.
@@ -78,7 +78,7 @@ The **Simulation budget** GitHub workflow builds the web bundle from source, run
 | `s`, `g`, `d` | Terminal crew-decides skip, grill request, defer |
 | `u`, `r`, `v`, `/` | Terminal undo, review, details, find ask |
 | `pgup`, `pgdown` | Scroll terminal Ask cards, detail and delivery reports |
-| `y` | Explicitly confirm a terminal send from review |
+| `y` | Explicitly confirm a terminal send from review, once every ask in the sitting is answered or deferred |
 | `c`, `o`, `u`, `n` | In terminal review: change, own answer, undo, return |
 | `n` | Start another terminal sitting after delivery/all-deferred |
 | `s`, `1`–`5` | In terminal Fleet: heat/shipyard toggle; state filters |

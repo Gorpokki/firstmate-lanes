@@ -31,6 +31,9 @@ export function deferForLater(fleet:Fleet,refs:readonly string[]):SittingItem[]{
  return fleet.stationLanes.flatMap(lane=>lane.asks.filter(ask=>deferred.has(refFor(lane.id,ask.key))).map(ask=>({lane,ask,ref:refFor(lane.id,ask.key),round:0})));
 }
 
+// One batch: send only once every ask still in the sitting has a choice, own answer, skip or grill. Deferred asks have left the sitting.
+export const batchReady=(items:readonly SittingItem[],answers:Readonly<Record<string,SittingAnswer>>)=>items.length>0&&items.every(item=>answers[item.ref]);
+
 export function undoAnswer(answers:Record<string,SittingAnswer>,ref:string):Record<string,SittingAnswer>{
  const next={...answers};
  delete next[ref];

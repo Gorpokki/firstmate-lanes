@@ -230,3 +230,38 @@ func TestFleetSelectionOpensTheLaneHighlighted(t *testing.T) {
 		t.Fatalf("List selected %s, want charlie", l.ID)
 	}
 }
+
+func TestTerminalSittingSendsOnlyACompleteBatch(t *testing.T) {
+	m := model{fleet: Fleet{Stations: terminalFixture()}, view: 0, w: 100, h: 30}
+	m.openSitting()
+	send := func() bool {
+		m.pendingSend, m.answers = false, nil
+		m.sitting.review = true
+		m.sitting.key(&m, "y", m.askLanes())
+		m.sitting.review = false
+		return m.pendingSend
+	}
+	m.sitting.key(&m, "1", m.askLanes())
+	if send() {
+		t.Fatal("sent with one of two asks answered")
+	}
+	m.sitting.index = 1
+	m.sitting.key(&m, "s", m.askLanes())
+	if !send() || len(m.answers) != 2 {
+		t.Fatalf("complete batch not sent: %+v", m.answers)
+	}
+	m.sitting.key(&m, "u", m.askLanes())
+	if send() {
+		t.Fatal("sent after undo reopened an ask")
+	}
+	m.sitting.index = 1
+	m.sitting.key(&m, "d", m.askLanes())
+	if !send() || len(m.answers) != 1 || m.answers[0].Key != "quick-a" {
+		t.Fatalf("deferred ask did not leave the batch: %+v", m.answers)
+	}
+	m.sitting.index = 0
+	m.sitting.key(&m, "d", m.askLanes())
+	if len(m.sitting.answers) != 0 || send() {
+		t.Fatalf("deferring an answered ask kept its answer: %+v", m.sitting.answers)
+	}
+}

@@ -173,7 +173,9 @@ func (s *sitting) reviewModeKey(m *model, k string) {
 	case "down", "j":
 		s.reviewIndex = min(max(0, len(s.answers)-1), s.reviewIndex+1)
 	case "y":
-		if len(s.answers) > 0 {
+		if n := s.unanswered(); n > 0 {
+			s.message = fmt.Sprintf("%d asks still need an answer, skip or defer; nothing sent", n)
+		} else if len(s.answers) > 0 {
 			m.answers = append([]SittingAnswer(nil), s.answers...)
 			m.pendingSend = true
 			s.message = "Sending confirmed sitting…"
@@ -202,6 +204,7 @@ func (s *sitting) chooseByKey(k string) {
 func (s *sitting) deferCurrent() {
 	if it, ok := s.current(); ok {
 		s.deferred[itemKey(it)] = true
+		s.dropAnswer(itemKey(it))
 		s.advance()
 		s.message = "Deferred; it returns in a later sitting"
 	}
@@ -274,18 +277,42 @@ func (s *sitting) commit(kind, txt string, choice int) {
 	s.advance()
 	s.message = "Answer recorded; nothing sent"
 }
+func (s *sitting) answered(it sittingItem) bool {
+	for _, a := range s.answers {
+		if answerKey(a) == itemKey(it) {
+			return true
+		}
+	}
+	return false
+}
+
+// unanswered counts the asks of the batch that still lack a choice, own answer, skip or grill.
+// Deferred asks have left the batch; y sends only when this is zero.
+func (s *sitting) unanswered() int {
+	n := 0
+	for _, it := range s.items {
+		if !s.deferred[itemKey(it)] && !s.answered(it) {
+			n++
+		}
+	}
+	return n
+}
+
+func (s *sitting) dropAnswer(key string) {
+	for i, a := range s.answers {
+		if answerKey(a) == key {
+			s.answers = append(s.answers[:i], s.answers[i+1:]...)
+			s.reviewIndex = min(s.reviewIndex, max(0, len(s.answers)-1))
+			return
+		}
+	}
+}
+
 func (s *sitting) advance() {
 	for n := 1; n <= len(s.items); n++ {
 		i := (s.index + n) % len(s.items)
 		it := s.items[i]
-		answered := false
-		for _, a := range s.answers {
-			if answerKey(a) == itemKey(it) {
-				answered = true
-				break
-			}
-		}
-		if !answered && !s.deferred[itemKey(it)] {
+		if !s.answered(it) && !s.deferred[itemKey(it)] {
 			s.index = i
 			return
 		}
@@ -330,6 +357,15 @@ func (m *model) applyAnswerResult(msg answerResultMsg) {
 		}
 	}
 	m.sitting.answers = remaining
+	// Accepted asks leave the batch, so refused answers can be changed and sent again.
+	items := m.sitting.items[:0]
+	for _, it := range m.sitting.items {
+		if !accepted[it.lane.ID+"\x00"+it.ask.Key] {
+			items = append(items, it)
+		}
+	}
+	m.sitting.items = items
+	m.sitting.index = len(items)
 	m.answers = nil
 	m.sitting.message = strings.Join(rows, " · ")
 	m.sitting.finished = len(remaining) == 0
@@ -406,7 +442,11 @@ func (s sitting) viewReviewRows() ([]string, string) {
 		}
 		rows = append(rows, text.Render(mark+" "+name+" — "+oneLine(question)), dim.Render("  "+a.Kind+" · "+oneLine(answer)))
 	}
-	rows = append(rows, "", text.Render("↑↓ select · c change · o own · u undo · n return"), lab(cPeach).Render("y CONFIRM AND SEND ONCE"))
+	send := lab(cPeach).Render("y CONFIRM AND SEND ONCE")
+	if n := s.unanswered(); n > 0 {
+		send = dim.Render(fmt.Sprintf("%d asks still need an answer, skip or defer before y sends", n))
+	}
+	rows = append(rows, "", text.Render("↑↓ select · c change · o own · u undo · n return"), send)
 	return rows, fmt.Sprintf("%d / 4", len(s.answers))
 }
 
