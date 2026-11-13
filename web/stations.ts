@@ -1,6 +1,6 @@
 export type Link={id:string;title:string;url:string};
 export type Ask={key:string;form:string;question?:string;topic?:string;must_decide?:string[];reason:string;choices?:{label:string;effect:string}[];pick?:number;pick_reason?:string;no_pick_reason?:string;effort:string;detail?:string;tickets?:Link[];pull_requests?:Link[];grill_pages?:Link[];waits_on_this?:string;asked:string;answerable:boolean};
-export type Lane={id:string;name:string;home:string;secondMate:string;state:string;sourceState?:string;now:string;updatedAt?:string;start?:string;ticket?:Link;invalidAsks?:number;progress?:number;history:{at:string;state:string;text:string}[];asks:Ask[]};
+export type Lane={id:string;name:string;title?:string;home:string;secondMate:string;state:string;sourceState?:string;now:string;updatedAt?:string;start?:string;ticket?:Link;invalidAsks?:number;returnedSince?:string;progress?:number;history:{at:string;state:string;text:string}[];asks:Ask[]};
 export type Fleet={updatedAt:string;stationLanes:Lane[];hiddenAsks:number;autonomyShare:number;changedLanes:string[]};
 export const states=['needs you','waiting','working','done','holding'];
 export type Station='ask'|'list'|'fleet'|'lane';
@@ -12,10 +12,17 @@ export const mateOf=(lane:Lane)=>lane.secondMate||NO_MATE;
 export type ListRow={lane:Lane;ask?:Ask;age:number};
 const knownTime=(iso:string|undefined)=>{const t=Date.parse(iso||'');return t>0?t:NaN;}; // Go's zero time and a missing time are unknown
 const oldestFirst=(a:Ask,b:Ask)=>(knownTime(a.asked)||Infinity)-(knownTime(b.asked)||Infinity);
+const waitTimes=(lane:Lane):(string|undefined)[]=>lane.asks.length?lane.asks.map(a=>a.asked):[lane.returnedSince];
+const oldestWait=(lane:Lane)=>Math.min(...waitTimes(lane).map(iso=>Date.parse(iso||'')).filter(Number.isFinite));
+const knownWait=(lane:Lane)=>Math.min(...waitTimes(lane).map(knownTime).filter(Number.isFinite));
+// Asks not in a fixed form (ADR 0003) are no cards: they go back to the crew and only their count shows.
+export const returnedWords=(n:number)=>`${plural(n,'ask')} not in the ask form went back to the crew.`;
+export const returnedOnly=(lane:Lane)=>lane.asks.length===0&&lane.returnedSince!==undefined;
+export const listQuestion=({lane,ask}:ListRow)=>ask?ask.question||ask.topic||ask.key:returnedOnly(lane)?returnedWords(lane.invalidAsks??0):/^blocked\b/i.test(lane.now)?lane.now:`Blocked: ${lane.now||'the crew cannot clear it'}`;
 export function listRows(fleet:Fleet,mate='',now=Date.now()) {
  const need=fleetOrder(fleet).filter(l=>l.state==='needs you'),counts=new Map<string,number>();
  for(const lane of need)counts.set(mateOf(lane),(counts.get(mateOf(lane))??0)+1);
- const rows:ListRow[]=need.filter(l=>!mate||mateOf(l)===mate).map(lane=>{const ask=lane.asks.toSorted(oldestFirst)[0];return {lane,ask,age:Math.max(0,(now-knownTime(ask?.asked??lane.updatedAt))/60000)};});
+ const rows:ListRow[]=need.filter(l=>!mate||mateOf(l)===mate).map(lane=>{const ask=lane.asks.toSorted(oldestFirst)[0],open=lane.asks.length>0||lane.returnedSince!==undefined,since=open?knownWait(lane):knownTime(lane.updatedAt);return {lane,ask,age:Number.isFinite(since)?Math.max(0,(now-since)/60000):NaN};});
  return {quick:rows.filter(r=>r.ask?.effort==='quick'),read:rows.filter(r=>r.ask?.effort!=='quick'),mates:[...counts].toSorted((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))};
 }
 // Ticked lanes that the mate filter hides from the List: they stay ticked and go into the sitting.
@@ -44,8 +51,7 @@ export function freshness(updated:string,now=Date.now()) {
  return minutes<1?'Live':minutes<OLD_MINUTES?`Updated ${Math.floor(minutes)} min ago`:`Saved ${elapsed(minutes)} ago`;
 }
 // Lanes in the board's one order: need you (oldest ask first), waiting, working, done, holding.
-const oldestAsk=(lane:Lane)=>Math.min(...lane.asks.map(a=>Date.parse(a.asked)).filter(Number.isFinite));
-export const fleetOrder=(fleet:Fleet)=>fleet.stationLanes.toSorted((a,b)=>states.indexOf(a.state)-states.indexOf(b.state)||oldestAsk(a)-oldestAsk(b)||a.name.localeCompare(b.name));
+export const fleetOrder=(fleet:Fleet)=>fleet.stationLanes.toSorted((a,b)=>states.indexOf(a.state)-states.indexOf(b.state)||oldestWait(a)-oldestWait(b)||a.name.localeCompare(b.name));
 // The lanes whose state differs from the reading before: their strip marks light once.
 export const stateChanges=(was:Record<string,string>|null,fleet:Fleet)=>was?fleet.stationLanes.filter(l=>l.id in was&&was[l.id]!==l.state).map(l=>l.id):[];
 // The summary: row 1 the state, only the need-you numbers bright; row 2 what changed and the share that ran without the user.
@@ -72,7 +78,7 @@ export function boardSummary(fleet:Fleet):SummaryPart[][] {
 export const FIND_LIMIT=6;
 export function findLanes(fleet:Fleet,query:string) {
  const words=query.toLowerCase().split(/\s+/).filter(Boolean);
- const all=words.length?fleetOrder(fleet).filter(l=>words.every(w=>l.name.toLowerCase().includes(w))):[];
+ const all=words.length?fleetOrder(fleet).filter(l=>{const text=`${l.name} ${l.title??''}`.toLowerCase();return words.every(w=>text.includes(w));}):[];
  return {rows:all.slice(0,FIND_LIMIT),n:all.length};
 }
 export const findFoot=(query:string,shown:number,n:number)=>!query.trim()?'esc closes':!n?'No lane has this name.':`${n>shown?`${shown} of ${n} lanes · type more to narrow · `:''}↑ ↓ choose · enter opens the lane · esc closes`;

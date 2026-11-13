@@ -1,5 +1,5 @@
 import {test,expect} from 'bun:test';
-import {ageDays,boardSummary,findFoot,findLanes,fleetOrder,freshness,hiddenTicked,isOld,keepNeedingTicks,keepsKey,laneWords,listRows,overdue,stateChanges} from './stations';
+import {ageDays,boardSummary,findFoot,findLanes,fleetOrder,freshness,hiddenTicked,isOld,keepNeedingTicks,keepsKey,laneWords,listQuestion,listRows,overdue,returnedOnly,stateChanges,type Lane} from './stations';
 import {buildSitting} from './sitting';
 
 const lane=(id:string,state:string,secondMate:string,asked:string)=>({id,name:id,state,secondMate,home:'main',now:'Example',history:[],asks:asked?[{key:id,form:'discussion',question:'Example?',reason:'Choose',effort:'quick',asked,answerable:true}]:[]});
@@ -34,6 +34,9 @@ test('the summary brightens only the need-you numbers and names what changed',()
 test('the strip and Find keep one lane order',()=>{
  expect(fleetOrder(fleet).map(l=>l.id)).toEqual(['old','new','work','parked']);
  expect(findLanes(fleet,'PAR').rows.map(l=>l.id)).toEqual(['parked']);
+ const sentenced={...fleet,stationLanes:[{...lane('fallback','working','',''),title:'Compare three cache layers in the report'}]};
+ expect(findLanes(sentenced,'cache layers').rows.map(l=>l.id)).toEqual(['fallback']);
+ expect(findLanes(sentenced,'fallback').rows.map(l=>l.id)).toEqual(['fallback']);
  expect(findLanes(fleet,'  ').n).toBe(0);
  expect(findFoot('zz',0,0)).toBe('No lane has this name.');
 });
@@ -75,4 +78,31 @@ test('a tick box keeps only space; a text field keeps every key; a button keeps 
   for(const key of ['f','Enter','Space','/'])expect(keepsKey(el,key)).toBe(true);
  expect([keepsKey(button,'Enter'),keepsKey(button,'Space'),keepsKey(button,'f')]).toEqual([true,true,false]);
  expect([keepsKey({tagName:'BODY'},'Enter'),keepsKey({tagName:'BODY'},'Space'),keepsKey(null,'f')]).toEqual([false,false,false]);
+});
+
+const returnedLane=(id:string,returnedSince:string,updatedAt:string,asked='')=>({...lane(id,'needs you','build',asked),invalidAsks:1,returnedSince,updatedAt});
+const boardOf=(...stationLanes:ReturnType<typeof returnedLane>[])=>({updatedAt:'2026-01-10T12:00:00Z',hiddenAsks:0,autonomyShare:0,changedLanes:[],stationLanes}) as unknown as Fleet;
+const ageOf=(board:Fleet,id:string)=>{const {quick,read}=listRows(board,'',Date.parse(board.updatedAt));return [...quick,...read].find(r=>r.lane.id===id)?.age;};
+
+test('a lane whose open asks are all returned waits from its oldest decision, not its latest note',()=>{
+ const board=boardOf(returnedLane('ann','2026-01-10T11:00:00Z','2026-01-10T08:00:00Z'),returnedLane('zed','2026-01-05T12:00:00Z','2026-01-10T11:59:00Z'));
+ expect(fleetOrder(board).map(l=>l.id)).toEqual(['zed','ann']);
+ expect(ageOf(board,'zed')).toBe(5*1440);
+});
+
+test('a record block keeps its reason beside its malformed-ask count; a status-line return shows only its count',()=>{
+ const block={...lane('blocked','needs you','build',''),invalidAsks:2,now:'Waiting on the owner to pick the route'} as unknown as Lane;
+ const returned={...lane('returned','needs you','build',''),invalidAsks:1,returnedSince:'2026-01-10T11:00:00Z'} as unknown as Lane;
+ const asked={...lane('asked','needs you','build','2026-01-10T11:00:00Z'),invalidAsks:1} as unknown as Lane;
+ expect(listQuestion({lane:block,age:NaN})).toBe('Blocked: Waiting on the owner to pick the route');
+ expect(returnedOnly(block)).toBe(false);
+ expect(listQuestion({lane:returned,age:NaN})).toBe('1 ask not in the ask form went back to the crew.');
+ expect(returnedOnly(returned)).toBe(true);
+ expect(listQuestion({lane:asked,ask:asked.asks[0],age:NaN})).toBe('Example?');
+});
+
+test('a returned ask without a decision time stays unknown and sorts ahead of dated lanes',()=>{
+ const board=boardOf(returnedLane('recent','2026-01-10T11:00:00Z','2026-01-10T08:00:00Z'),returnedLane('undated','0001-01-01T00:00:00Z','2026-01-10T11:59:00Z'));
+ expect(fleetOrder(board).map(l=>l.id)).toEqual(['undated','recent']);
+ expect(Number.isNaN(ageOf(board,'undated'))).toBe(true);
 });

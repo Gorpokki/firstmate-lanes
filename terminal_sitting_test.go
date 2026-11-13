@@ -67,6 +67,22 @@ func TestTerminalSittingUndoDeferAndSearch(t *testing.T) {
 	}
 }
 
+func TestTerminalSittingSearchFindsFallbackSentence(t *testing.T) {
+	stations := terminalFixture()
+	stations[1].Name = "lane-b"
+	stations[1].Title = "Compare three cache layers in the report"
+	m := model{fleet: Fleet{Stations: stations}, view: 0, w: 80, h: 24}
+	m.openSitting()
+	m.sitting.key(&m, "/", m.askLanes())
+	for _, r := range "cache layers" {
+		m.sitting.key(&m, string(r), m.askLanes())
+	}
+	m.sitting.key(&m, "enter", m.askLanes())
+	if m.sitting.items[m.sitting.index].ask.Key != "read-b" {
+		t.Fatalf("search did not find the lane by its sentence: %s", m.sitting.items[m.sitting.index].ask.Key)
+	}
+}
+
 func TestTerminalMultipleSelectionKeepsUncheckedLanesVisible(t *testing.T) {
 	m := model{fleet: Fleet{Stations: terminalFixture()}, view: 1, w: 100, h: 30}
 	m, _ = m.key("space")
@@ -303,5 +319,27 @@ func TestTerminalDeliveryReportSurvivesRefreshAndRefusedAnswersCanBeResent(t *te
 	m.sitting.key(&m, "y", m.askLanes())
 	if !m.pendingSend || len(m.answers) != 1 || m.answers[0].Key != "read-b" {
 		t.Fatalf("refused answer could not be resent alone: pending=%t answers=%+v", m.pendingSend, m.answers)
+	}
+}
+
+func TestReturnedAsksShowTheirCountInTheTerminalWithoutCards(t *testing.T) {
+	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	row, _ := stationLane(Lane{ID: "example", Title: "Example", OwnerDir: "/home", State: "needs-decision", Decisions: []Decision{{Key: "route", Verb: "needs-decision", At: now.Add(-time.Hour), Text: "Pick north or south?"}}}, now)
+	const count = "1 ask not in the ask form went back to the crew."
+	m := model{fleet: Fleet{Stations: []StationLane{row}}, view: 1, w: 120, h: 30, selected: map[string]bool{}}
+	list := m.View()
+	m.view = 3
+	lane := m.View()
+	for name, view := range map[string]string{"list": list, "lane": lane} {
+		if !strings.Contains(view, count) {
+			t.Fatalf("%s view does not show the returned count:\n%s", name, view)
+		}
+	}
+	if !strings.Contains(list, "1 not in form") {
+		t.Fatalf("board header does not show the returned count:\n%s", list)
+	}
+	m.openSitting()
+	if len(m.sitting.items) != 0 {
+		t.Fatalf("returned ask took a sitting place: %+v", m.sitting.items)
 	}
 }
