@@ -113,7 +113,7 @@ The second display of the Fleet station: each lane's ship in its own place, unde
 _Avoid_: berths, berth view, dock view
 
 **Holo view**:
-The lit ASCII ship of one lane, which the user can turn.
+The ASCII ship of one lane (lit, flat or as bars), which the user can turn and zoom.
 _Avoid_: hologram, viewscreen, carousel
 
 **Build state**:
