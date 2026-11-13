@@ -48,8 +48,9 @@ export function Simulation({meshes}:SimulationProps){
  const failing=step===LAST,current=STEPS[step]!;
  useSimulationClock(running,failing,setStep);
  useEffect(()=>{setPhase(null);setBlast(failing?performance.now():null);},[failing,selected?.id]); // the failure blows the ship up; every other state builds it again
- useEffect(()=>{const key=(event:KeyboardEvent)=>{if(event.key==='x'&&!event.metaKey&&!event.ctrlKey&&!event.altKey&&!(event.target as HTMLElement).closest('input,select,textarea')){setStep(LAST);setRunning(true);}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
- const choose=(index:number)=>{setStep(index);setRunning(false);};
+ const blowUp=()=>{setStep(LAST);setRunning(true);setPhase(null);setBlast(performance.now());};
+ useEffect(()=>{const key=(event:KeyboardEvent)=>{if(event.key==='x'&&!event.metaKey&&!event.ctrlKey&&!event.altKey&&!(event.target as HTMLElement).closest('input,select,textarea'))blowUp();};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
+ const choose=(index:number)=>{setStep(index);setRunning(false);if(index===LAST){setPhase(null);setBlast(performance.now());}};
  return <section aria-label="Lane simulation" className="lane sim">
   <div className="holo">
    <Holo mesh={selected?.mesh} name={selected?.name??'No ships loaded'} state={current.state} sourceState={current.sourceState} progress={current.progress} idle={phase==='settled'} blast={blast} paused={!running} onPhase={setPhase}/>
@@ -63,7 +64,7 @@ export function Simulation({meshes}:SimulationProps){
     <button type="button" className="btn" onClick={()=>setRunning(value=>!value)}>{running?'Pause':'Resume'}</button>
     <button type="button" className="btn" onClick={()=>{setStep(0);setRunning(true);}}>Restart</button>
     <button type="button" className="btn" onClick={()=>setStep(n=>Math.min(LAST,n+1))}>Step</button>
-    <button type="button" className="btn" onClick={()=>{setStep(LAST);setRunning(true);}}>Blow it up<kbd>x</kbd></button>
+    <button type="button" className="btn" onClick={blowUp}>Blow it up<kbd>x</kbd></button>
    </div>
    <div className="simsteps" role="group" aria-label="State">{STEPS.map((s,i)=><button key={s.label} type="button" className={i===step?'on':''} aria-pressed={i===step} title={s.note} onClick={()=>choose(i)}><i style={{background:stateColors[s.sourceState?'holding':s.state]}}/><b>{s.label}</b></button>)}</div>
    <p className="now" aria-live="polite">{failing&&phase?PHASE_LINE[phase]:`${current.label}: ${current.note}.`}</p>

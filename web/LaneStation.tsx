@@ -28,7 +28,7 @@ function LaneLog({lane}:{lane:Lane}){
   <ol>{rows.toReversed().map((item,i)=><li key={i} tabIndex={0}><span className="at" title={item.at}>{when(item.at)}</span><b style={{color:logColor(item.state)}}>{item.state}</b><span className="tx">{item.text} <small>· {duration(item.lasted)}</small></span></li>)}</ol>
  </div>;
 }
-type CardProps={lane:Lane;ask:Ask;index:number;count:number;answer?:SittingAnswer;locked:boolean;save:(kind:SittingAnswer['kind'],choice?:number,text?:string)=>void;defer:()=>void;undo:()=>void;openIndex:()=>void;ownRef:React.RefObject<HTMLInputElement>};
+type CardProps={lane:Lane;ask:Ask;index:number;count:number;answer?:SittingAnswer;locked:boolean;sent:boolean;save:(kind:SittingAnswer['kind'],choice?:number,text?:string)=>void;defer:()=>void;undo:()=>void;openIndex:()=>void;ownRef:React.RefObject<HTMLInputElement>};
 function Choices({ask,answer,save}:Pick<CardProps,'ask'|'answer'|'save'>){
  return <div className="opts">
   {ask.must_decide?.length?<ul className="why">{ask.must_decide.map(item=><li key={item}>{item}</li>)}</ul>:null}
@@ -61,21 +61,23 @@ function LaneAsk(p:CardProps){
     <button type="button" className="link" aria-pressed={answer?.kind==='grill'} onClick={()=>p.save('grill')}>{answer?.kind==='grill'?'✓ grill asked for':'ask for a grill'}<kbd>g</kbd></button>
     {answer&&<button type="button" className="link" onClick={p.undo}>undo<kbd>u</kbd></button>}
    </div>
-  </React.Fragment>:<p className="why">{ask.answerable?'Sent from this lane.':readOnlyReason(p.lane,ask)}</p>}
+  </React.Fragment>:<p className="why">{ask.answerable?p.sent?'Sent from this lane.':'Sending…':readOnlyReason(p.lane,ask)}</p>}
  </section>;
 }
 type BatchProps={lane:Lane;answers:Answers;left:number;deferred:number;ready:boolean;sending:boolean;delivery:DeliveryResult[]|null;error:string;canSend:boolean;send:()=>void};
 // The lane's answers under the card. They go as one batch, once every ask of the lane has an answer, a skip, a grill or is deferred.
 function LaneBatch(p:BatchProps){
- const rows=Object.values(p.answers).flatMap(answer=>{const ask=p.lane.asks.find(a=>a.key===answer.key);return ask?[{key:ask.key,q:question(ask),a:answerWords(ask,answer)}]:[];});
- if(!rows.length&&!p.delivery&&!p.error)return null;
+ const sent=new Set(p.delivery?.map(r=>r.key));
+ const rows=Object.values(p.answers).flatMap(answer=>{const ask=p.lane.asks.find(a=>a.key===answer.key);return ask?[{key:ask.key,q:question(ask),a:answerWords(ask,answer),sent:sent.has(ask.key)}]:[];});
+ const pending=rows.filter(row=>!row.sent).length;
+ if(!rows.length&&!p.error)return null;
  return <div className="answers" aria-label="Answers on this lane">
-  <span className="lab">{p.delivery?'Sent':'Your answers on this lane'}</span>
-  <ol>{rows.map(row=><li key={row.key}><span className="aq">{row.q}</span><span className="aa">{row.a}</span></li>)}</ol>
+  <span className="lab">{pending?'Your answers on this lane':'Sent'}</span>
+  <ol>{rows.map(row=><li key={row.key}><span className="aq">{row.q}</span><span className="aa">{row.a}</span>{row.sent&&<small>sent</small>}</li>)}</ol>
   {p.delivery&&<ul aria-label="Delivery results">{p.delivery.map(r=><li key={r.key}>{r.key}: {r.accepted?'Accepted':'Refused'} — {r.reason}</li>)}</ul>}
   {p.error&&<p role="alert">{p.error}</p>}
-  {!p.delivery&&!p.ready&&<p className="now">{p.left} {p.left===1?'ask still needs':'asks still need'} an answer, a skip or a defer before this lane's answers can be sent.</p>}
-  {!p.delivery&&p.ready&&p.canSend&&<button type="button" className="link act send" disabled={p.sending} onClick={p.send}>{p.sending?'Sending…':`send ${rows.length} ${rows.length===1?'answer':'answers'}`}<kbd>y</kbd></button>}
+  {p.left>0&&<p className="now">{p.left} {p.left===1?'ask still needs':'asks still need'} an answer, a skip or a defer before this lane's answers can be sent.</p>}
+  {p.ready&&p.canSend&&<button type="button" className="link act send" disabled={p.sending} onClick={p.send}>{p.sending?'Sending…':`send ${pending} ${pending===1?'answer':'answers'}`}<kbd>y</kbd></button>}
   {!p.canSend&&<p className="now">Sending is unavailable; answers have not been sent.</p>}
   {p.deferred>0&&<p className="now">{p.deferred} deferred {p.deferred===1?'ask waits':'asks wait'} for a later sitting.</p>}
  </div>;
@@ -126,18 +128,19 @@ function useLaneKeys(k:LaneKeys){
 }
 function useLaneAnswers(lane:Lane,onConfirm:LaneProps['onConfirm']){
  const [answers,setAnswers]=useState<Answers>({}),[deferred,setDeferred]=useState<string[]>([]),[delivery,setDelivery]=useState<DeliveryResult[]|null>(null),[sending,setSending]=useState(false),[error,setError]=useState('');
- const items:SittingItem[]=lane.asks.filter(ask=>ask.answerable&&!deferred.includes(ask.key)).map(ask=>({lane,ask,ref:ask.key,round:0}));
- const ready=batchReady(items,answers),locked=sending||!!delivery;
+ const sent=new Set(delivery?.map(r=>r.key));
+ const items:SittingItem[]=lane.asks.filter(ask=>ask.answerable&&!deferred.includes(ask.key)&&!sent.has(ask.key)).map(ask=>({lane,ask,ref:ask.key,round:0}));
+ const ready=batchReady(items,answers),sentTo=(ask:Ask)=>sent.has(ask.key),isLocked=(ask:Ask)=>sending||sentTo(ask);
  // the same answer again takes it back; an own answer with no words takes his own answer back
  const save=(ask:Ask,kind:SittingAnswer['kind'],choice?:number,text?:string)=>{
-  if(locked||!ask.answerable)return;
+  if(isLocked(ask)||!ask.answerable)return;
   const had=answers[ask.key],same=had?.kind===kind&&had.choice===choice&&kind!=='own',empty=kind==='own'&&!text?.trim();
   setAnswers(old=>same||empty?undoAnswer(old,ask.key):{...old,[ask.key]:answerFor({lane,ask,ref:ask.key,round:0},kind,choice,text?.trim())});
   setDeferred(old=>old.filter(key=>key!==ask.key));
  };
- const defer=(ask:Ask)=>{if(locked||!ask.answerable)return;setAnswers(old=>undoAnswer(old,ask.key));setDeferred(old=>old.includes(ask.key)?old:[...old,ask.key]);};
- const send=async()=>{if(!onConfirm||locked||!ready)return;setSending(true);setError('');try{setDelivery(await onConfirm(Object.values(answers)));}catch(e){setError(e instanceof Error?e.message:'Could not send answers.');}finally{setSending(false);}};
- return {answers,deferred,delivery,sending,error,ready,locked,left:unansweredCount(items,answers),save,defer,send,undo:(ask:Ask)=>{if(!locked)setAnswers(old=>undoAnswer(old,ask.key));}};
+ const defer=(ask:Ask)=>{if(isLocked(ask)||!ask.answerable)return;setAnswers(old=>undoAnswer(old,ask.key));setDeferred(old=>old.includes(ask.key)?old:[...old,ask.key]);};
+ const send=async()=>{if(!onConfirm||sending||!ready)return;setSending(true);setError('');try{const results=await onConfirm(Object.values(answers).filter(answer=>!sent.has(answer.key)));setDelivery(old=>[...(old??[]),...results]);}catch(e){setError(e instanceof Error?e.message:'Could not send answers.');}finally{setSending(false);}};
+ return {answers,deferred,delivery,sending,error,ready,isLocked,sentTo,left:unansweredCount(items,answers),save,defer,send,undo:(ask:Ask)=>{if(!isLocked(ask))setAnswers(old=>undoAnswer(old,ask.key));}};
 }
 /** One lane: its ship, large, with its name, build and status log; beside it the lane's asks, answered in place. */
 export function LaneStation({lane,mesh,shipName,onBack,onConfirm}:LaneProps){
@@ -146,7 +149,7 @@ export function LaneStation({lane,mesh,shipName,onBack,onConfirm}:LaneProps){
  const save:CardProps['save']=(kind,choice,text)=>{if(ask)batch.save(ask,kind,choice,text);};
  const defer=()=>{if(!ask)return;batch.defer(ask);setLa((index+1)%Math.max(1,count));};
  const undo=()=>{if(ask)batch.undo(ask);};
- useLaneKeys({answerable:!!ask?.answerable&&!batch.locked,count,ready:batch.ready&&!!onConfirm,idx,choose:i=>{if(ask?.choices?.[i])save('choice',i);},save,defer,undo,move:by=>setLa(Math.max(0,Math.min(count-1,index+by))),openIndex:()=>setIdx(count>0),send:batch.send,back:onBack,ownRef});
+ useLaneKeys({answerable:!!ask&&ask.answerable&&!batch.isLocked(ask),count,ready:batch.ready&&!!onConfirm,idx,choose:i=>{if(ask?.choices?.[i])save('choice',i);},save,defer,undo,move:by=>setLa(Math.max(0,Math.min(count-1,index+by))),openIndex:()=>setIdx(count>0),send:batch.send,back:onBack,ownRef});
  return <div className="lane" aria-label={`Lane ${lane.name}`}>
   <div className="holo">
    <Holo mesh={mesh} state={lane.state} sourceState={lane.sourceState} progress={lane.progress} name={shipName||'No admitted ship'} turnKeys/>
@@ -156,7 +159,7 @@ export function LaneStation({lane,mesh,shipName,onBack,onConfirm}:LaneProps){
    {onBack&&<div><button type="button" className="link" onClick={onBack}>‹ back<kbd>esc</kbd></button></div>}
    <h2>{lane.name}</h2>
    <div className="state"><i style={{background:stateColors[lane.state]}}/><b>{lane.state}</b><span>{laneWords(lane)}</span></div>
-   {ask?<LaneAsk lane={lane} ask={ask} index={index} count={count} answer={batch.answers[ask.key]} locked={batch.locked} save={save} defer={defer} undo={undo} openIndex={()=>setIdx(true)} ownRef={ownRef}/>:<p className="now big">Nothing needs you on this lane.</p>}
+   {ask?<LaneAsk key={ask.key} lane={lane} ask={ask} index={index} count={count} answer={batch.answers[ask.key]} locked={batch.isLocked(ask)} sent={batch.sentTo(ask)} save={save} defer={defer} undo={undo} openIndex={()=>setIdx(true)} ownRef={ownRef}/>:<p className="now big">Nothing needs you on this lane.</p>}
    <LaneBatch lane={lane} answers={batch.answers} left={batch.left} deferred={batch.deferred.length} ready={batch.ready} sending={batch.sending} delivery={batch.delivery} error={batch.error} canSend={!!onConfirm} send={batch.send}/>
    {lane.now&&<div className="last"><span className="nowlab">Crew's last word</span><p className="now">{lane.now}</p></div>}
   </div>
