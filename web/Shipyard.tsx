@@ -94,7 +94,7 @@ export const Shipyard=forwardRef<YardCamera,Props>(function Shipyard(p,ref){
   cv.addEventListener('wheel',wheel,{passive:false});
   return()=>{cancelAnimationFrame(L.raf);L.raf=0;observer.disconnect();cv.removeEventListener('wheel',wheel);};
  },[]);
- useEffect(kick,[p.lanes.map(l=>l.id+l.state+l.sourceState).join(),p.meshes,p.selected,p.top,p.mode,p.motion,hidden]);
+ useEffect(kick,[p.lanes.map(l=>l.id+l.name+l.state+l.sourceState).join(),p.meshes,p.selected,p.top,p.mode,p.motion,hidden]);
  // zoom by k about a point (px from the canvas centre); the buttons zoom about the centre
  const zoomAt=(k:number,mx:number,my:number)=>{const c=cam.current;if(!c.zoom)return;const z=clamp(c.zoom*k,.3,14),r=z/c.zoom;c.px=mx-(mx-c.px)*r;c.py=my-(my-c.py)*r;c.zoom=z;kick();};
  const turn=(dx:number,dy:number)=>{const c=cam.current;c.yaw+=dx*.008;c.pitch=clamp(c.pitch+dy*.006,.3,Math.PI/2);};
