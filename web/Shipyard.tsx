@@ -1,6 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {renderHolo} from './holo-renderer';
-import {states,type Lane} from './stations';
+import {states,stateColors,type Lane} from './stations';
 import {deriveShipyardRows,layoutShipyard} from './shipyard-model';
 import type {ShipMesh} from './mesh-catalog';
 
@@ -9,7 +9,6 @@ type ShipyardProps={lanes:Lane[];meshes?:ShipMesh[];selected?:string;filter?:Fle
 type Point={x:number;y:number;originX:number;originY:number;pointerType:string;shift:boolean};
 type Camera={x:number;y:number;zoom:number;yaw:number;pitch:number};
 const initialCamera:Camera={x:0,y:0,zoom:1,yaw:0,pitch:.16};
-const colors:Record<string,string>={'needs you':'#ff967b',waiting:'#e9bd72',working:'#82c8ed',done:'#98d3a4',holding:'#b6a4c7'};
 
 export function Shipyard({lanes,meshes=[],selected='',filter=null,motion,onSelect}:ShipyardProps){
  const host=useRef<HTMLDivElement>(null),pointers=useRef(new Map<number,Point>()),lastTouchTap=useRef<{time:number;x:number;y:number}|null>(null),pinch=useRef<{distance:number;angle:number;center:{x:number;y:number}}|null>(null),dragged=useRef(false);
@@ -61,7 +60,7 @@ export function Shipyard({lanes,meshes=[],selected='',filter=null,motion,onSelec
   <div ref={host} className="shipyard-stage" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onDoubleClick={reset} data-motion={motion}>
    <div className="shipyard-camera" style={{transform:`translate(${camera.x}px,${camera.y}px) scale(${camera.zoom})`}}>
     {layout.map(({row,x,y,showLabel})=>{
-     const state=row.lane.state,color=colors[state]??'#8fe6ff',progress=row.lane.progress;
+     const state=row.lane.state,color=stateColors[state]??'#8fe6ff',progress=row.lane.progress;
      const mesh=row.mesh;
      return <div className="shipyard-cell" key={row.lane.id} style={{left:x,top:y} as React.CSSProperties}>
       <div className="shipyard-cage" style={{borderColor:`${color}aa`}}>
