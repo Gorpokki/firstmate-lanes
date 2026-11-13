@@ -48,9 +48,10 @@ The simulation keeps idle and hidden performance budgets, recorded in `web/perf/
 - **Idle:** when the debris has left the field, the ship stops spinning by itself. With the simulation paused and the spin stopped, the page draws no frames and makes no requests. Restart or Spin starts the ship again.
 - **Active:** spin redraws stay at 24 frames a second or fewer, within a main-thread script budget.
 - **Fleet:** the simulation never reads `/fleet.json`.
+- **Shipyard:** with its drones and the side ship turning, and while dragged, the yard stays within the active frame and script budgets. With Motion off it draws no frames; while the page is hidden it draws no frames and makes no requests of its own.
 
 Lane and Ask ships also stop spinning while the page is hidden.
-`web/perf/simulation-budget.mjs` serves `testdata/sample-home` with a built `fmlanes` and runs `/simulation` in headless Chromium.
+`web/perf/simulation-budget.mjs` serves `testdata/sample-home` with a built `fmlanes` and runs `/simulation` and the Fleet shipyard in headless Chromium, on a copy of the sample home with a lane in work.
 It counts ship canvas paints, requests, simulation steps and Chromium script time over fixed windows, and fails when any budget is exceeded:
 
 ```sh
