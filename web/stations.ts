@@ -5,10 +5,28 @@ export type Fleet={updatedAt:string;stationLanes:Lane[];hiddenAsks:number;autono
 export const states=['needs you','waiting','working','done','holding'];
 export type Station='ask'|'list'|'fleet'|'lane';
 export const stateColors:Record<string,string>={'needs you':'#E5484D',waiting:'#F5C842',working:'#6FA3FF',done:'#3DBE5A',holding:'#8C8C8C'};
-export function deriveBoard(fleet:Fleet,mate='') {
- const rows=fleet.stationLanes.filter(l=>!mate||l.secondMate===mate);
- return {rows,mates:[...new Set(fleet.stationLanes.map(l=>l.secondMate).filter(Boolean))].sort()};
+// The List: one row per lane that needs you, by its oldest ask. A lane whose oldest ask is quick is in Quick; the rest, a block with no ask too, is in To read.
+// The mate filter scopes the List only: each pill counts that second mate's lanes that need you.
+export const NO_MATE='no second mate';
+export const mateOf=(lane:Lane)=>lane.secondMate||NO_MATE;
+export type ListRow={lane:Lane;ask?:Ask;age:number};
+const knownTime=(iso:string|undefined)=>{const t=Date.parse(iso||'');return t>0?t:NaN;}; // Go's zero time and a missing time are unknown
+const oldestFirst=(a:Ask,b:Ask)=>(knownTime(a.asked)||Infinity)-(knownTime(b.asked)||Infinity);
+export function listRows(fleet:Fleet,mate='',now=Date.now()) {
+ const need=fleetOrder(fleet).filter(l=>l.state==='needs you'),counts=new Map<string,number>();
+ for(const lane of need)counts.set(mateOf(lane),(counts.get(mateOf(lane))??0)+1);
+ const rows:ListRow[]=need.filter(l=>!mate||mateOf(l)===mate).map(lane=>{const ask=lane.asks.toSorted(oldestFirst)[0];return {lane,ask,age:Math.max(0,(now-knownTime(ask?.asked??lane.updatedAt))/60000)};});
+ return {quick:rows.filter(r=>r.ask?.effort==='quick'),read:rows.filter(r=>r.ask?.effort!=='quick'),mates:[...counts].toSorted((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))};
 }
+// Ticked lanes that the mate filter hides from the List: they stay ticked and go into the sitting.
+export const hiddenTicked=(fleet:Fleet,ticked:ReadonlySet<string>,mate:string)=>mate?fleet.stationLanes.filter(l=>ticked.has(l.id)&&l.state==='needs you'&&mateOf(l)!==mate).length:0;
+export const keepNeedingTicks=(fleet:Fleet,ticked:ReadonlySet<string>)=>new Set([...ticked].filter(id=>fleet.stationLanes.some(l=>l.id===id&&l.state==='needs you')));
+// An ask's age: one bar segment per day up to a week; from 5.5 days it is overdue, and the sixth and seventh segments are bright and tall.
+export const AGE_DAYS=7,OVERDUE_DAYS=5.5;
+export const overdue=(minutes:number)=>minutes>=OVERDUE_DAYS*1440;
+export const ageDays=(minutes:number)=>Number.isFinite(minutes)?Math.max(1,Math.min(AGE_DAYS,Math.round(minutes/1440))):0;
+export const ageTone=(minutes:number)=>minutes<1440?'#7E7468':minutes<3*1440?'#A8906E':overdue(minutes)?'#E6CDA2':'#BF9862'; // tan, never needs-you red
+export const ageWords=(minutes:number)=>!Number.isFinite(minutes)?'unknown':minutes<60?`${Math.max(1,Math.round(minutes))} min`:minutes<1440?`${Math.round(minutes/60)} h`:Math.round(minutes/1440)===1?'1 day':`${Math.round(minutes/1440)} days`;
 const plural=(n:number,word:string)=>`${n} ${word}${n===1?'':'s'}`;
 const elapsed=(minutes:number)=>minutes<60?plural(Math.round(minutes),'minute'):minutes<1440?plural(Math.round(minutes/60),'hour'):plural(Math.round(minutes/1440),'day');
 const minutesSince=(iso:string|undefined,now:number)=>Math.max(0,(now-Date.parse(iso||''))/60000);
