@@ -22,7 +22,6 @@ import { Simulation } from "./Simulation";
 import { assignedShip, loadCatalog, type ShipMesh } from "./mesh-catalog";
 
 const POLL_MS = 3000;
-const AGE_TICK_MS = 30000;
 type Pop = "find" | "changed" | "save" | "keys" | null;
 type Toggle = (pop: Pop) => void;
 const stationKeys: [Station, string, string][] = [
@@ -507,7 +506,8 @@ function Frame(p: FrameProps) {
 }
 function App() {
 	const [fleet, setFleet] = useState<Fleet | null>(null),
-		[error, setError] = useState("");
+		[error, setError] = useState(""),
+		[, setFailedReads] = useState(0);
 	const [station, setStation] = useState<Station>("list"),
 		[mate, setMate] = useState(""),
 		[selected, setSelected] = useState("");
@@ -541,7 +541,10 @@ function App() {
 				setFleet(data);
 				setError("");
 			} catch (e) {
-				if (!controller.signal.aborted) setError(String(e));
+				if (controller.signal.aborted) return;
+				setError(String(e));
+				// A failed read still re-renders, so the reading's age keeps moving.
+				setFailedReads((n) => n + 1);
 			}
 		};
 		load();
@@ -551,11 +554,6 @@ function App() {
 			clearInterval(timer);
 		};
 	}, [simulation]);
-	const [, setAge] = useState(0);
-	useEffect(() => {
-		const timer = setInterval(() => setAge((n) => n + 1), AGE_TICK_MS);
-		return () => clearInterval(timer);
-	}, []);
 	useEffect(() => {
 		const key = (e: KeyboardEvent) => {
 			if (
