@@ -64,16 +64,16 @@ function LaneAsk(p:CardProps){
   </React.Fragment>:<p className="why">{ask.answerable?p.sent?'Sent from this lane.':'Sending…':readOnlyReason(p.lane,ask)}</p>}
  </section>;
 }
-type BatchProps={lane:Lane;answers:Answers;left:number;after:number;sendCount:number;deferred:number;ready:boolean;sending:boolean;delivery:DeliveryResult[]|null;error:string;canSend:boolean;send:()=>void};
+type BatchProps={lane:Lane;answers:Answers;batchKeys:string[];left:number;after:number;sendCount:number;deferred:number;ready:boolean;sending:boolean;delivery:DeliveryResult[]|null;error:string;canSend:boolean;send:()=>void};
 // The lane's answers under the card. They go as one batch of at most four asks, once every ask in the batch has an answer, a skip, a grill or is deferred.
 function LaneBatch(p:BatchProps){
  const sent=acceptedKeys(p.delivery);
- const rows=Object.values(p.answers).flatMap(answer=>{const ask=p.lane.asks.find(a=>a.key===answer.key);return ask?[{key:ask.key,q:question(ask),a:answerWords(ask,answer),sent:sent.has(ask.key)}]:[];});
+ const rows=Object.values(p.answers).flatMap(answer=>{const ask=p.lane.asks.find(a=>a.key===answer.key);return ask?[{key:ask.key,q:question(ask),a:answerWords(ask,answer),sent:sent.has(ask.key),next:!p.batchKeys.includes(ask.key)}]:[];});
  const pending=rows.filter(row=>!row.sent).length,allAccepted=!!p.delivery?.every(r=>r.accepted||sent.has(r.key));
  if(!p.left&&!rows.length&&!p.delivery&&!p.error)return null;
  return <div className="answers" aria-label="Answers on this lane">
-  <span className="lab">{pending?'Your answers on this lane':allAccepted?'Sent':p.delivery?'Delivery':'Next batch'}</span>
-  <ol>{rows.map(row=><li key={row.key}><span className="aq">{row.q}</span><span className="aa">{row.a}</span>{row.sent&&<small>sent</small>}</li>)}</ol>
+  <span className="lab">{pending?'Your answers on this lane':allAccepted?'Sent':p.delivery?'Delivery':'This batch'}</span>
+  <ol>{rows.map(row=><li key={row.key}><span className="aq">{row.q}</span><span className="aa">{row.a}</span>{row.sent?<small>sent</small>:row.next&&<small>next batch</small>}</li>)}</ol>
   {p.delivery&&<ul aria-label="Delivery results">{p.delivery.map((r,i)=><li key={`${i}-${r.key}`}>{r.key}: {r.accepted?'Accepted':'Refused'} — {r.reason}</li>)}</ul>}
   {p.error&&<p role="alert">{p.error}</p>}
   {p.left>0&&<p className="now">{p.left} {p.left===1?'ask still needs':'asks still need'} an answer, a skip or a defer before this lane's answers can be sent.</p>}
@@ -145,7 +145,7 @@ function useLaneAnswers(lane:Lane,onConfirm:LaneProps['onConfirm']){
  };
  const defer=(ask:Ask)=>{if(isLocked(ask)||!ask.answerable)return;setAnswers(old=>undoAnswer(old,ask.key));setDeferred(old=>old.includes(ask.key)?old:[...old,ask.key]);};
  const send=async()=>{if(!onConfirm||sending||!ready)return;setSending(true);setError('');try{const results=await onConfirm(items.map(item=>answers[item.ref]));setDelivery(old=>[...(old??[]),...results]);}catch(e){setError(e instanceof Error?e.message:'Could not send answers.');}finally{setSending(false);}};
- return {answers,deferred,delivery,sending,error,ready,isLocked,sentTo,left:unansweredCount(items,answers),sendCount:items.length,after:pending.length-items.length,save,defer,send,undo:(ask:Ask)=>{if(!isLocked(ask))setAnswers(old=>undoAnswer(old,ask.key));}};
+ return {answers,deferred,delivery,sending,error,ready,isLocked,sentTo,left:unansweredCount(items,answers),sendCount:items.length,batchKeys:items.map(item=>item.ref),after:pending.length-items.length,save,defer,send,undo:(ask:Ask)=>{if(!isLocked(ask))setAnswers(old=>undoAnswer(old,ask.key));}};
 }
 /** One lane: its ship, large, with its name, build and status log; beside it the lane's asks, answered in place. */
 export function LaneStation({lane,mesh,shipName,onBack,onConfirm}:LaneProps){
@@ -165,7 +165,7 @@ export function LaneStation({lane,mesh,shipName,onBack,onConfirm}:LaneProps){
    <h2>{lane.name}</h2>
    <div className="state"><i style={{background:stateColors[lane.state]}}/><b>{lane.state}</b><span>{laneWords(lane)}</span></div>
    {ask?<LaneAsk key={ask.key} lane={lane} ask={ask} index={index} count={count} answer={batch.answers[ask.key]} locked={batch.isLocked(ask)} sent={batch.sentTo(ask)} save={save} defer={defer} undo={undo} openIndex={()=>setIdx(true)} ownRef={ownRef}/>:<p className="now big">Nothing needs you on this lane.</p>}
-   <LaneBatch lane={lane} answers={batch.answers} left={batch.left} after={batch.after} sendCount={batch.sendCount} deferred={batch.deferred.length} ready={batch.ready} sending={batch.sending} delivery={batch.delivery} error={batch.error} canSend={!!onConfirm} send={batch.send}/>
+   <LaneBatch lane={lane} answers={batch.answers} batchKeys={batch.batchKeys} left={batch.left} after={batch.after} sendCount={batch.sendCount} deferred={batch.deferred.length} ready={batch.ready} sending={batch.sending} delivery={batch.delivery} error={batch.error} canSend={!!onConfirm} send={batch.send}/>
    {lane.now&&<div className="last"><span className="nowlab">Crew's last word</span><p className="now">{lane.now}</p></div>}
   </div>
   {idx&&<LaneIndex lane={lane} current={index} open={i=>{setLa(i);setIdx(false);}} close={()=>setIdx(false)}/>}
