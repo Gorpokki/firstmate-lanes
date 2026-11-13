@@ -1,6 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {MODES} from './ascii3d';
-import {deriveFleet,shownStates,toggleShown,YARD_SHOWN} from './fleet-model';
+import {clickShown,deriveFleet,shownStates,YARD_SHOWN} from './fleet-model';
 import {Holo,setShipView,useShipView} from './Holo';
 import {assignedShip,type ShipMesh} from './mesh-catalog';
 import {Shipyard,type YardCamera} from './Shipyard';
@@ -43,7 +43,7 @@ export function FleetStation({fleet,meshes,selected,motion,flash,onSelect,onOpen
    <span className="sp"/><span>{yard?<>{YARD_KEY[0]}<br/>{YARD_KEY[1]}</>:'a number: open asks'}</span>
   </div>
   {yard&&<div className="yardbar" role="group" aria-label="The share of each lane state; a click shows or hides its ships">
-   {shares.map(({state,label,count})=><button key={state} type="button" className={showing.includes(state)?'on':''} aria-pressed={showing.includes(state)} style={{flexGrow:count,'--c':stateColors[state]} as React.CSSProperties} onClick={()=>{const next=toggleShown(showing,state,present);if(next!==showing)setShown(next);}} title={`${count} of ${rows.length} lanes: ${label}. Click: ${showing.includes(state)?'hide':'show'} their ships`}><b>{count}</b> {label}</button>)}
+   {shares.map(({state,label,count})=><button key={state} type="button" className={showing.includes(state)?'on':''} aria-pressed={showing.includes(state)} style={{flexGrow:count,'--c':stateColors[state]} as React.CSSProperties} onClick={()=>setShown(old=>clickShown(old,state,present))} title={`${count} of ${rows.length} lanes: ${label}. Click: ${showing.includes(state)?'hide':'show'} their ships`}><b>{count}</b> {label}</button>)}
    <span>{YARD_HELP}</span>
   </div>}
   <div className="fleet">

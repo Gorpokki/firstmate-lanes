@@ -16,10 +16,10 @@ export function deriveFleet(fleet:Fleet){
   shares:YARD_STATES.map(([state,label])=>({state,label,count:rows.filter(lane=>lane.state===state).length})).filter(share=>share.count),
  };
 }
-// One state's ships shown or hidden in the shipyard; the filter never hides every state the fleet has (present).
-export function toggleShown(shown:string[],state:string,present:string[]){
- const next=shown.includes(state)?shown.filter(s=>s!==state):[...shown,state];
- return present.some(s=>next.includes(s))?next:shown;
-}
 // The states the shipyard shows now: the stored filter while it shows any present state, else every present state.
 export const shownStates=(shown:string[],present:string[])=>present.some(s=>shown.includes(s))?shown:present;
+// One state's ships shown or hidden in the shipyard, from the states it shows now; a click that would hide every state the fleet has is refused and keeps the stored filter.
+export function clickShown(shown:string[],state:string,present:string[]){
+ const showing=shownStates(shown,present),next=showing.includes(state)?showing.filter(s=>s!==state):[...showing,state];
+ return present.some(s=>next.includes(s))?next:shown;
+}
