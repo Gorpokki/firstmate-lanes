@@ -456,7 +456,18 @@ func (m model) laneView(w, h int) []string {
 	}
 	rows = append(rows, shipLines(l, m.tick, max(1, w-4), max(2, h/3))...)
 	rows = append(rows, text.Render("CREW'S LAST WORD  "+oneLine(l.Now)), lab(cLav).Render("HISTORY"))
-	for _, event := range tail(l.History, max(1, (h-len(rows)-4)/2)) {
+	history := make([]StationChange, 0, len(l.History))
+	for _, event := range l.History {
+		if !event.At.IsZero() {
+			history = append(history, event)
+		}
+	}
+	for _, event := range l.History {
+		if event.At.IsZero() {
+			history = append(history, event)
+		}
+	}
+	for _, event := range tail(history, max(1, (h-len(rows)-4)/2)) {
 		when := "time unknown"
 		if !event.At.IsZero() {
 			when = event.At.Format("Jan 2 15:04")
