@@ -51,4 +51,5 @@ export function findLanes(fleet:Fleet,query:string) {
  return {rows:all.slice(0,FIND_LIMIT),n:all.length};
 }
 export const findFoot=(query:string,shown:number,n:number)=>!query.trim()?'esc closes':!n?'No lane has this name.':`${n>shown?`${shown} of ${n} lanes · type more to narrow · `:''}↑ ↓ choose · enter opens the lane · esc closes`;
-export const laneWords=(lane:Lane,now=Date.now())=>`${lane.asks.length?`${plural(lane.asks.length,'ask')} · `:''}last word ${lane.updatedAt?`${elapsed(minutesSince(lane.updatedAt,now))} ago`:'time unknown'}`;
+// Go sends its zero time (year 1) for a lane with no status time; that and a missing time read as unknown.
+export const laneWords=(lane:Lane,now=Date.now())=>`${lane.asks.length?`${plural(lane.asks.length,'ask')} · `:''}last word ${Date.parse(lane.updatedAt||'')>0?`${elapsed(minutesSince(lane.updatedAt,now))} ago`:'time unknown'}`;

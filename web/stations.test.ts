@@ -1,5 +1,5 @@
 import {test,expect} from 'bun:test';
-import {boardSummary,deriveBoard,findFoot,findLanes,fleetOrder,freshness,isOld,stateChanges} from './stations';
+import {boardSummary,deriveBoard,findFoot,findLanes,fleetOrder,freshness,isOld,laneWords,stateChanges} from './stations';
 
 const lane=(id:string,state:string,secondMate:string,asked:string)=>({id,name:id,state,secondMate,home:'main',now:'Example',history:[],asks:asked?[{key:id,form:'discussion',question:'Example?',reason:'Choose',effort:'quick',asked,answerable:true}]:[]});
 const fleet={updatedAt:'2026-01-10T12:00:00Z',stationLanes:[lane('old','needs you','build','2026-01-09T12:00:00Z'),lane('new','needs you','design','2026-01-10T11:00:00Z'),lane('work','working','design',''),lane('parked','holding','','')],hiddenAsks:2,autonomyShare:0.5,changedLanes:['work']};
@@ -29,6 +29,13 @@ test('the strip and Find keep one lane order',()=>{
 test('only a lane whose state changed since the reading before lights',()=>{
  expect(stateChanges(null,fleet)).toEqual([]);
  expect(stateChanges({old:'needs you',new:'waiting',work:'working'},fleet)).toEqual(['new']);
+});
+
+test('a lane without a status time says its time is unknown',()=>{
+ // The server sends Go's zero time.Time for a lane with no status file or record.
+ const quiet={...lane('quiet','holding','',''),updatedAt:'0001-01-01T00:00:00Z'};
+ expect(laneWords(quiet)).toBe('last word time unknown');
+ expect(laneWords({...quiet,updatedAt:'2026-01-10T11:00:00Z'},Date.parse(fleet.updatedAt))).toBe('last word 1 hour ago');
 });
 
 test('freshness names old data as a save',()=>{
