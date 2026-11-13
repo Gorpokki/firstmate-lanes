@@ -1,5 +1,5 @@
 import {expect,test} from 'bun:test';
-import {answerFor,buildSitting,deferForLater,readOnlyReason,reviewAnswers,undoAnswer,type SittingAnswer} from './sitting';
+import {answerFor,batchReady,buildSitting,deferForLater,readOnlyReason,reviewAnswers,undoAnswer,type SittingAnswer} from './sitting';
 import type {Fleet,Lane} from './stations';
 
 const lane=(id:string,secondMate:string,asks:Lane['asks']):Lane=>({id,name:`Lane ${id}`,home:'main',secondMate,state:'needs you',now:'',history:[],asks});
@@ -37,4 +37,17 @@ test('answers support choice, own, skip, grill, undo, and defer into a later sit
  expect(deferForLater(data,[first.ref]).map(item=>item.ask.key)).toEqual(['a1']);
  expect(buildSitting(data,undefined,new Set([first.ref])).map(item=>item.ask.key)).toEqual(['a2']);
  expect(second.ask.key).toBe('a2');
+});
+
+test('a sitting is sendable only when every ask still in it is answered, skipped or deferred',()=>{
+ const items=buildSitting(fleet(lane('a','Mate',[ask('a1'),ask('a2')])));
+ const [first,second]=items;
+ const one={[first.ref]:answerFor(first,'choice',0)};
+ expect(batchReady(items,one)).toBe(false);
+ const both={...one,[second.ref]:answerFor(second,'skip')};
+ expect(batchReady(items,both)).toBe(true);
+ expect(batchReady(items,{...both,[second.ref]:answerFor(second,'own',undefined,'Use the fallback')})).toBe(true);
+ expect(batchReady(items,undoAnswer(both,second.ref))).toBe(false);
+ expect(batchReady(items.filter(item=>item.ref!==second.ref),one)).toBe(true);
+ expect(batchReady([],{})).toBe(false);
 });
