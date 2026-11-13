@@ -1,6 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {MODES} from './ascii3d';
-import {deriveFleet,toggleShown,YARD_SHOWN} from './fleet-model';
+import {deriveFleet,shownStates,toggleShown,YARD_SHOWN} from './fleet-model';
 import {Holo,setShipView,useShipView} from './Holo';
 import {assignedShip,type ShipMesh} from './mesh-catalog';
 import {Shipyard,type YardCamera} from './Shipyard';
@@ -18,6 +18,7 @@ export function FleetStation({fleet,meshes,selected,motion,flash,onSelect,onOpen
  const [yard,setYard]=useState(false),[top,setTop]=useState(true),[hold,setHold]=useState(false),[shown,setShown]=useState(YARD_SHOWN);
  const view=useShipView(),camera=useRef<YardCamera>(null);
  const {rows,groups,hold:held,parked,quiet,shares}=deriveFleet(fleet),sel=rows.find(lane=>lane.id===selected);
+ const present=shares.map(share=>share.state),showing=shownStates(shown,present);
  useEffect(()=>{
   const keys:Record<string,()=>void>={b:()=>setYard(on=>!on),...(yard?{t:()=>setTop(on=>!on)}:{h:()=>setHold(on=>!on)})};
   const key=(e:KeyboardEvent)=>{const run=keys[e.key];if(!run||fieldKey(e))return;e.preventDefault();run();};
@@ -42,12 +43,12 @@ export function FleetStation({fleet,meshes,selected,motion,flash,onSelect,onOpen
    <span className="sp"/><span>{yard?<>{YARD_KEY[0]}<br/>{YARD_KEY[1]}</>:'a number: open asks'}</span>
   </div>
   {yard&&<div className="yardbar" role="group" aria-label="The share of each lane state; a click shows or hides its ships">
-   {shares.map(({state,label,count})=><button key={state} type="button" className={shown.includes(state)?'on':''} aria-pressed={shown.includes(state)} style={{flexGrow:count,'--c':stateColors[state]} as React.CSSProperties} onClick={()=>setShown(old=>toggleShown(old,state,shares.map(share=>share.state)))} title={`${count} of ${rows.length} lanes: ${label}. Click: ${shown.includes(state)?'hide':'show'} their ships`}><b>{count}</b> {label}</button>)}
+   {shares.map(({state,label,count})=><button key={state} type="button" className={showing.includes(state)?'on':''} aria-pressed={showing.includes(state)} style={{flexGrow:count,'--c':stateColors[state]} as React.CSSProperties} onClick={()=>setShown(toggleShown(showing,state,present))} title={`${count} of ${rows.length} lanes: ${label}. Click: ${showing.includes(state)?'hide':'show'} their ships`}><b>{count}</b> {label}</button>)}
    <span>{YARD_HELP}</span>
   </div>}
   <div className="fleet">
    <div className="left">
-    {yard?<Shipyard ref={camera} lanes={rows.filter(lane=>shown.includes(lane.state))} meshes={meshes} selected={selected} top={top} mode={view.mode} motion={motion} onPick={onSelect}/>
+    {yard?<Shipyard ref={camera} lanes={rows.filter(lane=>showing.includes(lane.state))} meshes={meshes} selected={selected} top={top} mode={view.mode} motion={motion} onPick={onSelect}/>
      :groups.map(group=><React.Fragment key={group.state}><div className="grp"><span className="lab">{group.label} · {group.lanes.length}</span></div><div className="tiles">{group.lanes.map(tile)}</div></React.Fragment>)}
     {!yard&&<div className="hold">
      <button type="button" className="link" aria-expanded={hold} onClick={()=>setHold(on=>!on)}>Holding · {held.length} {hold?'▾':'▸'}<Key k="h"/></button>

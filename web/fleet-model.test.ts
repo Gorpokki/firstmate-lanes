@@ -1,6 +1,6 @@
 import {test,expect} from 'bun:test';
 import type {Fleet} from './stations';
-import {deriveFleet,toggleShown,YARD_SHOWN} from './fleet-model';
+import {deriveFleet,shownStates,toggleShown,YARD_SHOWN} from './fleet-model';
 
 const lane=(id:string,state:string,sourceState=state)=>({id,name:id,state,sourceState,secondMate:'',home:'main',now:'',history:[],asks:[]});
 const fleet:Fleet={updatedAt:'2026-01-10T12:00:00Z',hiddenAsks:0,autonomyShare:.5,changedLanes:[],stationLanes:[lane('w','working'),lane('n','needs you'),lane('q','holding','working'),lane('p','holding','parked'),lane('b','holding','blocked'),lane('d','done')]};
@@ -13,6 +13,15 @@ test('Fleet groups lanes in play by state and counts the holding row as parked a
  const present=board.shares.map(share=>share.state);
  expect(toggleShown(['working'],'working',present)).toEqual(['working']); // the yard filter never hides every state the fleet has
  expect(toggleShown(['working'],'done',present)).toEqual(['working','done']);
+});
+
+test('the shipyard shows the lanes it has when the stored filter hides them all',()=>{
+ const held:Fleet={...fleet,stationLanes:[lane('q','holding','working'),lane('p','holding','parked')]};
+ const present=deriveFleet(held).shares.map(share=>share.state);
+ expect(present).toEqual(['holding']);
+ expect(shownStates(YARD_SHOWN,present)).toEqual(['holding']);
+ expect(shownStates(['working'],['needs you','done'])).toEqual(['needs you','done']);
+ expect(shownStates(['working'],['working','done'])).toEqual(['working']);
 });
 
 test('the yard filter keeps a working lane shown in a fleet of working and holding lanes',()=>{

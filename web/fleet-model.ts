@@ -21,3 +21,5 @@ export function toggleShown(shown:string[],state:string,present:string[]){
  const next=shown.includes(state)?shown.filter(s=>s!==state):[...shown,state];
  return present.some(s=>next.includes(s))?next:shown;
 }
+// The states the shipyard shows now: the stored filter while it shows any present state, else every present state.
+export const shownStates=(shown:string[],present:string[])=>present.some(s=>shown.includes(s))?shown:present;
