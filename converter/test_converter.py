@@ -125,6 +125,23 @@ def _check_workflow(repro):
             repaired["output_sha256"][filename]
 
 
+def _check_moved_folder(repro):
+    with TemporaryDirectory() as directory:
+        root = Path(directory) / "models"
+        source_dir = root / "a" / "ship"
+        source_dir.mkdir(parents=True)
+        repro.export(source_dir / "model.glb")
+        manifest = {"key": "synthetic/moved", "orient": {"forward": "+x", "up": "+y"}}
+        (source_dir / "manifest.json").write_text(json.dumps(manifest))
+        output = Path(directory) / "output"
+        assert main(root, output)["synthetic/moved"]["dir"] == "a/ship"
+        (root / "b").mkdir()
+        source_dir.rename(root / "b" / "ship")
+        entry = main(root, output)["synthetic/moved"]
+        assert entry["dir"] == "b/ship"
+        assert entry["validation"]["pass"] and (root / entry["dir"] / "model.glb").is_file()
+
+
 def run_checks():
     checker_prerequisites()
     closed = tetrahedron()
@@ -138,6 +155,7 @@ def run_checks():
 
     _check_tiny_face_dropped(closed)
     _check_workflow(repro)
+    _check_moved_folder(repro)
 
 
 if __name__ == "__main__":

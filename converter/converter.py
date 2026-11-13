@@ -93,8 +93,9 @@ def _source_stamp(source, manifest_path, token):
     return manifest_raw, stamp
 
 
-def _cache_valid(old, stamp, mesh_dir):
-    return (old.get("stamp") == stamp and old.get("validation_version") == VALIDATION_VERSION and
+def _cache_valid(old, stamp, rel, mesh_dir):
+    return (old.get("dir") == rel and old.get("stamp") == stamp and
+            old.get("validation_version") == VALIDATION_VERSION and
             _complete_certificate(old.get("validation")) and all(
                 (mesh_dir / filename).is_file() and
                 sha256((mesh_dir / filename).read_bytes()) == digest
@@ -131,7 +132,7 @@ def _convert_source(source, rel, token, previous, mesh_dir, ident):
     if not all(isinstance(orientation.get(axis), str) for axis in ("forward", "up")):
         raise ValueError("manifest orient requires explicit forward and up axes")
     old = previous.get(key, {})
-    if _cache_valid(old, stamp, mesh_dir):
+    if _cache_valid(old, stamp, rel, mesh_dir):
         return old
     return _convert_and_write(source, key, name, rel, orientation, stamp, mesh_dir)
 
