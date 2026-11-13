@@ -15,7 +15,7 @@ const failureRe=/failed|failure|error/i;
 const isFailed=(state:string,sourceState:string|undefined,options:HoloProps['options'])=>options?.failed??(failureRe.test(state)||failureRe.test(sourceState??'')||(options?.fragments??0)>0);
 const isBlocked=(sourceState:string|undefined,options:HoloProps['options'])=>options?.blocks??/block/i.test(sourceState??'');
 // How far a lane's hull is built, by its state: blocked and failed builds stop at half.
-export const buildOf=(state:string,blocked:boolean,failed:boolean,progress?:number)=>progress??(blocked||failed?.5:state==='done'?1:state==='needs you'||state==='waiting'?.72:state==='working'?.6:.45);
+export const buildOf=(state:string,blocked:boolean,failed:boolean,progress?:number)=>blocked||failed?.5:progress??(state==='done'?1:state==='needs you'||state==='waiting'?.72:state==='working'?.6:.45);
 const fieldKey=(event:KeyboardEvent)=>event.metaKey||event.ctrlKey||event.altKey||(event.target instanceof HTMLElement&&!!event.target.closest('input,textarea,select,[contenteditable=true]'));
 const spaceToggles=(event:KeyboardEvent)=>event.code==='Space'&&!event.repeat&&!fieldKey(event)&&!(event.target instanceof HTMLElement&&event.target.closest('button'));
 // the ship's colours: a light tone of its state colour; the unbuilt hull's wire and fill in darker tones of it
