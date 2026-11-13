@@ -45,26 +45,8 @@ func stationLane(l Lane, at time.Time) (StationLane, int) {
 	if e, ok := l.Latest(); ok {
 		out.Now = e.Text
 	}
-	hidden, returned := 0, 0
-	var returnedSince *time.Time
-	// A status-line decision is free text, not a fixed-form ask (ADR 0003): it goes back to
-	// the crew and only its count shows. Its text stays in the lane's status log.
-	for _, d := range l.Decisions {
-		if !d.At.IsZero() && d.At.Before(at.Add(-7*24*time.Hour)) {
-			hidden++
-			continue
-		}
-		returned++
-		if returnedSince == nil || returnedSince.IsZero() || (!d.At.IsZero() && d.At.Before(*returnedSince)) {
-			since := d.At
-			returnedSince = &since
-		}
-		if d.Verb == "captain-hold" { // a backlog hold has no status line to keep its text
-			out.History = append(out.History, StationChange{At: d.At, State: d.Verb, Text: d.Text})
-		}
-	}
+	hidden, returned := returnDecisions(l.Decisions, at, &out)
 	out.InvalidAsks = l.InvalidAsks + returned
-	out.ReturnedSince = returnedSince
 	if l.Record == nil && l.Title != l.ID {
 		out.Title = l.Title
 	}
@@ -88,6 +70,27 @@ func stationLane(l Lane, at time.Time) (StationLane, int) {
 	out.State = stationLaneState(l, len(out.Asks)+returned, at)
 	out.Progress = stationLaneProgress(out)
 	return out, hidden
+}
+
+// returnDecisions folds open status-line decisions. Each is free text, not a fixed-form ask
+// (ADR 0003): it goes back to the crew and only its count shows. Its text stays in the
+// lane's status log, and its oldest known time is the lane's wait.
+func returnDecisions(ds []Decision, at time.Time, out *StationLane) (hidden, returned int) {
+	for _, d := range ds {
+		if !d.At.IsZero() && d.At.Before(at.Add(-7*24*time.Hour)) {
+			hidden++
+			continue
+		}
+		returned++
+		if out.ReturnedSince == nil || out.ReturnedSince.IsZero() || (!d.At.IsZero() && d.At.Before(*out.ReturnedSince)) {
+			since := d.At
+			out.ReturnedSince = &since
+		}
+		if d.Verb == "captain-hold" { // a backlog hold has no status line to keep its text
+			out.History = append(out.History, StationChange{At: d.At, State: d.Verb, Text: d.Text})
+		}
+	}
+	return hidden, returned
 }
 
 func (l StationLane) waitSince() time.Time {

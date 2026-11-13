@@ -12,6 +12,13 @@ export const mateOf=(lane:Lane)=>lane.secondMate||NO_MATE;
 export type ListRow={lane:Lane;ask?:Ask;age:number};
 const knownTime=(iso:string|undefined)=>{const t=Date.parse(iso||'');return t>0?t:NaN;}; // Go's zero time and a missing time are unknown
 const oldestFirst=(a:Ask,b:Ask)=>(knownTime(a.asked)||Infinity)-(knownTime(b.asked)||Infinity);
+const waitTimes=(lane:Lane):(string|undefined)[]=>lane.asks.length?lane.asks.map(a=>a.asked):[lane.returnedSince];
+const oldestWait=(lane:Lane)=>Math.min(...waitTimes(lane).map(iso=>Date.parse(iso||'')).filter(Number.isFinite));
+const knownWait=(lane:Lane)=>Math.min(...waitTimes(lane).map(knownTime).filter(Number.isFinite));
+// Asks not in a fixed form (ADR 0003) are no cards: they go back to the crew and only their count shows.
+export const returnedWords=(n:number)=>`${plural(n,'ask')} not in the ask form went back to the crew.`;
+export const returnedOnly=(lane:Lane)=>lane.asks.length===0&&lane.returnedSince!==undefined;
+export const listQuestion=({lane,ask}:ListRow)=>ask?ask.question||ask.topic||ask.key:returnedOnly(lane)?returnedWords(lane.invalidAsks??0):/^blocked\b/i.test(lane.now)?lane.now:`Blocked: ${lane.now||'the crew cannot clear it'}`;
 export function listRows(fleet:Fleet,mate='',now=Date.now()) {
  const need=fleetOrder(fleet).filter(l=>l.state==='needs you'),counts=new Map<string,number>();
  for(const lane of need)counts.set(mateOf(lane),(counts.get(mateOf(lane))??0)+1);
@@ -37,9 +44,6 @@ export function freshness(updated:string,now=Date.now()) {
  return minutes<1?'Live':minutes<OLD_MINUTES?`Updated ${Math.floor(minutes)} min ago`:`Saved ${elapsed(minutes)} ago`;
 }
 // Lanes in the board's one order: need you (oldest ask first), waiting, working, done, holding.
-const waitTimes=(lane:Lane):(string|undefined)[]=>lane.asks.length?lane.asks.map(a=>a.asked):[lane.returnedSince];
-const oldestWait=(lane:Lane)=>Math.min(...waitTimes(lane).map(iso=>Date.parse(iso||'')).filter(Number.isFinite));
-const knownWait=(lane:Lane)=>Math.min(...waitTimes(lane).map(knownTime).filter(Number.isFinite));
 export const fleetOrder=(fleet:Fleet)=>fleet.stationLanes.toSorted((a,b)=>states.indexOf(a.state)-states.indexOf(b.state)||oldestWait(a)-oldestWait(b)||a.name.localeCompare(b.name));
 // The lanes whose state differs from the reading before: their strip marks light once.
 export const stateChanges=(was:Record<string,string>|null,fleet:Fleet)=>was?fleet.stationLanes.filter(l=>l.id in was&&was[l.id]!==l.state).map(l=>l.id):[];
@@ -72,8 +76,4 @@ export function findLanes(fleet:Fleet,query:string) {
 }
 export const findFoot=(query:string,shown:number,n:number)=>!query.trim()?'esc closes':!n?'No lane has this name.':`${n>shown?`${shown} of ${n} lanes · type more to narrow · `:''}↑ ↓ choose · enter opens the lane · esc closes`;
 // Go sends its zero time (year 1) for a lane with no status time; that and a missing time read as unknown.
-// Asks not in a fixed form (ADR 0003) are no cards: they go back to the crew and only their count shows.
-export const returnedWords=(n:number)=>`${plural(n,'ask')} not in the ask form went back to the crew.`;
-export const returnedOnly=(lane:Lane)=>lane.asks.length===0&&lane.returnedSince!==undefined;
-export const listQuestion=({lane,ask}:ListRow)=>ask?ask.question||ask.topic||ask.key:returnedOnly(lane)?returnedWords(lane.invalidAsks??0):/^blocked\b/i.test(lane.now)?lane.now:`Blocked: ${lane.now||'the crew cannot clear it'}`;
 export const laneWords=(lane:Lane,now=Date.now())=>`${lane.asks.length?`${plural(lane.asks.length,'ask')} · `:''}last word ${Date.parse(lane.updatedAt||'')>0?`${elapsed(minutesSince(lane.updatedAt,now))} ago`:'time unknown'}`;
