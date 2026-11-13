@@ -356,15 +356,18 @@ func (m *model) applyAnswerResult(msg answerResultMsg) {
 		}
 	}
 	m.sitting.answers = remaining
-	// Accepted asks leave the batch, so refused answers can be changed and sent again.
-	items := m.sitting.items[:0]
-	for _, it := range m.sitting.items {
-		if !accepted[it.lane.ID+"\x00"+it.ask.Key] {
-			items = append(items, it)
+	// After a partial refusal, accepted asks leave the batch so the refused answers can be changed and sent again.
+	// A fully accepted sitting keeps its items so the delivery report stays until n starts the next sitting.
+	if len(remaining) > 0 {
+		items := m.sitting.items[:0]
+		for _, it := range m.sitting.items {
+			if !accepted[it.lane.ID+"\x00"+it.ask.Key] {
+				items = append(items, it)
+			}
 		}
+		m.sitting.items = items
+		m.sitting.index = len(items)
 	}
-	m.sitting.items = items
-	m.sitting.index = len(items)
 	m.answers = nil
 	m.sitting.message = strings.Join(rows, " · ")
 	m.sitting.finished = len(remaining) == 0

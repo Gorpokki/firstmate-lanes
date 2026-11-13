@@ -265,3 +265,43 @@ func TestTerminalSittingSendsOnlyACompleteBatch(t *testing.T) {
 		t.Fatalf("deferring an answered ask kept its answer: %+v", m.sitting.answers)
 	}
 }
+
+func TestTerminalDeliveryReportSurvivesRefreshAndRefusedAnswersCanBeResent(t *testing.T) {
+	result := func(acceptedKeys ...string) answerResultMsg {
+		var msg answerResultMsg
+		for _, key := range []string{"quick-a", "read-b"} {
+			ok := false
+			for _, a := range acceptedKeys {
+				ok = ok || a == key
+			}
+			lane := map[string]string{"quick-a": "mate-a", "read-b": "lane-b"}[key]
+			msg.results = append(msg.results, DeliveryResult{Lane: lane, Key: key, Accepted: ok, Reason: "synthetic"})
+		}
+		return msg
+	}
+	answerBoth := func() model {
+		m := model{fleet: Fleet{Stations: terminalFixture()}, view: 0, w: 100, h: 30}
+		m.openSitting()
+		m.sitting.key(&m, "1", m.askLanes())
+		m.sitting.key(&m, "g", m.askLanes())
+		m.sitting.key(&m, "y", m.askLanes())
+		if !m.pendingSend {
+			t.Fatal("complete batch not sent")
+		}
+		return m
+	}
+	m := answerBoth()
+	m.applyAnswerResult(result("quick-a", "read-b"))
+	m.cliApplyFleet(fleetMsg{f: Fleet{Stations: terminalFixture()}})
+	if !m.sitting.finished || !strings.Contains(m.View(), "ACCEPTED") {
+		t.Fatalf("fleet refresh replaced the delivery report:\n%s", m.View())
+	}
+	m = answerBoth()
+	m.applyAnswerResult(result("quick-a"))
+	m.pendingSend = false
+	m.cliApplyFleet(fleetMsg{f: Fleet{Stations: terminalFixture()}})
+	m.sitting.key(&m, "y", m.askLanes())
+	if !m.pendingSend || len(m.answers) != 1 || m.answers[0].Key != "read-b" {
+		t.Fatalf("refused answer could not be resent alone: pending=%t answers=%+v", m.pendingSend, m.answers)
+	}
+}
