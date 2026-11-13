@@ -133,7 +133,7 @@ export function AskStation({fleet,active,selectedLaneIds,hiddenSelected,meshes,o
   {!active?null:!items.length?<div className="stage"><section className="card calm"><div className="cbar"/><div className="cmain">
    <p className="big">{later.length?`No new ask waits. ${plural(later.length,'deferred ask')} can come back.`:'No ask waits for your answer. You can stop here.'}</p>
    {readOnly>0&&<p className="why">{readOnly} read-only {readOnly===1?'ask':'asks'} cannot be answered here; Lane shows why.</p>}
-   {returned>0&&<p className="why">{returnedWords(returned)} Lane shows its text.</p>}{more}
+   {returned>0&&<p className="why">{returnedWords(returned)}</p>}{more}
   </div></section></div>
   :!cur?<div className="stage"><div className="donecol"><section className="card calm"><div className="cbar"/><div className="cmain">
    <div className="ctop"><span className="who">{!n?'Sitting done':delivery?'Sent':'Ready to send'}</span>{pips}</div>
