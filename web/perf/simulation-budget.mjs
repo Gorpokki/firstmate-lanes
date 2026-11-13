@@ -187,7 +187,9 @@ try{
  const yardHidden=await measure(page,cdp,requests,windowMs,async()=>{await page.keyboard.press('m');await page.evaluate(()=>window.__setHidden(true));});
  report.measurements.shipyardHidden=yardHidden;
  check('hidden shipyard draws no frames',yardHidden.yardFrames<=limits.hiddenFrames,{frames:yardHidden.yardFrames});
- check('hidden shipyard makes no requests',yardHidden.requests.length<=limits.hiddenRequests,{requests:yardHidden.requests});
+ // The board's own 3 s /fleet.json poll keeps the reading's age current and is not the yard's: only other requests count.
+ const yardRequests=yardHidden.requests.filter(path=>path!=='/fleet.json');
+ check('hidden shipyard makes no requests of its own',yardRequests.length<=limits.hiddenRequests,{requests:yardRequests});
  check('hidden shipyard stays within the script budget',yardHidden.scriptMs<=limits.hiddenScriptMs,{scriptMs:yardHidden.scriptMs,max:limits.hiddenScriptMs});
 }finally{
  await browser?.close();server?.stop();
