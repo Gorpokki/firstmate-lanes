@@ -237,7 +237,7 @@ func main() {
 	}
 }
 
-//go:embed web/index.html web/app.js web/manifest.webmanifest
+//go:embed web/index.html web/app.js web/manifest.webmanifest web/fonts
 var webFiles embed.FS
 
 func boardHandler(home string, config runtimeConfig, reader *Reader, look *lastLook, answers *AnswerService, allow []string) (http.Handler, error) {
