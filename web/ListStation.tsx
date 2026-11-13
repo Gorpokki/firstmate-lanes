@@ -51,7 +51,7 @@ function AgeBar({ age }: { age: number }) {
 	);
 }
 function Row(p: { row: ListRow } & Omit<ListProps, "fleet" | "mate" | "setMate" | "decide">) {
-	const { lane, ask } = p.row,
+	const { lane } = p.row,
 		on = p.ticked.has(lane.id),
 		words = ageWords(p.row.age),
 		late = overdue(p.row.age);
