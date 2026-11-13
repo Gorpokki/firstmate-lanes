@@ -8,6 +8,7 @@ import {
 	freshness,
 	hiddenTicked,
 	isOld,
+	keepNeedingTicks,
 	laneWords,
 	stateChanges,
 	stateColors,
@@ -516,12 +517,21 @@ function App() {
 	const [meshes, setMeshes] = useState<ShipMesh[]>([]),
 		[modelWarnings, setModelWarnings] = useState<string[]>([]);
 	const simulation = location.pathname === "/simulation";
-	const tick = (id: string) =>
+	const tick = (id: string) => {
+		if (!fleet || !keepNeedingTicks(fleet, new Set([id])).size) return;
 		setChecked((old) => {
 			const next = new Set(old);
 			next.has(id) ? next.delete(id) : next.add(id);
 			return next;
 		});
+	};
+	const takeFleet = (data: Fleet) => {
+		setFleet(data);
+		setChecked((old) => {
+			const next = keepNeedingTicks(data, old);
+			return next.size === old.size ? old : next;
+		});
+	};
 	useEffect(() => {
 		const controller = new AbortController();
 		loadCatalog(controller.signal)
@@ -545,7 +555,7 @@ function App() {
 				});
 				if (!response.ok) throw Error(await response.text());
 				const data = await response.json();
-				setFleet(data);
+				takeFleet(data);
 				setError("");
 			} catch (e) {
 				if (controller.signal.aborted) return;
@@ -595,7 +605,7 @@ function App() {
 		};
 		window.addEventListener("keydown", key);
 		return () => window.removeEventListener("keydown", key);
-	}, [station, selected, simulation]);
+	}, [station, selected, simulation, fleet]);
 	if (simulation)
 		return (
 			<main>
@@ -686,7 +696,7 @@ function App() {
 								cache: "no-store",
 							});
 							if (!refreshed.ok) throw Error(await refreshed.text());
-							setFleet(await refreshed.json());
+							takeFleet(await refreshed.json());
 						} catch (e) {
 							setError(
 								`Answer results received; fleet refresh failed: ${String(e)}`,
