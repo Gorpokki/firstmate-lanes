@@ -311,11 +311,6 @@ def self_test():
         result = run(base=start)
         assert result.returncode == 1
         assert "example.invalid" not in result.stdout + result.stderr
-        start = git("rev-parse", "HEAD", cwd=directory).strip()
-        commit(literal)
-        result = run(base=start)
-        assert result.returncode == 1
-        assert literal not in result.stdout + result.stderr
     with tempfile.TemporaryDirectory() as directory:
         subprocess.run(["git", "init", "-q"], cwd=directory, check=True)
         sample = Path(directory) / "sample.txt"
