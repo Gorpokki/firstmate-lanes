@@ -130,15 +130,23 @@ try{
  const fleetReads=requests.filter(path=>path==='/fleet.json').length;
  check('simulation never reads the fleet',fleetReads<=limits.simulationFleetRequests,{fleetReads});
 
- // The Fleet shipyard: a drag, the drones with Motion on, then Motion off, then hidden.
+ // The Fleet shipyard: the default state first (Motion on, two drones, the side ship spinning), then with the side ship
+ // stopped so each yard window measures the yard alone: a drag, the drones, Motion off, then hidden.
+ const combinedRates=m=>({panelFramesPerSecond:+(m.frames*1000/m.ms).toFixed(1),yardFramesPerSecond:+(m.yardFrames*1000/m.ms).toFixed(1),scriptMsPerSecond:Math.round(m.scriptMs*1000/m.ms)});
  const fleetLoaded=page.waitForResponse(response=>new URL(response.url()).pathname==='/fleet.json');
  await page.goto(`${server.base}/`);
  await fleetLoaded;
- await page.keyboard.press('f');
+ await page.waitForFunction(()=>!document.querySelector('main[role="status"]'));
+ await page.locator('nav.rail').getByRole('button',{name:/^Fleet/}).click();
  await page.waitForSelector('section[aria-label="Fleet"]');
- await page.getByRole('button',{name:'Stop ship spin'}).click();
  await page.getByRole('group',{name:'Fleet display'}).getByRole('button',{name:'Shipyard',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('canvas[aria-label^="Shipyard:"]')&&window.__yardFrames>0);
+ const combined=await measure(page,cdp,requests,windowMs);
+ const rates=combinedRates(combined);
+ report.measurements.shipyardCombined={...combined,...rates};
+ check('shipyard with drones and the side ship spinning stays within the frame budgets',combined.yardFrames>0&&rates.panelFramesPerSecond<=limits.maxActiveFramesPerSecond&&rates.yardFramesPerSecond<=limits.maxActiveFramesPerSecond,rates);
+ check('shipyard with drones and the side ship spinning stays within the script budget',rates.scriptMsPerSecond<=limits.activeScriptMsPerSecond,rates);
+ await page.getByRole('button',{name:'Stop ship spin'}).click();
  await sleep(500);
  const yardBox=await page.locator('canvas[aria-label^="Shipyard:"]').boundingBox();
  const dragYard=async ms=>{

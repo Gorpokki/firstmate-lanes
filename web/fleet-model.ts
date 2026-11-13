@@ -16,8 +16,8 @@ export function deriveFleet(fleet:Fleet){
   shares:YARD_STATES.map(([state,label])=>({state,label,count:rows.filter(lane=>lane.state===state).length})).filter(share=>share.count),
  };
 }
-// One state's ships shown or hidden in the shipyard; the filter never hides every state.
-export function toggleShown(shown:string[],state:string){
+// One state's ships shown or hidden in the shipyard; the filter never hides every state the fleet has (present).
+export function toggleShown(shown:string[],state:string,present:string[]){
  const next=shown.includes(state)?shown.filter(s=>s!==state):[...shown,state];
- return next.length?next:shown;
+ return present.some(s=>next.includes(s))?next:shown;
 }

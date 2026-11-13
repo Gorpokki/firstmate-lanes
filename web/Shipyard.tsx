@@ -149,5 +149,5 @@ export const Shipyard=forwardRef<YardCamera,Props>(function Shipyard(p,ref){
   onDoubleClick:reset,
   onContextMenu:(e:React.MouseEvent)=>e.preventDefault(),
  };
- return <canvas ref={canvas} className="yard" role="img" aria-label="Shipyard: each shown lane's ship in its berth. Drag moves the yard, shift and drag or two fingers turn it, the wheel or a pinch zooms, a double click or double tap goes back to the start" {...handlers}/>;
+ return <canvas ref={canvas} className="yard" role="img" aria-label="Shipyard: each shown lane's ship in its own place. Drag moves the yard, shift and drag or two fingers turn it, the wheel or a pinch zooms, a double click or double tap goes back to the start" {...handlers}/>;
 });
