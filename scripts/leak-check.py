@@ -15,6 +15,7 @@ FIXTURE_ASSIGNMENT = 'fixture_denylist = "' + SAFE_FIXTURE.split('"')[1] + '"'
 # Reason: one synthetic credentialed-URL rejection fixture in a Go test; only the generic email shape rule skips it.
 EMAIL_EXCEPTION_PATH = "lane_record_test.go"
 EMAIL_EXCEPTION = '"' + "https://" + "user:secret@" + "example.test/" + '"'
+# Reason: one synthetic private-host row in a Go Host-guard test; only the generic private-IP rule skips it.
 IP_EXCEPTION_PATH = "state_test.go"
 IP_EXCEPTION_ROW = '"' + "192" + ".168.1.20:7777" + '": 200'
 IP_EXCEPTION = re.compile(re.escape(IP_EXCEPTION_ROW) + r"(?!\d)")
