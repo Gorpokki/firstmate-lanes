@@ -27,12 +27,12 @@ function drawYard(L:Loop,c:Cam,p:Props,now:number):boolean{
  if(c.key!==`${p.top}`)Object.assign(c,{...(p.top?TOP:ISO),zoom:0,key:`${p.top}`}); // a preset: from the top, or from an angle
  const fit=fitYard(berths,c.yaw,c.pitch,W,H),size=`${W}x${H}x${berths.length}`;
  if(!c.zoom||c.size!==size){c.base=fit.fit;c.size=size;}
- const V=(b:Berth)=>view({yaw:c.yaw,pitch:c.pitch,ppu:1,px:0,py:0},b.at[0],b.at[1],b.at[2]),me=berths.find(b=>b.lane.id===p.selected)??berths[0]!;
+ const V=(b:Berth)=>view({yaw:c.yaw,pitch:c.pitch,ppu:1,px:0,py:0},b.at[0],b.at[1],b.at[2]),me=berths.find(b=>b.lane.id===p.selected);
  if(c.all){c.zoom=fit.fit/c.base;c.px=fit.bx;c.py=fit.by;c.all=false;c.sel=p.selected;} // the whole yard on one screen
  if(!c.zoom){c.zoom=Math.max(1,190/Math.max(1,GX*c.base));c.sel='';} // the start: large ships, about 190 px from berth to berth
  const ppu=c.base*c.zoom;
- if(c.sel!==p.selected){ // a new selection out of sight comes to the middle; at the start the selected berth is in the middle
-  const q=V(me),x=W/2+c.px+q[0]*ppu,y=H/2+c.py-q[1]*ppu;
+ if(c.sel!==p.selected){ // a new selection out of sight comes to the middle; at the start the selected berth is in the middle, or the yard's middle when it is hidden
+  const q=me?V(me):[0,0,0],x=W/2+c.px+q[0]*ppu,y=H/2+c.py-q[1]*ppu;
   if(c.sel===''||x<60||x>W-60||y<60||y>H-60){
    c.px=-q[0]*ppu;c.py=q[1]*ppu;
    // a berth at the yard's edge does not leave half the field empty: the yard's own edge stops at the field's edge
@@ -53,7 +53,7 @@ function drawYard(L:Loop,c:Cam,p:Props,now:number):boolean{
  const cam={yaw:c.yaw,pitch:c.pitch,ppu,px:c.px,py:c.py},ids=new Set(seen.map(b=>b.i)),near=GX*ppu>=84;
  if(full){
   const named=berthNames(yardScene(seen,STILL),berths,p.selected,Math.max(8,Math.floor((GX*ppu-12)/6.1)));
-  render(f,{...named,labels:named.labels!.filter(l=>near?ids.has(l.id):l.id===me.i)},cam,p.mode); // from far away only the selected berth keeps its name
+  render(f,{...named,labels:named.labels!.filter(l=>near?ids.has(l.id):l.id===me?.i)},cam,p.mode); // from far away only the selected berth keeps its name
   c.keep={f,glyph:f.glyph.slice(),color:f.color.slice(),depth:f.depth.slice(),id:f.id.slice(),quad:f.quad.slice()};
  }else{const k=c.keep!;for(let i=0;i<k.glyph.length;i++){f.glyph[i]=k.glyph[i]!;f.color[i]=k.color[i]!;}f.depth.set(k.depth);f.id.set(k.id);f.quad.set(k.quad);}
  extras(f,droneScene(seen,STILL,live?now:STILL),cam); // Motion off: the drones hold still

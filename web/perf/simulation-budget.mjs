@@ -44,10 +44,11 @@ function visibilityControl(){
  Object.defineProperty(Document.prototype,'visibilityState',{configurable:true,get:()=>hidden?'hidden':'visible'});
  Object.defineProperty(Document.prototype,'hidden',{configurable:true,get:()=>hidden});
  window.__setHidden=value=>{hidden=value;document.dispatchEvent(new Event('visibilitychange'));};
- // Counts ship frames: every paint of the holo canvas or the shipyard canvas starts with one fill of its whole background.
- window.__frames=0;
+ // Counts ship frames: every paint of a holo canvas or the shipyard canvas starts with one fill of its whole background.
+ // The shipyard counts apart, so a side-panel ship never inflates the yard's count.
+ window.__frames=0;window.__yardFrames=0;
  const fill=CanvasRenderingContext2D.prototype.fillRect;
- CanvasRenderingContext2D.prototype.fillRect=function(x,y,width,height){if(x===0&&y===0&&width>20&&this.canvas.matches('canvas[aria-label^="Rendered ship"],canvas[aria-label^="Shipyard:"]'))window.__frames++;return fill.call(this,x,y,width,height);};
+ CanvasRenderingContext2D.prototype.fillRect=function(x,y,width,height){if(x===0&&y===0&&width>20){if(this.canvas.matches('canvas[aria-label^="Rendered ship"]'))window.__frames++;else if(this.canvas.matches('canvas[aria-label^="Shipyard:"]'))window.__yardFrames++;}return fill.call(this,x,y,width,height);};
 }
 
 async function measure(page,cdp,requests,ms,act,during){
@@ -55,11 +56,11 @@ async function measure(page,cdp,requests,ms,act,during){
  // The status line and breakup readout together change on every simulation step.
  const label=()=>page.evaluate(()=>[...document.querySelectorAll('section[aria-label="Lane simulation"] p, section[aria-label="Lane simulation"] [aria-live]')].map(e=>e.textContent).join(' | '));
  if(act)await act();
- const before={frames:await page.evaluate(()=>window.__frames),requests:requests.length,label:await label(),metrics:await metric()};
+ const before={frames:await page.evaluate(()=>window.__frames),yardFrames:await page.evaluate(()=>window.__yardFrames),requests:requests.length,label:await label(),metrics:await metric()};
  await (during?during(ms):sleep(ms));
- const after={frames:await page.evaluate(()=>window.__frames),requests:requests.length,label:await label(),metrics:await metric()};
+ const after={frames:await page.evaluate(()=>window.__frames),yardFrames:await page.evaluate(()=>window.__yardFrames),requests:requests.length,label:await label(),metrics:await metric()};
  return {
-  ms,frames:after.frames-before.frames,
+  ms,frames:after.frames-before.frames,yardFrames:after.yardFrames-before.yardFrames,
   requests:requests.slice(before.requests,after.requests),
   labelBefore:before.label,labelAfter:after.label,
   scriptMs:Math.round((after.metrics.ScriptDuration-before.metrics.ScriptDuration)*1000),
@@ -130,10 +131,14 @@ try{
  check('simulation never reads the fleet',fleetReads<=limits.simulationFleetRequests,{fleetReads});
 
  // The Fleet shipyard: a drag, the drones with Motion on, then Motion off, then hidden.
+ const fleetLoaded=page.waitForResponse(response=>new URL(response.url()).pathname==='/fleet.json');
  await page.goto(`${server.base}/`);
+ await fleetLoaded;
  await page.keyboard.press('f');
- await page.keyboard.press('b');
- await page.waitForFunction(()=>document.querySelector('canvas[aria-label^="Shipyard:"]')&&window.__frames>0);
+ await page.waitForSelector('section[aria-label="Fleet"]');
+ await page.getByRole('button',{name:'Stop ship spin'}).click();
+ await page.getByRole('group',{name:'Fleet display'}).getByRole('button',{name:'Shipyard',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('canvas[aria-label^="Shipyard:"]')&&window.__yardFrames>0);
  await sleep(500);
  const yardBox=await page.locator('canvas[aria-label^="Shipyard:"]').boundingBox();
  const dragYard=async ms=>{
@@ -142,7 +147,7 @@ try{
   for(let i=0;Date.now()<end;i++)await page.mouse.move(x+(i%2?30:-30),y);
   await page.mouse.up();
  };
- const perSecond=m=>({framesPerSecond:+(m.frames*1000/m.ms).toFixed(1),scriptMsPerSecond:Math.round(m.scriptMs*1000/m.ms)});
+ const perSecond=m=>({framesPerSecond:+(m.yardFrames*1000/m.ms).toFixed(1),scriptMsPerSecond:Math.round(m.scriptMs*1000/m.ms)});
  const drag=await measure(page,cdp,requests,windowMs,undefined,dragYard);
  report.measurements.shipyardDrag={...drag,...perSecond(drag)};
  check('shipyard drag stays within the frame budget',perSecond(drag).framesPerSecond<=limits.maxActiveFramesPerSecond,perSecond(drag));
@@ -150,17 +155,17 @@ try{
 
  const drones=await measure(page,cdp,requests,windowMs);
  report.measurements.shipyardDrones={...drones,...perSecond(drones)};
- check('shipyard drones fly and stay within the frame budget',drones.frames>0&&perSecond(drones).framesPerSecond<=limits.maxActiveFramesPerSecond,perSecond(drones));
+ check('shipyard drones fly and stay within the frame budget',drones.yardFrames>0&&perSecond(drones).framesPerSecond<=limits.maxActiveFramesPerSecond,perSecond(drones));
  check('shipyard drones stay within the script budget',perSecond(drones).scriptMsPerSecond<=limits.activeScriptMsPerSecond,perSecond(drones));
 
  const still=await measure(page,cdp,requests,windowMs,async()=>{await page.keyboard.press('m');await sleep(200);});
  report.measurements.shipyardMotionOff=still;
- check('shipyard with Motion off draws no frames',still.frames<=limits.idleFrames,{frames:still.frames});
+ check('shipyard with Motion off draws no frames',still.yardFrames<=limits.idleFrames,{frames:still.yardFrames});
  check('shipyard with Motion off stays within the script budget',still.scriptMs<=limits.idleScriptMs,{scriptMs:still.scriptMs,max:limits.idleScriptMs});
 
  const yardHidden=await measure(page,cdp,requests,windowMs,async()=>{await page.keyboard.press('m');await page.evaluate(()=>window.__setHidden(true));});
  report.measurements.shipyardHidden=yardHidden;
- check('hidden shipyard draws no frames',yardHidden.frames<=limits.hiddenFrames,{frames:yardHidden.frames});
+ check('hidden shipyard draws no frames',yardHidden.yardFrames<=limits.hiddenFrames,{frames:yardHidden.yardFrames});
  check('hidden shipyard makes no requests',yardHidden.requests.length<=limits.hiddenRequests,{requests:yardHidden.requests});
  check('hidden shipyard stays within the script budget',yardHidden.scriptMs<=limits.hiddenScriptMs,{scriptMs:yardHidden.scriptMs,max:limits.hiddenScriptMs});
 }finally{
