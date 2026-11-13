@@ -80,7 +80,7 @@ test('a lane whose open asks are all returned waits from its oldest decision, no
  expect(ageOf(board,'zed')).toBe(5*1440);
 });
 
-test('a returned ask without a decision time stays unknown, neither borrowing the note time nor leading a dated lane',()=>{
+test('a returned ask without a decision time stays unknown and sorts ahead of dated lanes',()=>{
  const board=boardOf(returnedLane('recent','2026-01-10T11:00:00Z','2026-01-10T08:00:00Z'),returnedLane('undated','0001-01-01T00:00:00Z','2026-01-10T11:59:00Z'));
  expect(fleetOrder(board).map(l=>l.id)).toEqual(['undated','recent']);
  expect(Number.isNaN(ageOf(board,'undated'))).toBe(true);
