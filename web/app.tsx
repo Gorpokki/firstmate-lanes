@@ -42,6 +42,23 @@ const KEYS: [string, string][] = [
 	["esc", "close a box"],
 	["space", "list: tick the lane · ask, lane: spin the ship, or stop it"],
 	["o", "ask station: type your own answer"],
+	["1-4", "ask station: choose that answer"],
+	[
+		"s",
+		"skip the ask: no answer from you, the crew goes on with its best judgment",
+	],
+	["w", "defer the ask: it comes back in a later sitting"],
+	["u", "undo the last answer, skip or defer"],
+	["y", "sitting done: send its answers to Firstmate"],
+	["k", "take the crew's ★ picks for the rest of the sitting"],
+	["p", "show the answers kept in this sitting"],
+	["n", "start the next sitting"],
+	["e", "start a sitting of quick asks"],
+	["d", "the crew's own text for the ask"],
+	[
+		"g",
+		"ask for a grill: the crew talks the ask through with you before you choose",
+	],
 ];
 const SIM_TITLE =
 	"One ship run through every lane state, for the review of the holo view";
@@ -216,10 +233,12 @@ function FleetStrip({
 	fleet,
 	open,
 	flash,
+	have,
 }: {
 	fleet: Fleet;
 	open: () => void;
 	flash: string[];
+	have: string[];
 }) {
 	const lanes = fleetOrder(fleet);
 	const counts = Object.keys(stateColors)
@@ -229,14 +248,21 @@ function FleetStrip({
 		<button
 			className="strip"
 			onClick={open}
-			title={`The fleet: one mark per lane. ${counts}`}
+			title={`The fleet: one mark per lane. ${counts}${have.length ? ". Hollow: every ask of the lane has your answer" : ""}`}
 			aria-label="Open the fleet"
 		>
 			{lanes.map((lane, i) => (
 				<React.Fragment key={lane.id}>
 					{i > 0 && lanes[i - 1].state !== lane.state && <i className="gap" />}
 					<i
-						className={flash.includes(lane.id) ? "flash" : undefined}
+						className={
+							[
+								flash.includes(lane.id) && "flash",
+								have.includes(lane.id) && "have",
+							]
+								.filter(Boolean)
+								.join(" ") || undefined
+						}
 						style={{ "--c": stateColors[lane.state] } as React.CSSProperties}
 					/>
 				</React.Fragment>
@@ -360,6 +386,7 @@ type FrameProps = {
 	go: (s: Station) => void;
 	openLane: (id: string) => void;
 	saveLook: () => void;
+	have?: string[];
 	children: React.ReactNode;
 };
 function Pops(
@@ -479,10 +506,20 @@ function Frame(p: FrameProps) {
 			</main>
 			<div className="bot">
 				<div className="elbow" />
-				<FleetStrip fleet={p.fleet} open={openFleet} flash={flash} />
+				<FleetStrip
+					fleet={p.fleet}
+					open={openFleet}
+					flash={flash}
+					have={p.have ?? []}
+				/>
 			</div>
 			<nav className="tabs" aria-label="Stations">
-				<FleetStrip fleet={p.fleet} open={openFleet} flash={flash} />
+				<FleetStrip
+					fleet={p.fleet}
+					open={openFleet}
+					flash={flash}
+					have={p.have ?? []}
+				/>
 				<div>
 					<StationButtons station={p.station} go={p.go} />
 					<button className="find" onClick={() => toggle("find")}>
@@ -514,6 +551,7 @@ function App() {
 		[mate, setMate] = useState(""),
 		[selected, setSelected] = useState("");
 	const [checked, setChecked] = useState<Set<string>>(new Set());
+	const [have, setHave] = useState<string[]>([]);
 	const [meshes, setMeshes] = useState<ShipMesh[]>([]),
 		[modelWarnings, setModelWarnings] = useState<string[]>([]);
 	const simulation = location.pathname === "/simulation";
@@ -643,6 +681,7 @@ function App() {
 			go={setStation}
 			openLane={openLane}
 			saveLook={saveLook}
+			have={have}
 		>
 			<style>{`.station button,.station select{background:#17131B;color:var(--text);border:1px solid #4A4252;border-radius:8px;padding:10px;cursor:pointer}.station header{border-bottom:1px solid var(--line);padding-bottom:16px}.station h1{font-size:26px}.station article{margin:20px 0;padding:18px;border:1px solid #4A4252;border-radius:12px}.station p{line-height:1.5}.station a{color:var(--peach)}`}</style>
 			{error && <p role="alert">{error}</p>}
@@ -680,6 +719,13 @@ function App() {
 					selectedLaneIds={checked.size ? [...checked] : undefined}
 					hiddenSelected={hiddenTicked(fleet, checked, mate)}
 					onBack={() => setStation("list")}
+					onOpenLane={(id) => {
+						setSelected(id);
+						setStation("lane");
+					}}
+					onAnswered={(ids) =>
+						setHave((old) => (old.join() === ids.join() ? old : ids))
+					}
 					onConfirm={async (answers) => {
 						const response = await fetch("/answers", {
 							method: "POST",

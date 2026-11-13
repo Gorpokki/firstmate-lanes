@@ -49,3 +49,8 @@ export function reviewAnswers(fleet:Fleet,answers:SittingAnswer[]):ReviewRow[]{
   return [{lane:lane.name,key:ask.key,question,answer:response}];
  });
 }
+
+// The lanes whose every ask has an answer in this sitting: their fleet strip mark is hollow.
+export const answeredLanes=(fleet:Fleet,answers:Readonly<Record<string,SittingAnswer>>)=>fleet.stationLanes.filter(lane=>lane.asks.length>0&&lane.asks.every(ask=>answers[refFor(lane.id,ask.key)])).map(lane=>lane.id);
+
+export const minutesSince=(iso:string,now=Date.now())=>{const time=Date.parse(iso);return Number.isFinite(time)&&time>0?Math.max(0,(now-time)/60000):Number.NaN;};
