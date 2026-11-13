@@ -21,6 +21,13 @@ export function listRows(fleet:Fleet,mate='',now=Date.now()) {
 // Ticked lanes that the mate filter hides from the List: they stay ticked and go into the sitting.
 export const hiddenTicked=(fleet:Fleet,ticked:ReadonlySet<string>,mate:string)=>mate?fleet.stationLanes.filter(l=>ticked.has(l.id)&&l.state==='needs you'&&mateOf(l)!==mate).length:0;
 export const keepNeedingTicks=(fleet:Fleet,ticked:ReadonlySet<string>)=>new Set([...ticked].filter(id=>fleet.stationLanes.some(l=>l.id===id&&l.state==='needs you')));
+// The keys a focused control keeps: a text field all of them, a tick box space, a button, link or summary enter and space.
+type Focused={tagName?:string;type?:string;isContentEditable?:boolean}|null;
+export function keepsKey(el:Focused,key:string){
+ const tag=el?.tagName,presses=tag==='BUTTON'||tag==='A'||tag==='SUMMARY';
+ if(el?.isContentEditable||tag==='TEXTAREA'||tag==='SELECT'||(tag==='INPUT'&&el?.type!=='checkbox'&&el?.type!=='radio'))return true;
+ return key==='Space'?presses||tag==='INPUT':key==='Enter'&&presses;
+}
 // An ask's age: one bar segment per day up to a week; from 5.5 days it is overdue, and the sixth and seventh segments are bright and tall.
 export const AGE_DAYS=7,OVERDUE_DAYS=5.5;
 export const overdue=(minutes:number)=>minutes>=OVERDUE_DAYS*1440;

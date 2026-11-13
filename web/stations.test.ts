@@ -1,5 +1,5 @@
 import {test,expect} from 'bun:test';
-import {ageDays,boardSummary,findFoot,findLanes,fleetOrder,freshness,hiddenTicked,isOld,keepNeedingTicks,laneWords,listRows,overdue,stateChanges} from './stations';
+import {ageDays,boardSummary,findFoot,findLanes,fleetOrder,freshness,hiddenTicked,isOld,keepNeedingTicks,keepsKey,laneWords,listRows,overdue,stateChanges} from './stations';
 import {buildSitting} from './sitting';
 
 const lane=(id:string,state:string,secondMate:string,asked:string)=>({id,name:id,state,secondMate,home:'main',now:'Example',history:[],asks:asked?[{key:id,form:'discussion',question:'Example?',reason:'Choose',effort:'quick',asked,answerable:true}]:[]});
@@ -65,4 +65,14 @@ test('an ask is overdue from 5.5 days, and that is the day its sixth segment lig
  expect(overdue(5.5*day)).toBe(true);
  expect(ageDays(5.4*day)).toBe(5);
  expect(ageDays(5.5*day)).toBe(6);
+});
+
+test('a tick box keeps only space; a text field keeps every key; a button keeps enter and space',()=>{
+ const tick={tagName:'INPUT',type:'checkbox'},text={tagName:'INPUT',type:'text'},button={tagName:'BUTTON'};
+ for(const key of ['a','l','f','Enter','/','c','?'])expect(keepsKey(tick,key)).toBe(false);
+ expect(keepsKey(tick,'Space')).toBe(true);
+ for(const el of [text,{tagName:'INPUT',type:'search'},{tagName:'TEXTAREA'},{tagName:'SELECT'},{tagName:'DIV',isContentEditable:true}])
+  for(const key of ['f','Enter','Space','/'])expect(keepsKey(el,key)).toBe(true);
+ expect([keepsKey(button,'Enter'),keepsKey(button,'Space'),keepsKey(button,'f')]).toEqual([true,true,false]);
+ expect([keepsKey({tagName:'BODY'},'Enter'),keepsKey({tagName:'BODY'},'Space'),keepsKey(null,'f')]).toEqual([false,false,false]);
 });
