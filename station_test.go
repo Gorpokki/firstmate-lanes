@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -40,10 +41,10 @@ func TestStationStateBoundaries(t *testing.T) {
 func TestOnlyOwnedNativeAsksAreAnswerable(t *testing.T) {
 	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
 	ask := LaneRecordAsk{Form: "choice", Key: "route", Question: "Route?", Reason: "Pick", Effort: "quick", Asked: now, Choices: []LaneRecordChoice{{Label: "A", Effect: "a"}, {Label: "B", Effect: "b"}}}
-	owned, _ := stationLane(Lane{ID: "owned", OwnerDir: "/home", State: "needs-decision", Decisions: []Decision{{Key: "route", Verb: "needs-decision", At: now}}, Record: &LaneRecord{Asks: []LaneRecordAsk{ask}}}, now)
-	local, _ := stationLane(Lane{ID: "local/dropin", Home: "local", OwnerDir: "", State: "needs-decision", Decisions: []Decision{{Key: "route", Verb: "needs-decision", At: now}}, Record: &LaneRecord{Asks: []LaneRecordAsk{ask}}}, now)
-	if len(owned.Asks) != 2 || len(local.Asks) != 2 {
-		t.Fatalf("asks owned=%d local=%d, want 2 each", len(owned.Asks), len(local.Asks))
+	owned, _ := stationLane(Lane{ID: "owned", OwnerDir: "/home", State: "needs you", Record: &LaneRecord{Asks: []LaneRecordAsk{ask}}}, now)
+	local, _ := stationLane(Lane{ID: "local/dropin", Home: "local", OwnerDir: "", State: "needs you", Record: &LaneRecord{Asks: []LaneRecordAsk{ask}}}, now)
+	if len(owned.Asks) != 1 || len(local.Asks) != 1 {
+		t.Fatalf("asks owned=%d local=%d, want 1 each", len(owned.Asks), len(local.Asks))
 	}
 	for _, a := range owned.Asks {
 		if !a.Answerable {
@@ -57,12 +58,40 @@ func TestOnlyOwnedNativeAsksAreAnswerable(t *testing.T) {
 	}
 }
 
-func TestUndatedOwnedAskStaysAnswerableAndZeroTimeReceiptHidesNothing(t *testing.T) {
+func TestStatusLineAsksGoBackToTheCrewAsACount(t *testing.T) {
 	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
-	row, _ := stationLane(Lane{ID: "owned", OwnerDir: "/home", State: "needs-decision", Decisions: []Decision{{Key: "route", Verb: "needs-decision"}}}, now)
-	if len(row.Asks) != 1 || !row.Asks[0].Answerable {
-		t.Fatalf("undated owned native ask should stay answerable: %+v", row.Asks)
+	ask := LaneRecordAsk{Form: "choice", Key: "route", Question: "Route?", Reason: "Pick", Effort: "quick", Asked: now, Choices: []LaneRecordChoice{{Label: "A", Effect: "a"}, {Label: "B", Effect: "b"}}}
+	cases := []struct {
+		name  string
+		lane  Lane
+		asks  int
+		count int
+		state string
+	}{
+		{"free text", Lane{State: "needs-decision", Events: []Event{{Verb: "needs-decision", Key: "route", At: now, Text: "Pick north or south?"}}, Decisions: []Decision{{Key: "route", Verb: "needs-decision", At: now, Text: "Pick north or south?"}}}, 0, 1, "needs you"},
+		{"undated", Lane{State: "needs-decision", Decisions: []Decision{{Key: "route", Verb: "needs-decision"}}}, 0, 1, "needs you"},
+		{"keyless block", Lane{State: "blocked", Decisions: []Decision{{Key: "default", Verb: "blocked", At: now}}}, 0, 1, "needs you"},
+		{"captain hold", Lane{State: "needs-decision", Hold: "Pick the bump", Decisions: []Decision{{Key: "example", Verb: "captain-hold", Text: "Pick the bump"}}}, 0, 1, "needs you"},
+		{"older than seven days", Lane{State: "needs-decision", Decisions: []Decision{{Key: "route", Verb: "needs-decision", At: now.Add(-8 * 24 * time.Hour)}}}, 0, 0, "holding"},
+		{"record keeps fixed forms", Lane{State: "needs you", InvalidAsks: 2, Record: &LaneRecord{Asks: []LaneRecordAsk{ask}}}, 1, 2, "needs you"},
 	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			c.lane.ID, c.lane.OwnerDir = "example", "/home"
+			row, _ := stationLane(c.lane, now)
+			if len(row.Asks) != c.asks || row.InvalidAsks != c.count || row.State != c.state {
+				t.Fatalf("asks=%d count=%d state=%q; want %d %d %q", len(row.Asks), row.InvalidAsks, row.State, c.asks, c.count, c.state)
+			}
+			for _, d := range c.lane.Decisions {
+				if d.Text != "" && !slices.ContainsFunc(row.History, func(h StationChange) bool { return h.Text == d.Text }) {
+					t.Fatalf("status text %q not kept in the log: %+v", d.Text, row.History)
+				}
+			}
+		})
+	}
+}
+
+func TestZeroTimeReceiptHidesNothing(t *testing.T) {
 	r := &Reader{}
 	if err := r.acknowledge("/home", "owned", "route", time.Time{}); err != nil {
 		t.Fatal(err)
@@ -81,7 +110,8 @@ func TestUndatedOwnedAskStaysAnswerableAndZeroTimeReceiptHidesNothing(t *testing
 
 func TestRegisteredHomeNamedLocalStaysAnswerable(t *testing.T) {
 	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
-	row, _ := stationLane(Lane{ID: "local/build", Home: "local", SecondMate: "local", OwnerDir: "/home", State: "needs-decision", Decisions: []Decision{{Key: "route", Verb: "needs-decision", At: now}}}, now)
+	ask := LaneRecordAsk{Form: "discussion", Key: "route", Topic: "Route", MustDecide: []string{"Route"}, Reason: "Pick", Effort: "read", Asked: now}
+	row, _ := stationLane(Lane{ID: "local/build", Home: "local", SecondMate: "local", OwnerDir: "/home", State: "needs you", Record: &LaneRecord{Asks: []LaneRecordAsk{ask}}}, now)
 	if len(row.Asks) != 1 || !row.Asks[0].Answerable {
 		t.Fatalf("second mate aliased local lost answerability: %+v", row.Asks)
 	}
@@ -90,13 +120,14 @@ func TestRegisteredHomeNamedLocalStaysAnswerable(t *testing.T) {
 func TestStationFleetOrdersNeedsYouByOldestAskThenStates(t *testing.T) {
 	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
 	decided := func(id string, at time.Time) Lane {
-		return Lane{ID: id, OwnerDir: "/home", State: "needs-decision", UpdatedAt: now, Decisions: []Decision{{Key: id, Verb: "needs-decision", At: at}}}
+		ask := LaneRecordAsk{Form: "discussion", Key: id, Topic: id, MustDecide: []string{id}, Reason: "Pick", Effort: "read", Asked: at}
+		return Lane{ID: id, OwnerDir: "/home", State: "needs you", UpdatedAt: now, Record: &LaneRecord{Asks: []LaneRecordAsk{ask}}}
 	}
 	lanes := []Lane{
 		{ID: "holding", State: "paused", UpdatedAt: now},
 		decided("needs-new", now.Add(-24*time.Hour)),
 		{ID: "working", State: "working", UpdatedAt: now.Add(-time.Hour)},
-		decided("undated", time.Time{}),
+		{ID: "undated", OwnerDir: "/home", State: "needs-decision", UpdatedAt: now, Decisions: []Decision{{Key: "undated", Verb: "needs-decision"}}},
 		{ID: "done", State: "done", UpdatedAt: now},
 		decided("needs-old", now.Add(-72*time.Hour)),
 		{ID: "waiting", State: "waiting", UpdatedAt: now},
@@ -203,5 +234,100 @@ func TestAutonomyIncludesStructuredAskHistory(t *testing.T) {
 	}
 	if got := BuildFleet(lanes, now).AutonomyShare; got != 0.25 {
 		t.Fatalf("autonomy=%v, want one untouched lane out of four", got)
+	}
+}
+
+func TestCaptainHoldTextStaysInLaneViewOfLongLog(t *testing.T) {
+	home := t.TempDir()
+	for _, dir := range []string{"state", "data"} {
+		if err := os.MkdirAll(filepath.Join(home, dir), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	start := time.Date(2026, 1, 4, 12, 0, 0, 0, time.UTC)
+	var status strings.Builder
+	for i := 0; i < 6; i++ {
+		fmt.Fprintf(&status, "working: early step %d\n", i)
+	}
+	status.WriteString("needs-decision [key=old]: early question\nresolved [key=old]: early answer\n")
+	for i := 0; i < 20; i++ {
+		fmt.Fprintf(&status, "working [at=%d]: recent step %d\n", start.Add(time.Duration(i)*time.Minute).Unix(), i)
+	}
+	files := map[string]string{
+		filepath.Join(home, "data", "backlog.md"):     "## In flight\n- [ ] legacy - Legacy lane (kind: ship) (hold: Owner picks the route) (hold-kind: captain)\n",
+		filepath.Join(home, "state", "legacy.status"): status.String(),
+	}
+	for path, content := range files {
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	lanes, err := NewReader().Load(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := model{fleet: BuildFleet(lanes, start.Add(time.Hour)), view: 3, w: 100, h: 30}
+	if view := m.View(); !strings.Contains(view, "Owner picks the route") || !strings.Contains(view, "recent step 18") || strings.Contains(view, "early step 0") {
+		t.Fatalf("captain hold text or recent status missing from the Lane view:\n%s", view)
+	}
+}
+
+func TestUndatedCaptainHoldKeepsDatedDecisionWait(t *testing.T) {
+	home := t.TempDir()
+	for _, dir := range []string{"state", "data"} {
+		if err := os.MkdirAll(filepath.Join(home, dir), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	decidedAt := time.Date(2026, 1, 4, 12, 0, 0, 0, time.UTC)
+	files := map[string]string{
+		filepath.Join(home, "data", "backlog.md"):     "## In flight\n- [ ] legacy - Legacy lane (kind: ship) (hold: Owner picks the route) (hold-kind: captain)\n",
+		filepath.Join(home, "state", "legacy.status"): fmt.Sprintf("needs-decision [key=route] [at=%d]: Pick north or south?\n", decidedAt.Unix()),
+	}
+	for path, content := range files {
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	lanes, err := NewReader().Load(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	var legacy Lane
+	for _, lane := range lanes {
+		if lane.ID == "legacy" {
+			legacy = lane
+		}
+	}
+	row, _ := stationLane(legacy, now)
+	if row.ReturnedSince == nil || !row.ReturnedSince.Equal(decidedAt) {
+		t.Fatalf("returned since %v, want the dated decision %v", row.ReturnedSince, decidedAt)
+	}
+}
+
+func TestReturnedAsksWaitFromTheirOwnDecision(t *testing.T) {
+	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	oldAt := now.Add(-72 * time.Hour)
+	events := ParseLog(fmt.Sprintf("needs-decision [key=route] [at=%d]: Pick north or south?\nworking [key=other] [at=%d]: Unrelated note", oldAt.Unix(), now.Add(-time.Minute).Unix()))
+	old := Lane{ID: "old", OwnerDir: "/home", State: "needs-decision", UpdatedAt: now.Add(-time.Minute), Events: events, Decisions: OpenDecisions(events, "ship")}
+	newer := Lane{ID: "newer", OwnerDir: "/home", State: "needs-decision", UpdatedAt: now.Add(-2 * time.Hour), Decisions: []Decision{{Key: "fresh", Verb: "needs-decision", At: now.Add(-time.Hour)}}}
+	rows, _, _ := stationFleet([]Lane{newer, old}, now)
+	got := make([]string, len(rows))
+	for i, row := range rows {
+		got[i] = row.ID
+	}
+	if !slices.Equal(got, []string{"old", "newer"}) {
+		t.Fatalf("returned asks must order by their own decision time, got %v", got)
+	}
+	row := rows[0]
+	if row.ReturnedSince == nil || !row.ReturnedSince.Equal(oldAt) {
+		t.Fatalf("returned since %v, want the decision time %v", row.ReturnedSince, oldAt)
+	}
+	if row.State != "needs you" || len(row.Asks) != 0 || row.InvalidAsks != 1 {
+		t.Fatalf("returned-only lane state=%q asks=%d count=%d; want needs you, no cards, one returned", row.State, len(row.Asks), row.InvalidAsks)
+	}
+	if !slices.ContainsFunc(row.History, func(h StationChange) bool { return h.Text == "Pick north or south?" }) {
+		t.Fatalf("returned text not kept in the log: %+v", row.History)
 	}
 }

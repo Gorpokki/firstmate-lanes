@@ -119,6 +119,7 @@ Inputs:
 
 A malformed present lane record fails the whole fleet read, without falling back to conflicting status data. CLI and web errors identify the source file or home and preserve the underlying cause.
 Malformed individual asks are omitted and counted without hiding valid asks in that record.
+An open `needs-decision` or `blocked` status line, or a backlog captain hold, is free text and not a fixed-form ask: it is never an ask card or a sitting slot. It goes back to the crew and counts with the omitted asks; its lane still needs you, and its text stays in the lane's status log.
 Text controls are sanitized before terminal rendering; links must be HTTP(S) without embedded credentials.
 
 Five station states:
@@ -132,7 +133,6 @@ Five station states:
 | done | Completed without a recent open ask |
 
 Asks exactly seven days old remain visible; older asks are hidden and counted.
-Asks with no recorded time stay visible with unknown age and sort first; they are answerable when they carry a verifiable task ID.
 Working becomes holding at exactly two hours.
 Autonomy share counts lanes without recorded human involvement, including structured asks and history.
 The board also shows freshness and lane-state changes since the explicit last look.
@@ -156,7 +156,7 @@ State, drop-in creation and configured conversion output are rejected inside kno
 **No home is written by the reader.** Confirmed answers are the sole home-writing path:
 
 1. Re-read the current fleet and validate every answer against a current, recent, open ask.
-2. Reject stale timestamps, invalid choices, duplicate keys and read-only drop-in lanes. Asks without a task ID (a status line with no `[key=]`), and asks on drop-in lanes are shown read-only and never take a sitting slot. A task ID shared by two open asks in one home is refused before any delivery, even when only one of them is selected.
+2. Reject stale timestamps, invalid choices, duplicate keys and read-only drop-in lanes. Asks without a native task ID, and asks on drop-in lanes, are shown read-only and never take a sitting slot. A task ID shared by two open asks in one home is refused before any delivery, even when only one of them is selected.
 3. Invoke the installed `bin/fm-captain-hold.sh answers --source fm-lanes` once per owning home, setting `FM_HOME` for that batch.
 4. Send the existing tab-separated key/answer/label contract on stdin; never invoke a shell with answer text.
 5. Report actual `closed`, `skipped` and `refused` command results. Exit success alone is not acceptance. There is no automatic retry.
