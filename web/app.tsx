@@ -1,11 +1,19 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
+	boardSummary,
 	deriveBoard,
+	findFoot,
+	findLanes,
+	fleetOrder,
 	freshness,
-	states,
+	isOld,
+	laneWords,
+	stateChanges,
+	stateColors,
 	type Fleet,
 	type Station,
+	type SummaryPart,
 } from "./stations";
 import { FleetStation } from "./FleetStation";
 import { LaneStation } from "./LaneStation";
@@ -13,13 +21,489 @@ import { AskStation } from "./AskStation";
 import { Simulation } from "./Simulation";
 import { assignedShip, loadCatalog, type ShipMesh } from "./mesh-catalog";
 
-const colors: Record<string, string> = {
-	"needs you": "#ff967b",
-	waiting: "#e9bd72",
-	working: "#82c8ed",
-	done: "#98d3a4",
-	holding: "#b6a4c7",
+const POLL_MS = 3000;
+type Pop = "find" | "changed" | "save" | "keys" | null;
+type Toggle = (pop: Pop) => void;
+const stationKeys: [Station, string, string][] = [
+	["ask", "Ask", "a"],
+	["list", "List", "l"],
+	["fleet", "Fleet", "f"],
+	["lane", "Lane", "enter"],
+];
+const KEYS: [string, string][] = [
+	["a  l  f", "stations: ask, list, fleet"],
+	["enter", "open the selected lane: its ship and its asks"],
+	["z", "ask station: show or hide the rest of the board"],
+	["/", "find a lane by name, the holding lanes too"],
+	["c", "the lanes that changed since your last look"],
+	["?", "these keys"],
+	["esc", "close a box"],
+	["space", "list: tick the lane · ask, lane: spin the ship, or stop it"],
+	["o", "ask station: type your own answer"],
+];
+const SIM_TITLE =
+	"One ship run through every lane state, for the review of the holo view";
+const Key = ({ k }: { k: string }) => <kbd className="k">{k}</kbd>;
+const phone = () => matchMedia("(max-width: 760px)").matches;
+
+function StationButtons(p: { station: Station; go: (s: Station) => void }) {
+	return (
+		<>
+			{stationKeys.map(([id, label, k]) => (
+				<button
+					key={id}
+					className={p.station === id ? "on" : ""}
+					aria-current={p.station === id}
+					onClick={() => p.go(id)}
+				>
+					{label}
+					<Key k={k} />
+				</button>
+			))}
+		</>
+	);
+}
+function TopBar(p: {
+	fleet: Fleet;
+	station: Station;
+	focus: boolean;
+	board: boolean;
+	flipBoard: () => void;
+	toggle: Toggle;
+}) {
+	const old = isOld(p.fleet.updatedAt);
+	return (
+		<div className="top">
+			<div className="elbow" />
+			<div className="bar">
+				{p.focus ? (
+					<span className="barnav">
+						<button onClick={() => p.toggle("keys")}>
+							Keys
+							<Key k="?" />
+						</button>
+					</span>
+				) : (
+					"Lanes"
+				)}
+			</div>
+			<i />
+			<i />
+			<i />
+			{p.station === "ask" && (
+				<button
+					className="link boardtog tb"
+					aria-pressed={p.board}
+					onClick={p.flipBoard}
+				>
+					{p.board ? "▾ hide the board" : "▸ show the board"}
+					<Key k="z" />
+				</button>
+			)}
+			<button
+				className={`fresh lab${old ? " old" : ""}`}
+				onClick={() => p.toggle("save")}
+			>
+				{freshness(p.fleet.updatedAt)}
+				{old ? " ▸" : ""}
+			</button>
+		</div>
+	);
+}
+function Rail(p: {
+	station: Station;
+	focus: boolean;
+	go: (s: Station) => void;
+	toggle: Toggle;
+}) {
+	return (
+		<nav className="rail" aria-label="Stations">
+			<div className="cap" />
+			{!p.focus && (
+				<>
+					<StationButtons station={p.station} go={p.go} />
+					<a className="sm" href="/simulation" title={SIM_TITLE}>
+						Lane sim
+					</a>
+				</>
+			)}
+			<div className="fill" />
+			{!p.focus && (
+				<>
+					<button className="sm" onClick={() => p.toggle("find")}>
+						Find lane
+						<Key k="/" />
+					</button>
+					<button className="sm" onClick={() => p.toggle("keys")}>
+						Keys
+						<Key k="?" />
+					</button>
+				</>
+			)}
+			<div className="capb" />
+		</nav>
+	);
+}
+function SummaryWords({ part }: { part: SummaryPart }) {
+	return (
+		<>
+			{part.t.map(([words, tone], i) =>
+				tone === "need" ? (
+					<b key={i}>{words}</b>
+				) : tone === "n" ? (
+					<em key={i} className="n">
+						{words}
+					</em>
+				) : (
+					<React.Fragment key={i}>{words}</React.Fragment>
+				),
+			)}
+		</>
+	);
+}
+function Summary(p: {
+	fleet: Fleet;
+	go: (s: Station) => void;
+	toggle: Toggle;
+	lit: boolean;
+}) {
+	const open = (part: SummaryPart) =>
+		part.go === "changed"
+			? () => p.toggle("changed")
+			: part.go
+				? () => p.go(part.go as Station)
+				: undefined;
+	return (
+		<div className="topline">
+			<span className={`pulse${p.lit ? " lit" : ""}`}>
+				{boardSummary(p.fleet).map((row, i) => (
+					<span key={i} className={`prow${i ? " since" : ""}`}>
+						{row.map((part) => {
+							const onClick = open(part);
+							return (
+								<React.Fragment key={part.k}>
+									{onClick ? (
+										<button className={`p-${part.k}`} onClick={onClick}>
+											<SummaryWords part={part} />
+										</button>
+									) : (
+										<span className={`p-${part.k}`}>
+											<SummaryWords part={part} />
+										</span>
+									)}
+									{part.k === "need" && <i className="br" />}
+								</React.Fragment>
+							);
+						})}
+					</span>
+				))}
+			</span>
+			<span className="quiet">
+				<button
+					className="link chg"
+					onClick={() => p.toggle("changed")}
+					title="The lanes that changed since your last look"
+				>
+					changed lanes ▸<Key k="c" />
+				</button>
+			</span>
+		</div>
+	);
+}
+function FleetStrip({
+	fleet,
+	open,
+	flash,
+}: {
+	fleet: Fleet;
+	open: () => void;
+	flash: string[];
+}) {
+	const lanes = fleetOrder(fleet);
+	const counts = Object.keys(stateColors)
+		.map((state) => `${lanes.filter((l) => l.state === state).length} ${state}`)
+		.join(", ");
+	return (
+		<button
+			className="strip"
+			onClick={open}
+			title={`The fleet: one mark per lane. ${counts}`}
+			aria-label="Open the fleet"
+		>
+			{lanes.map((lane, i) => (
+				<React.Fragment key={lane.id}>
+					{i > 0 && lanes[i - 1].state !== lane.state && <i className="gap" />}
+					<i
+						className={flash.includes(lane.id) ? "flash" : undefined}
+						style={{ "--c": stateColors[lane.state] } as React.CSSProperties}
+					/>
+				</React.Fragment>
+			))}
+		</button>
+	);
+}
+function FindBox(p: {
+	fleet: Fleet;
+	openLane: (id: string) => void;
+	close: () => void;
+}) {
+	const [query, setQuery] = useState(""),
+		[index, setIndex] = useState(0);
+	const { rows, n } = findLanes(p.fleet, query);
+	const move = (step: number) =>
+		setIndex((i) => Math.max(0, Math.min(rows.length - 1, i + step)));
+	const key = (e: React.KeyboardEvent) => {
+		const run: Record<string, () => void> = {
+			Escape: p.close,
+			ArrowDown: () => move(1),
+			ArrowUp: () => move(-1),
+			Enter: () => rows[index] && p.openLane(rows[index].id),
+		};
+		if (!run[e.key]) return;
+		e.preventDefault();
+		run[e.key]();
+	};
+	return (
+		<div className="pop find" role="dialog" aria-label="Find lane">
+			<span className="lab">Find lane</span>
+			<input
+				autoFocus
+				value={query}
+				onChange={(e) => {
+					setQuery(e.target.value);
+					setIndex(0);
+				}}
+				onKeyDown={key}
+				placeholder={`A part of its name · all ${p.fleet.stationLanes.length} lanes`}
+				aria-label="Lane name"
+			/>
+			{rows.map((lane, i) => (
+				<button
+					key={lane.id}
+					className={`hit${i === index ? " sel" : ""}`}
+					onClick={() => p.openLane(lane.id)}
+				>
+					<i style={{ background: stateColors[lane.state] }} />
+					<b>{lane.name}</b>
+					<span className="lab">{lane.state}</span>
+					<span>{laneWords(lane)}</span>
+					<span className="q2">
+						{lane.asks[0]?.question || lane.asks[0]?.topic || lane.now}
+					</span>
+				</button>
+			))}
+			<span className="foot">{findFoot(query, rows.length, n)}</span>
+		</div>
+	);
+}
+function ChangedBox({
+	fleet,
+	saveLook,
+}: {
+	fleet: Fleet;
+	saveLook: () => void;
+}) {
+	const lanes = fleetOrder(fleet).filter((l) =>
+		fleet.changedLanes.includes(l.id),
+	);
+	return (
+		<div className="pop names" role="dialog" aria-label="Changed lanes">
+			<span className="lab">Changed since your last look · esc closes</span>
+			{lanes.length ? (
+				lanes.map((lane) => (
+					<p key={lane.id}>
+						<i style={{ color: stateColors[lane.state] }}>● </i>
+						<b>{lane.name}</b> · now {lane.state}
+					</p>
+				))
+			) : (
+				<p>No lane changed since your last look.</p>
+			)}
+			<button className="link" onClick={saveLook}>
+				save this as your last look
+			</button>
+		</div>
+	);
+}
+function KeysBox(p: {
+	station: Station;
+	board: boolean;
+	flipBoard: () => void;
+}) {
+	return (
+		<div className="pop" role="dialog" aria-label="Keys">
+			<span className="lab">{phone() ? "More" : "Keys"}</span>
+			{p.station === "ask" && (
+				<button className="btn motionbtn" onClick={p.flipBoard}>
+					{p.board ? "Hide the board" : "Show the board"}
+				</button>
+			)}
+			<a className="btn motionbtn" href="/simulation" title={SIM_TITLE}>
+				Lane sim
+			</a>
+			<div className="keys">
+				{KEYS.map(([k, words]) => (
+					<React.Fragment key={k}>
+						<kbd>{k}</kbd>
+						<span>{words}</span>
+					</React.Fragment>
+				))}
+			</div>
+		</div>
+	);
+}
+type FrameProps = {
+	fleet: Fleet;
+	station: Station;
+	go: (s: Station) => void;
+	openLane: (id: string) => void;
+	saveLook: () => void;
+	children: React.ReactNode;
 };
+function Pops(
+	p: Omit<FrameProps, "children" | "go"> & {
+		pop: Pop;
+		close: () => void;
+		board: boolean;
+		flipBoard: () => void;
+	},
+) {
+	if (p.pop === "find")
+		return (
+			<>
+				<div className="veil" onClick={p.close} />
+				<FindBox
+					fleet={p.fleet}
+					close={p.close}
+					openLane={(id) => {
+						p.close();
+						p.openLane(id);
+					}}
+				/>
+			</>
+		);
+	if (p.pop === "changed")
+		return <ChangedBox fleet={p.fleet} saveLook={p.saveLook} />;
+	if (p.pop === "keys")
+		return (
+			<KeysBox station={p.station} board={p.board} flipBoard={p.flipBoard} />
+		);
+	if (p.pop === "save")
+		return (
+			<div className="pop" role="dialog" aria-label="Save">
+				<span className="lab">{freshness(p.fleet.updatedAt)}</span>
+				{`The board reads Firstmate's state again every ${POLL_MS / 1000} seconds; if it stays old, check that Firstmate is running.`}
+			</div>
+		);
+	return null;
+}
+// The board's keys: z shows or hides it on Ask, / Find lane, c changed lanes, ? keys, esc closes a box. A field keeps its keys.
+function useFrameKeys(
+	station: Station,
+	flipBoard: () => void,
+	toggle: Toggle,
+	close: () => void,
+) {
+	useEffect(() => {
+		const keys: Record<string, () => void> = {
+			"/": () => toggle("find"),
+			c: () => toggle("changed"),
+			"?": () => toggle("keys"),
+			Escape: close,
+			...(station === "ask" ? { z: flipBoard } : {}),
+		};
+		const key = (e: KeyboardEvent) => {
+			const run = keys[e.key];
+			const field = (e.target as HTMLElement).closest(
+				"input,textarea,select,[contenteditable=true]",
+			);
+			if (!run || e.metaKey || e.ctrlKey || e.altKey || field) return;
+			e.preventDefault();
+			run();
+		};
+		window.addEventListener("keydown", key);
+		return () => window.removeEventListener("keydown", key);
+	}, [station]);
+}
+// A lane that changed state since the reading before lights its strip mark and the summary once; the class drops at the next reading.
+function useFlash(fleet: Fleet) {
+	const seen = useRef<Record<string, string> | null>(null),
+		[flash, setFlash] = useState<string[]>([]);
+	useEffect(() => {
+		const ids = stateChanges(seen.current, fleet);
+		seen.current = Object.fromEntries(
+			fleet.stationLanes.map((l) => [l.id, l.state]),
+		);
+		setFlash((old) => (ids.length || old.length ? ids : old));
+	}, [fleet]);
+	return flash;
+}
+// The board around every station: top bar, station rail, the fleet strip and the phone's station bar.
+function Frame(p: FrameProps) {
+	const [board, setBoard] = useState(false),
+		[pop, setPop] = useState<Pop>(null);
+	const toggle: Toggle = (next) =>
+		setPop((old) => (old === next ? null : next));
+	const flipBoard = () => setBoard((shown) => !shown);
+	const close = () => setPop(null);
+	useFrameKeys(p.station, flipBoard, toggle, close);
+	const flash = useFlash(p.fleet);
+	const focus = p.station === "ask" && !board,
+		quiet = p.station === "ask" || p.station === "list";
+	const openFleet = () => p.go("fleet");
+	return (
+		<div
+			className={`frame v-${p.station}${quiet ? " quiet" : ""}${focus ? " focus" : ""}`}
+		>
+			<TopBar
+				fleet={p.fleet}
+				station={p.station}
+				focus={focus}
+				board={board}
+				flipBoard={flipBoard}
+				toggle={toggle}
+			/>
+			<Rail station={p.station} focus={focus} go={p.go} toggle={toggle} />
+			<main className="main">
+				{p.station !== "ask" && (
+					<Summary
+						fleet={p.fleet}
+						go={p.go}
+						toggle={toggle}
+						lit={flash.length > 0}
+					/>
+				)}
+				{p.children}
+			</main>
+			<div className="bot">
+				<div className="elbow" />
+				<FleetStrip fleet={p.fleet} open={openFleet} flash={flash} />
+			</div>
+			<nav className="tabs" aria-label="Stations">
+				<FleetStrip fleet={p.fleet} open={openFleet} flash={flash} />
+				<div>
+					<StationButtons station={p.station} go={p.go} />
+					<button className="find" onClick={() => toggle("find")}>
+						Find
+					</button>
+					<button className="more" onClick={() => toggle("keys")}>
+						More
+					</button>
+				</div>
+			</nav>
+			<Pops
+				fleet={p.fleet}
+				station={p.station}
+				openLane={p.openLane}
+				saveLook={p.saveLook}
+				pop={pop}
+				close={close}
+				board={board}
+				flipBoard={flipBoard}
+			/>
+		</div>
+	);
+}
 function App() {
 	const [fleet, setFleet] = useState<Fleet | null>(null),
 		[error, setError] = useState("");
@@ -60,7 +544,7 @@ function App() {
 			}
 		};
 		load();
-		const timer = setInterval(load, 3000);
+		const timer = setInterval(load, POLL_MS);
 		return () => {
 			controller.abort();
 			clearInterval(timer);
@@ -120,209 +604,193 @@ function App() {
 	const board = deriveBoard(fleet, mate),
 		lane = fleet.stationLanes.find((l) => l.id === selected) || board.rows[0];
 	const ship = lane ? assignedShip(lane.id, meshes) : undefined;
+	const saveLook = async () => {
+		try {
+			const response = await fetch("/last-look", {
+				method: "POST",
+				headers: { "X-Fleet-Action": "save" },
+			});
+			if (!response.ok) throw Error(await response.text());
+		} catch (e) {
+			setError(String(e));
+		}
+	};
 	return (
-		<main>
-			<style>{`*{box-sizing:border-box}body{background:#101318;color:#edf0f4;font:16px system-ui;margin:0}main{max-width:1400px;margin:auto;padding:20px}button,select,input,textarea{font:inherit}button,select{background:#252d39;color:inherit;border:1px solid #596171;border-radius:8px;padding:10px;cursor:pointer}button:focus-visible,select:focus-visible{outline:3px solid #82c8ed}button[aria-current=true]{border-color:#82c8ed;background:#34465c}header{border-bottom:1px solid #596171;padding-bottom:16px}nav,.strip,.actions{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}.strip span{padding:6px;border-bottom:3px solid}h1{font-size:26px}.muted{color:#b5bfcd}.list{overflow:auto}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 8px;border-bottom:1px solid #38404d}th{white-space:nowrap}td button{padding:5px;border:0;background:none;text-align:left}input[type=checkbox]{width:22px;height:22px}article{margin:20px 0;padding:18px;border:1px solid #596171;border-radius:12px}.state{text-transform:capitalize;white-space:nowrap}p{line-height:1.5}a{color:#82c8ed}@media(max-width:600px){main{padding:12px}th,td{padding:10px 5px;font-size:14px}.last-word{min-width:160px}nav button{flex:1}}`}</style>
-			{station !== "ask" && (
-				<header>
-					<h1>Fleet board</h1>
-					<p>{board.summary}</p>
-					<p className="muted">
-						{freshness(fleet.updatedAt)} · {fleet.hiddenAsks} old asks hidden
-					</p>
-					<nav aria-label="Stations">
-						{(["ask", "list", "fleet", "lane"] as Station[]).map((s) => (
-							<button
-								key={s}
-								aria-current={station === s}
-								onClick={() => setStation(s)}
-							>
-								{s[0].toUpperCase() + s.slice(1)}
-							</button>
-						))}
-					</nav>
-					<div className="strip">
-						{states.map((state) => (
-							<span key={state} style={{ borderColor: colors[state] }}>
-								{state}:{" "}
-								{fleet.stationLanes.filter((l) => l.state === state).length}
-							</span>
-						))}
-					</div>
-					<button
-						onClick={async () => {
-							try {
-								const response = await fetch("/last-look", {
-									method: "POST",
-									headers: { "X-Fleet-Action": "save" },
-								});
-								if (!response.ok) throw Error(await response.text());
-							} catch (e) {
-								setError(String(e));
-							}
-						}}
-					>
-						Save last look
-					</button>
-				</header>
-			)}
+		<Frame
+			fleet={fleet}
+			station={station}
+			go={setStation}
+			openLane={(id) => {
+				setSelected(id);
+				setStation("lane");
+			}}
+			saveLook={saveLook}
+		>
+			<style>{`.station .actions{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}.station button,.station select{background:#17131B;color:var(--text);border:1px solid #4A4252;border-radius:8px;padding:10px;cursor:pointer}.station header{border-bottom:1px solid var(--line);padding-bottom:16px}.station h1{font-size:26px}.list{overflow:auto}.station table{width:100%;border-collapse:collapse}.station th,.station td{text-align:left;padding:12px 8px;border-bottom:1px solid var(--line)}.station th{white-space:nowrap}.station td button{padding:5px;border:0;background:none;text-align:left}.station input[type=checkbox]{width:22px;height:22px}.station article{margin:20px 0;padding:18px;border:1px solid #4A4252;border-radius:12px}.state{text-transform:capitalize;white-space:nowrap}.station p{line-height:1.5}.station a{color:var(--peach)}@media(max-width:600px){.station th,.station td{padding:10px 5px;font-size:14px}.last-word{min-width:160px}}`}</style>
 			{error && <p role="alert">{error}</p>}
-			{station === "list" && (
-				<section>
-					<h2>List</h2>
-					<div className="actions">
-						<label>
-							Second mate{" "}
-							<select value={mate} onChange={(e) => setMate(e.target.value)}>
-								<option value="">All</option>
-								{board.mates.map((m) => (
-									<option key={m}>{m}</option>
-								))}
-							</select>
-						</label>
-						<button disabled={!checked.size} onClick={() => setStation("ask")}>
-							Ask selected lanes ({checked.size})
-						</button>
-					</div>
-					<div className="list">
-						<table>
-							<thead>
-								<tr>
-									<th>Select</th>
-									<th>Lane</th>
-									<th>State</th>
-									<th>Second mate</th>
-									<th>Quick asks</th>
-									<th>To read</th>
-									<th>Crew's last word</th>
-								</tr>
-							</thead>
-							<tbody>
-								{board.rows.map((row, index) => (
-									<React.Fragment key={row.id}>
-										{(index === 0 ||
-											board.rows[index - 1].state !== row.state) && (
-											<tr>
-												<th colSpan={7} scope="rowgroup" className="state">
-													{row.state}
-												</th>
-											</tr>
-										)}
-										<tr onFocus={() => setSelected(row.id)}>
-											<td>
-												<input
-													type="checkbox"
-													aria-label={`Select ${row.name}`}
-													checked={checked.has(row.id)}
-													onChange={() =>
-														setChecked((old) => {
-															const next = new Set(old);
-															next.has(row.id)
-																? next.delete(row.id)
-																: next.add(row.id);
-															return next;
-														})
-													}
-												/>
-											</td>
-											<td>
-												<button
-													onClick={() => {
-														setSelected(row.id);
-														setStation("lane");
-													}}
-												>
-													{row.name}
-												</button>
-											</td>
-											<td
-												className="state"
-												style={{ color: colors[row.state] }}
-											>
-												{row.state}
-											</td>
-											<td>{row.secondMate || "Main"}</td>
-											{["quick", "read"].map((effort) => (
-												<td key={effort}>
-													{row.asks
-														.filter((a) => a.effort === effort)
-														.map((a) => (
-															<p key={a.key}>{a.question || a.topic}</p>
-														))}
+			<div className="station">
+				{station === "list" && (
+					<section>
+						<h2>List</h2>
+						<div className="actions">
+							<label>
+								Second mate{" "}
+								<select value={mate} onChange={(e) => setMate(e.target.value)}>
+									<option value="">All</option>
+									{board.mates.map((m) => (
+										<option key={m}>{m}</option>
+									))}
+								</select>
+							</label>
+							<button
+								disabled={!checked.size}
+								onClick={() => setStation("ask")}
+							>
+								Ask selected lanes ({checked.size})
+							</button>
+						</div>
+						<div className="list">
+							<table>
+								<thead>
+									<tr>
+										<th>Select</th>
+										<th>Lane</th>
+										<th>State</th>
+										<th>Second mate</th>
+										<th>Quick asks</th>
+										<th>To read</th>
+										<th>Crew's last word</th>
+									</tr>
+								</thead>
+								<tbody>
+									{board.rows.map((row, index) => (
+										<React.Fragment key={row.id}>
+											{(index === 0 ||
+												board.rows[index - 1].state !== row.state) && (
+												<tr>
+													<th colSpan={7} scope="rowgroup" className="state">
+														{row.state}
+													</th>
+												</tr>
+											)}
+											<tr onFocus={() => setSelected(row.id)}>
+												<td>
+													<input
+														type="checkbox"
+														aria-label={`Select ${row.name}`}
+														checked={checked.has(row.id)}
+														onChange={() =>
+															setChecked((old) => {
+																const next = new Set(old);
+																next.has(row.id)
+																	? next.delete(row.id)
+																	: next.add(row.id);
+																return next;
+															})
+														}
+													/>
 												</td>
-											))}
-											<td className="last-word">
-												{row.now}
-												{!!row.invalidAsks && (
-													<p role="status">
-														{row.invalidAsks} malformed asks omitted
-													</p>
-												)}
-											</td>
-										</tr>
-									</React.Fragment>
-								))}
-							</tbody>
-						</table>
-					</div>
-				</section>
-			)}
-			{station === "lane" &&
-				(lane ? (
-					<LaneStation lane={lane} mesh={ship?.mesh} shipName={ship?.name} />
-				) : (
-					<p>No lanes.</p>
-				))}
-			{station === "fleet" && (
-				<FleetStation
+												<td>
+													<button
+														onClick={() => {
+															setSelected(row.id);
+															setStation("lane");
+														}}
+													>
+														{row.name}
+													</button>
+												</td>
+												<td
+													className="state"
+													style={{ color: stateColors[row.state] }}
+												>
+													{row.state}
+												</td>
+												<td>{row.secondMate || "Main"}</td>
+												{["quick", "read"].map((effort) => (
+													<td key={effort}>
+														{row.asks
+															.filter((a) => a.effort === effort)
+															.map((a) => (
+																<p key={a.key}>{a.question || a.topic}</p>
+															))}
+													</td>
+												))}
+												<td className="last-word">
+													{row.now}
+													{!!row.invalidAsks && (
+														<p role="status">
+															{row.invalidAsks} malformed asks omitted
+														</p>
+													)}
+												</td>
+											</tr>
+										</React.Fragment>
+									))}
+								</tbody>
+							</table>
+						</div>
+					</section>
+				)}
+				{station === "lane" &&
+					(lane ? (
+						<LaneStation lane={lane} mesh={ship?.mesh} shipName={ship?.name} />
+					) : (
+						<p>No lanes.</p>
+					))}
+				{station === "fleet" && (
+					<FleetStation
+						fleet={fleet}
+						meshes={meshes}
+						onSelect={(row) => setSelected(row.id)}
+					/>
+				)}
+				<AskStation
+					active={station === "ask"}
 					fleet={fleet}
 					meshes={meshes}
-					onSelect={(row) => setSelected(row.id)}
-				/>
-			)}
-			<AskStation
-				active={station === "ask"}
-				fleet={fleet}
-				meshes={meshes}
-				selectedLaneIds={checked.size ? [...checked] : undefined}
-				hiddenSelected={
-					fleet.stationLanes.filter(
-						(l) => checked.has(l.id) && !board.rows.includes(l),
-					).length
-				}
-				onBack={() => setStation("list")}
-				onConfirm={async (answers) => {
-					const response = await fetch("/answers", {
-						method: "POST",
-						headers: {
-							"Content-Type": "application/json",
-							"X-Fleet-Action": "confirm",
-						},
-						body: JSON.stringify({ confirmed: true, answers }),
-					});
-					if (!response.ok) throw Error(await response.text());
-					const results = await response.json();
-					try {
-						const refreshed = await fetch("/fleet.json", { cache: "no-store" });
-						if (!refreshed.ok) throw Error(await refreshed.text());
-						setFleet(await refreshed.json());
-					} catch (e) {
-						setError(
-							`Answer results received; fleet refresh failed: ${String(e)}`,
-						);
+					selectedLaneIds={checked.size ? [...checked] : undefined}
+					hiddenSelected={
+						fleet.stationLanes.filter(
+							(l) => checked.has(l.id) && !board.rows.includes(l),
+						).length
 					}
-					return results;
-				}}
-			/>
-			{modelWarnings.length > 0 && (
-				<details>
-					<summary>Model admission warnings</summary>
-					{modelWarnings.map((w) => (
-						<p key={w}>{w}</p>
-					))}
-				</details>
-			)}
-		</main>
+					onBack={() => setStation("list")}
+					onConfirm={async (answers) => {
+						const response = await fetch("/answers", {
+							method: "POST",
+							headers: {
+								"Content-Type": "application/json",
+								"X-Fleet-Action": "confirm",
+							},
+							body: JSON.stringify({ confirmed: true, answers }),
+						});
+						if (!response.ok) throw Error(await response.text());
+						const results = await response.json();
+						try {
+							const refreshed = await fetch("/fleet.json", {
+								cache: "no-store",
+							});
+							if (!refreshed.ok) throw Error(await refreshed.text());
+							setFleet(await refreshed.json());
+						} catch (e) {
+							setError(
+								`Answer results received; fleet refresh failed: ${String(e)}`,
+							);
+						}
+						return results;
+					}}
+				/>
+				{modelWarnings.length > 0 && (
+					<details>
+						<summary>Model admission warnings</summary>
+						{modelWarnings.map((w) => (
+							<p key={w}>{w}</p>
+						))}
+					</details>
+				)}
+			</div>
+		</Frame>
 	);
 }
 createRoot(document.getElementById("root")!).render(<App />);
