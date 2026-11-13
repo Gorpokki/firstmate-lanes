@@ -70,7 +70,7 @@ function LaneBatch(p:BatchProps){
  const sent=new Set(p.delivery?.map(r=>r.key));
  const rows=Object.values(p.answers).flatMap(answer=>{const ask=p.lane.asks.find(a=>a.key===answer.key);return ask?[{key:ask.key,q:question(ask),a:answerWords(ask,answer),sent:sent.has(ask.key)}]:[];});
  const pending=rows.filter(row=>!row.sent).length;
- if(!rows.length&&!p.error)return null;
+ if(!rows.length&&!p.delivery&&!p.error)return null;
  return <div className="answers" aria-label="Answers on this lane">
   <span className="lab">{pending?'Your answers on this lane':'Sent'}</span>
   <ol>{rows.map(row=><li key={row.key}><span className="aq">{row.q}</span><span className="aa">{row.a}</span>{row.sent&&<small>sent</small>}</li>)}</ol>
