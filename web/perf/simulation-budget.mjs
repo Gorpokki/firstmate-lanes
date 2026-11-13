@@ -5,7 +5,7 @@
 //
 // Needs Playwright with a Chromium build on NODE_PATH.
 import {spawn} from 'node:child_process';
-import {mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
+import {cpSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {createServer} from 'node:net';
 import {tmpdir} from 'node:os';
@@ -26,10 +26,21 @@ const reportPath=option('--report');
 const freePort=()=>new Promise((ok,fail)=>{const server=createServer();server.unref();server.on('error',fail);server.listen(0,'127.0.0.1',()=>{const {port}=server.address();server.close(()=>ok(port));});});
 const sleep=ms=>new Promise(ok=>setTimeout(ok,ms));
 
+// A copy of the sample home and its registered sample-mate, side by side, whose working lane is stamped now: lanes
+// older than two hours are not working, so the committed fixture would show no hull in work and no drones.
+function fixtureHome(){
+ const dir=mkdtempSync(join(tmpdir(),'fmlanes-home-')),home=join(dir,'sample-home');
+ cpSync(join(root,'testdata/sample-home'),home,{recursive:true});
+ cpSync(join(root,'testdata/sample-mate'),join(dir,'sample-mate'),{recursive:true});
+ const status=join(home,'state/api-retry.status');
+ writeFileSync(status,readFileSync(status,'utf8').replace(/\[at=\d+\]/g,`[at=${Math.floor(Date.now()/1000)}]`));
+ return {dir,home};
+}
+
 async function startServer(){
- const port=await freePort(),state=mkdtempSync(join(tmpdir(),'fmlanes-budget-'));
- const child=spawn(binary,['--home',join(root,'testdata/sample-home'),'--serve',`127.0.0.1:${port}`],{env:{...process.env,XDG_STATE_HOME:state,FM_LANES_CONFIG:''},stdio:['ignore','inherit','inherit']});
- const base=`http://127.0.0.1:${port}`,stop=()=>{child.kill();rmSync(state,{recursive:true,force:true});};
+ const port=await freePort(),state=mkdtempSync(join(tmpdir(),'fmlanes-budget-')),{dir,home}=fixtureHome();
+ const child=spawn(binary,['--home',home,'--serve',`127.0.0.1:${port}`],{env:{...process.env,XDG_STATE_HOME:state,FM_LANES_CONFIG:''},stdio:['ignore','inherit','inherit']});
+ const base=`http://127.0.0.1:${port}`,stop=()=>{child.kill();rmSync(state,{recursive:true,force:true});rmSync(dir,{recursive:true,force:true});};
  for(let i=0;i<100;i++){
   if(child.exitCode!==null){stop();throw Error(`server exited with ${child.exitCode}`);}
   try{if((await fetch(`${base}/meshes.json`)).ok)return {base,stop};}catch{}
@@ -141,10 +152,12 @@ try{
  await page.waitForSelector('section[aria-label="Fleet"]');
  await page.getByRole('group',{name:'Fleet display'}).getByRole('button',{name:'Shipyard',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('canvas[aria-label^="Shipyard:"]')&&window.__yardFrames>0);
+ await page.getByRole('group',{name:'Yard zoom'}).getByRole('button',{name:'fit all'}).click();
+ await sleep(500);
  const combined=await measure(page,cdp,requests,windowMs);
  const rates=combinedRates(combined);
  report.measurements.shipyardCombined={...combined,...rates};
- check('shipyard with drones and the side ship spinning stays within the frame budgets',combined.yardFrames>0&&rates.panelFramesPerSecond<=limits.maxActiveFramesPerSecond&&rates.yardFramesPerSecond<=limits.maxActiveFramesPerSecond,rates);
+ check('shipyard with drones and the side ship spinning stays within the frame budgets',[rates.panelFramesPerSecond,rates.yardFramesPerSecond].every(fps=>fps>=limits.minActiveFramesPerSecond&&fps<=limits.maxActiveFramesPerSecond),rates);
  check('shipyard with drones and the side ship spinning stays within the script budget',rates.scriptMsPerSecond<=limits.activeScriptMsPerSecond,rates);
  await page.getByRole('button',{name:'Stop ship spin'}).click();
  await sleep(500);
@@ -158,12 +171,12 @@ try{
  const perSecond=m=>({framesPerSecond:+(m.yardFrames*1000/m.ms).toFixed(1),scriptMsPerSecond:Math.round(m.scriptMs*1000/m.ms)});
  const drag=await measure(page,cdp,requests,windowMs,undefined,dragYard);
  report.measurements.shipyardDrag={...drag,...perSecond(drag)};
- check('shipyard drag stays within the frame budget',perSecond(drag).framesPerSecond<=limits.maxActiveFramesPerSecond,perSecond(drag));
+ check('shipyard drag stays within the frame budget',perSecond(drag).framesPerSecond>=limits.minActiveFramesPerSecond&&perSecond(drag).framesPerSecond<=limits.maxActiveFramesPerSecond,perSecond(drag));
  check('shipyard drag stays within the script budget',perSecond(drag).scriptMsPerSecond<=limits.activeScriptMsPerSecond,perSecond(drag));
 
  const drones=await measure(page,cdp,requests,windowMs);
  report.measurements.shipyardDrones={...drones,...perSecond(drones)};
- check('shipyard drones fly and stay within the frame budget',drones.yardFrames>0&&perSecond(drones).framesPerSecond<=limits.maxActiveFramesPerSecond,perSecond(drones));
+ check('shipyard drones fly and stay within the frame budget',perSecond(drones).framesPerSecond>=limits.minActiveFramesPerSecond&&perSecond(drones).framesPerSecond<=limits.maxActiveFramesPerSecond,perSecond(drones));
  check('shipyard drones stay within the script budget',perSecond(drones).scriptMsPerSecond<=limits.activeScriptMsPerSecond,perSecond(drones));
 
  const still=await measure(page,cdp,requests,windowMs,async()=>{await page.keyboard.press('m');await sleep(200);});
