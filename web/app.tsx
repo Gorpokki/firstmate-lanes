@@ -18,7 +18,11 @@ import {
 } from "./stations";
 import { FleetStation } from "./FleetStation";
 import { LaneStation } from "./LaneStation";
-import { AskStation } from "./AskStation";
+import {
+	AskStation,
+	type DeliveryResult,
+	type SittingAnswer,
+} from "./AskStation";
 import { ListStation } from "./ListStation";
 import { Simulation } from "./Simulation";
 import { assignedShip, loadCatalog, type ShipMesh } from "./mesh-catalog";
@@ -39,9 +43,13 @@ const KEYS: [string, string][] = [
 	["/", "find a lane by name, the holding lanes too"],
 	["c", "the lanes that changed since your last look"],
 	["?", "these keys"],
-	["esc", "close a box"],
+	["esc", "close a box · lane: back"],
 	["space", "list: tick the lane · ask, lane: spin the ship, or stop it"],
 	["o", "ask station: type your own answer"],
+	["v", "ship view: ASCII lit, ASCII flat, bars"],
+	["i", "lane: its list of asks, with find"],
+	["arrows", "lane: ← → turn the ship, ↑ ↓ its asks"],
+	["1-9 s w g u y", "lane: choose, skip, defer, grill, undo, send"],
 	["1-4", "ask station: choose that answer"],
 	[
 		"s",
@@ -548,6 +556,7 @@ function App() {
 		[error, setError] = useState(""),
 		[, setFailedReads] = useState(0);
 	const [station, setStation] = useState<Station>("list"),
+		[back, setBack] = useState<Station>("list"),
 		[mate, setMate] = useState(""),
 		[selected, setSelected] = useState("");
 	const [checked, setChecked] = useState<Set<string>>(new Set());
@@ -555,6 +564,11 @@ function App() {
 	const [meshes, setMeshes] = useState<ShipMesh[]>([]),
 		[modelWarnings, setModelWarnings] = useState<string[]>([]);
 	const simulation = location.pathname === "/simulation";
+	// The Lane station's esc goes back to the station that opened it.
+	const go = (next: Station) => {
+		if (next === "lane" && station !== "lane") setBack(station);
+		setStation(next);
+	};
 	const tick = (id: string) => {
 		if (!fleet || !keepNeedingTicks(fleet, new Set([id])).size) return;
 		setChecked((old) => {
@@ -634,7 +648,7 @@ function App() {
 			};
 			if (keys[e.key]) {
 				e.preventDefault();
-				setStation(keys[e.key]);
+				go(keys[e.key]);
 			}
 			if (e.code === "Space" && station === "list" && selected) {
 				e.preventDefault();
@@ -646,7 +660,7 @@ function App() {
 	}, [station, selected, simulation, fleet]);
 	if (simulation)
 		return (
-			<main>
+			<main className="sim-page">
 				<Simulation meshes={meshes} />
 				{modelWarnings.map((w) => (
 					<p role="status" key={w}>
@@ -660,9 +674,32 @@ function App() {
 		fleet.stationLanes.find((l) => l.id === selected) || fleet.stationLanes[0];
 	const openLane = (id: string) => {
 		setSelected(id);
-		setStation("lane");
+		go("lane");
 	};
 	const ship = lane ? assignedShip(lane.id, meshes) : undefined;
+	// One batch of answers, from the Ask station's sitting or from one lane, through the answer command.
+	const sendAnswers = async (answers: SittingAnswer[]) => {
+		const response = await fetch("/answers", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"X-Fleet-Action": "confirm",
+			},
+			body: JSON.stringify({ confirmed: true, answers }),
+		});
+		if (!response.ok) throw Error(await response.text());
+		const results: DeliveryResult[] = await response.json();
+		try {
+			const refreshed = await fetch("/fleet.json", {
+				cache: "no-store",
+			});
+			if (!refreshed.ok) throw Error(await refreshed.text());
+			takeFleet(await refreshed.json());
+		} catch (e) {
+			setError(`Answer results received; fleet refresh failed: ${String(e)}`);
+		}
+		return results;
+	};
 	const saveLook = async () => {
 		try {
 			const response = await fetch("/last-look", {
@@ -678,7 +715,7 @@ function App() {
 		<Frame
 			fleet={fleet}
 			station={station}
-			go={setStation}
+			go={go}
 			openLane={openLane}
 			saveLook={saveLook}
 			have={have}
@@ -701,7 +738,14 @@ function App() {
 				)}
 				{station === "lane" &&
 					(lane ? (
-						<LaneStation lane={lane} mesh={ship?.mesh} shipName={ship?.name} />
+						<LaneStation
+							key={lane.id}
+							lane={lane}
+							mesh={ship?.mesh}
+							shipName={ship?.name}
+							onBack={() => setStation(back)}
+							onConfirm={sendAnswers}
+						/>
 					) : (
 						<p>No lanes.</p>
 					))}
@@ -719,37 +763,11 @@ function App() {
 					selectedLaneIds={checked.size ? [...checked] : undefined}
 					hiddenSelected={hiddenTicked(fleet, checked, mate)}
 					onBack={() => setStation("list")}
-					onOpenLane={(id) => {
-						setSelected(id);
-						setStation("lane");
-					}}
+					onOpenLane={openLane}
 					onAnswered={(ids) =>
 						setHave((old) => (old.join() === ids.join() ? old : ids))
 					}
-					onConfirm={async (answers) => {
-						const response = await fetch("/answers", {
-							method: "POST",
-							headers: {
-								"Content-Type": "application/json",
-								"X-Fleet-Action": "confirm",
-							},
-							body: JSON.stringify({ confirmed: true, answers }),
-						});
-						if (!response.ok) throw Error(await response.text());
-						const results = await response.json();
-						try {
-							const refreshed = await fetch("/fleet.json", {
-								cache: "no-store",
-							});
-							if (!refreshed.ok) throw Error(await refreshed.text());
-							takeFleet(await refreshed.json());
-						} catch (e) {
-							setError(
-								`Answer results received; fleet refresh failed: ${String(e)}`,
-							);
-						}
-						return results;
-					}}
+					onConfirm={sendAnswers}
 				/>
 				{modelWarnings.length > 0 && (
 					<details>

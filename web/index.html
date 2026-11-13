@@ -61,7 +61,7 @@ kbd { font:500 16px/1 Menlo,'SF Mono',Consolas,monospace; color:var(--dim); text
 .barnav { display:flex; gap:30px; margin-right:auto; margin-left:max(220px, 18%); } .frame .barnav button { background:linear-gradient(#6A5F6E, #6A5F6E) no-repeat 0 calc(100% + 5px) / 100% 1px; background-origin:content-box; color:#DCCFDE; font:600 15px/1 var(--lab); letter-spacing:.12em; text-transform:uppercase; display:inline-flex; gap:8px; align-items:baseline; } .barnav button:hover { color:#fff; }
 
 /* every text control has one resting mark: one line under its words and its key */
-.frame .link { color:var(--dim); font:600 14px/1 var(--lab); letter-spacing:.08em; text-transform:uppercase; padding:6px 0; white-space:nowrap; background:linear-gradient(#5E5560, #5E5560) no-repeat 0 calc(100% + 5px) / 100% 1px; background-origin:content-box; } .link:hover { color:var(--text); } .link kbd { margin-left:6px; }
+.frame .link, .sim-page .link { color:var(--dim); font:600 14px/1 var(--lab); letter-spacing:.08em; text-transform:uppercase; padding:6px 0; white-space:nowrap; background:linear-gradient(#5E5560, #5E5560) no-repeat 0 calc(100% + 5px) / 100% 1px; background-origin:content-box; } .link:hover { color:var(--text); } .link kbd { margin-left:6px; }
 
 /* the board's summary: two rows, the same on every reading station; only the need-you numbers are bright */
 .topline { display:flex; flex-wrap:wrap; align-items:baseline; gap:0 16px; margin-bottom:6px; } .topline .quiet { margin-left:auto; display:flex; gap:18px; }
@@ -75,9 +75,9 @@ kbd { font:500 16px/1 Menlo,'SF Mono',Consolas,monospace; color:var(--dim); text
 .pop { position:fixed; right:22px; top:50px; z-index:7; background:#17131B; border:1px solid #4A4252; border-radius:10px; padding:16px 20px; max-width:560px; font-size:16px; box-shadow:0 12px 40px #000c; } .pop .lab { color:var(--peach); margin-bottom:10px; display:block; }
 .pop.names { max-width:640px; } .pop.names p { margin:0 0 7px; color:var(--dim); } .pop.names b { color:var(--text); font-weight:600; } .pop.names i { font-style:normal; }
 .keys { display:grid; grid-template-columns:auto 1fr; gap:5px 16px; } .keys kbd { color:var(--text); }
-.frame .btn { border:1.5px solid #8F8477; border-radius:999px; padding:10px 20px; font:600 16px/1 var(--lab); letter-spacing:.08em; text-transform:uppercase; min-height:46px; display:inline-flex; align-items:center; gap:10px; color:var(--text); text-decoration:none; } .btn:hover { background:#1D1921; } .frame .motionbtn { display:none; }
+.frame .btn, .sim-page .btn { border:1.5px solid #8F8477; border-radius:999px; padding:10px 20px; font:600 16px/1 var(--lab); letter-spacing:.08em; text-transform:uppercase; min-height:46px; display:inline-flex; align-items:center; gap:10px; color:var(--text); text-decoration:none; } .btn:hover { background:#1D1921; } .frame .motionbtn { display:none; }
 .pop.find { left:50%; right:auto; top:86px; transform:translateX(-50%); width:min(760px, calc(100vw - 20px)); max-width:none; display:flex; flex-direction:column; gap:4px; } .pop.find .lab { color:#DCCFBD; }
-.find input { font:500 24px/1.2 var(--body); color:#FFF4DC; background:#000; border:1.5px solid var(--peach); border-radius:8px; padding:9px 14px; margin-bottom:6px; outline:0; width:100%; } .find input::placeholder { color:#857A70; }
+.find input, .pop.idx input { font:500 24px/1.2 var(--body); color:#FFF4DC; background:#000; border:1.5px solid var(--peach); border-radius:8px; padding:9px 14px; margin-bottom:6px; outline:0; width:100%; } .find input::placeholder { color:#857A70; }
 .frame .hit { display:grid; grid-template-columns:11px auto auto 1fr; gap:1px 10px; align-items:baseline; padding:7px 10px; border-radius:6px; color:var(--dim); font-size:15.5px; } .hit i { width:11px; height:11px; border-radius:50%; align-self:center; } .hit b { color:var(--text); font:600 18px/1.2 var(--body); } .hit .lab { margin:0; color:var(--text); display:inline; }
 .hit .q2 { grid-column:2 / 5; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .hit.sel, .hit:hover { background:#2A2430; } .hit.sel .q2 { color:var(--text); white-space:normal; } .find .foot { color:var(--dim); font-size:14.5px; padding:4px 10px 0; }
 .veil { position:fixed; inset:0; background:#000c; z-index:6; }
@@ -98,6 +98,54 @@ kbd { font:500 16px/1 Menlo,'SF Mono',Consolas,monospace; color:var(--dim); text
   .frame.quiet .tabs div button:not(.on) { background:#17131B; } .tabs div button:first-child { border-radius:24px 0 0 24px; } .frame .tabs div button.find, .frame .tabs div button.more { background:var(--f3); color:#D2C2D4; } .tabs div button.more { border-radius:0 24px 24px 0; }
   .frame .motionbtn { display:inline-flex; margin:0 8px 8px 0; } .pop .keys { display:none; }
   .pop { left:10px; right:10px; top:auto; bottom:90px; } .pop.find { top:34px; bottom:auto; left:10px; right:10px; transform:none; width:auto; } .frame .hit { grid-template-columns:11px 1fr auto; } .hit span:nth-of-type(2) { display:none; } .hit .q2 { grid-column:2 / 4; } kbd.k { display:none; }
+}
+
+/* the holo view: the board's one ship renderer under every holo, its name and build, and its controls */
+.holo-view { display:flex; flex-direction:column; gap:10px; min-width:0; }
+canvas.ship { display:block; width:100%; height:clamp(220px,40vh,420px); cursor:grab; touch-action:none; background:#000; }
+.shipname { display:flex; flex-wrap:wrap; align-items:baseline; gap:12px; font:600 15px/1 var(--lab); letter-spacing:.1em; text-transform:uppercase; color:var(--text); } .shipname span { color:#B8AB9B; }
+.tools { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; color:var(--dim); font-size:14px; } .tools kbd { font-size:13px; } .tools .hint { font-size:13.5px; color:#9C8F84; }
+.seg2 { display:inline-flex; border:1.5px solid #8F8477; border-radius:999px; overflow:hidden; }
+.holo-view .seg2 button { padding:6px 12px; min-height:32px; font:600 13px/1 var(--lab); letter-spacing:.08em; text-transform:uppercase; color:var(--dim); background:none; border:0; border-radius:999px; cursor:pointer; }
+.holo-view .seg2 button.on { color:#FFF4DC; box-shadow:inset 0 0 0 1.5px #FFF4DC; } .holo-view .seg2.cam button { min-width:34px; text-align:center; font-size:16px; }
+.lane .link, .holo-view .link { border:0; border-radius:0; } /* links stay links inside the station, not boxed buttons */
+/* the Lane station: the ship left with its name, build and status log; the lane's asks answered beside it */
+.lane { display:flex; gap:34px; margin-top:16px; }
+.lane .holo { flex:0 1 50%; min-width:0; display:flex; flex-direction:column; gap:10px; } .lane canvas.ship { height:clamp(260px,52vh,560px); }
+.lane .side { flex:1 1 50%; min-width:0; display:flex; flex-direction:column; gap:14px; padding-top:6px; }
+.lane h2 { font:600 24px/1.1 var(--lab); letter-spacing:.06em; text-transform:uppercase; margin:0; }
+.lane .state { display:flex; flex-wrap:wrap; align-items:center; gap:9px; color:var(--dim); font-size:16px; text-transform:none; white-space:normal; } .lane .state i { width:11px; height:11px; border-radius:50%; flex:none; } .lane .state b { color:var(--text); font:600 14px/1 var(--lab); letter-spacing:.08em; text-transform:uppercase; white-space:nowrap; }
+.nowlab { font:600 14px/1 var(--lab); letter-spacing:.1em; text-transform:uppercase; color:#B8AB9B; }
+.lane p.now { margin:0; color:var(--dim); font-size:16.5px; } .lane p.big { color:var(--text); font-size:22px; } .lane .last { display:flex; flex-direction:column; gap:8px; }
+.log { display:flex; flex-direction:column; gap:8px; max-height:188px; overflow-y:auto; margin-top:6px; padding-right:6px; }
+.logstrip { display:flex; gap:2px; height:8px; flex:none; } .logstrip i { flex:1; border-radius:2px; }
+.log ol { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:5px; }
+.log li { display:grid; grid-template-columns:136px 96px 1fr; gap:0 10px; font-size:15px; color:var(--dim); } .log li b { font:600 13.5px/1.5 var(--lab); letter-spacing:.08em; text-transform:uppercase; }
+.log .at { font-family:Menlo,'SF Mono',Consolas,monospace; font-size:13px; color:#B8AB9B; } .log .tx { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; } .log li:hover .tx, .log li:focus .tx { -webkit-line-clamp:unset; color:var(--text); }
+.lane .card { border-left:6px solid var(--peach); padding:4px 0 4px 18px; display:flex; flex-direction:column; gap:12px; }
+.lane .ctop { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; color:var(--dim); }
+.lane .q { font:500 30px/1.15 var(--body); margin:0; color:#FFF4DC; } .lane .why { margin:0; color:var(--dim); font-size:17px; }
+.lane .opts { display:flex; flex-direction:column; gap:8px; }
+.lane .opt { display:flex; align-items:center; gap:12px; min-height:44px; padding:8px 14px; border:1.5px solid #4A434E; border-radius:12px; background:none; color:var(--text); font-size:18px; text-align:left; cursor:pointer; }
+.lane .opt.on { border-color:var(--peach); background:#2A2430; } .lane .opt .ol { display:flex; flex:1; justify-content:space-between; gap:12px; } .lane .opt small.fx { display:block; color:var(--dim); font-size:15px; } .lane .opt em { color:var(--peach); font-style:normal; font-size:14px; white-space:nowrap; }
+.lane .ownans { display:flex; align-items:center; gap:10px; } .lane .ownans input { flex:1; min-width:0; color:var(--text); background:#000; border:1.5px solid #4A434E; border-radius:10px; padding:8px 12px; } .lane .ownans.on input { border-color:var(--peach); }
+.lane .hint { display:flex; flex-wrap:wrap; gap:6px 18px; }
+.lane .answers { display:flex; flex-direction:column; gap:8px; border-top:1px solid var(--line); padding-top:12px; } .lane .answers ol, .lane .answers ul { margin:0; padding-left:20px; color:var(--dim); } .lane .answers .aa { color:var(--text); margin-left:8px; }
+/* a lane's list of asks (i), with its own find */
+.pop.names.idx { width:min(1120px, calc(100vw - 44px)); max-width:none; font-size:15px; } .pop.idx input { font-size:18px; }
+.pop.idx button { display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:4px 8px; border:0; border-radius:4px; background:none; color:var(--text); }
+.pop.idx button b { color:var(--peach); min-width:2.2em; } .pop.idx button .e { color:var(--dim); white-space:nowrap; flex:none; width:4.4em; } .pop.idx button .iq { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pop.idx button.on { background:#2A2430; color:#FFF4DC; } .pop.idx p.pv { margin:10px 0 0; padding-top:9px; border-top:1px solid #3A3440; color:var(--text); font-size:17px; } .pop.idx .foot { display:block; margin-top:8px; color:var(--dim); font-size:14px; }
+/* the lane simulation: its own page, so it never reads the fleet */
+.sim-page { min-height:100vh; padding:20px 26px; } .sim-page .lane { margin-top:0; } .sim-page button { color:inherit; background:none; border:0; padding:0; cursor:pointer; text-align:left; }
+.lane.sim .side { gap:11px; } .lane.sim h2 { font:600 24px/1.1 var(--lab); letter-spacing:.06em; text-transform:uppercase; margin:0; }
+.simrow { display:flex; flex-wrap:wrap; align-items:center; gap:10px; } .simrow select { color:var(--text); background:#17131B; border:1px solid #4A4252; border-radius:8px; padding:8px; margin-left:8px; } .sim-page .btn { min-height:38px; }
+.simsteps { display:flex; flex-wrap:wrap; gap:6px; }
+.sim-page .simsteps button { display:flex; align-items:center; gap:10px; min-height:32px; padding:0 12px; border:1.5px solid var(--line); border-radius:18px; color:var(--dim); font-size:15px; }
+.sim-page .simsteps button.on { border-color:var(--peach); color:var(--text); } .simsteps i { width:11px; height:11px; border-radius:50%; flex:none; } .simsteps b { color:var(--text); font-weight:600; }
+@media (max-width:760px) {
+  .lane { flex-direction:column; gap:14px; } .lane canvas.ship { height:240px; } .lane .q { font-size:24px; } .log li { grid-template-columns:auto 80px 1fr; } .tools .hint { display:none; }
+  .sim-page { padding:10px; } .pop.idx button .e { display:none; }
 }
 </style>
 </head>

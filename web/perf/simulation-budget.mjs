@@ -44,9 +44,10 @@ function visibilityControl(){
  Object.defineProperty(Document.prototype,'visibilityState',{configurable:true,get:()=>hidden?'hidden':'visible'});
  Object.defineProperty(Document.prototype,'hidden',{configurable:true,get:()=>hidden});
  window.__setHidden=value=>{hidden=value;document.dispatchEvent(new Event('visibilitychange'));};
+ // Counts ship frames: every paint of the holo canvas starts with one fill of its whole background.
  window.__frames=0;
- const watch=()=>{const ship=document.querySelector('pre[aria-label="Rendered ship"]');if(!ship){requestAnimationFrame(watch);return;}new MutationObserver(()=>{window.__frames++;}).observe(ship,{childList:true,characterData:true,subtree:true});};
- addEventListener('DOMContentLoaded',watch);
+ const fill=CanvasRenderingContext2D.prototype.fillRect;
+ CanvasRenderingContext2D.prototype.fillRect=function(x,y,width,height){if(x===0&&y===0&&width>20&&this.canvas.matches('canvas[aria-label^="Rendered ship"]'))window.__frames++;return fill.call(this,x,y,width,height);};
 }
 
 async function measure(page,cdp,requests,ms,act){
@@ -78,7 +79,7 @@ try{
  const requests=[];page.on('request',request=>requests.push(new URL(request.url()).pathname));
  const cdp=await page.context().newCDPSession(page);await cdp.send('Performance.enable');
  await page.goto(`${server.base}/simulation`);
- await page.waitForFunction(()=>{const ship=document.querySelector('pre[aria-label="Rendered ship"]');return ship&&ship.textContent!=='No admitted ship'&&ship.textContent.trim().length>0;});
+ await page.waitForFunction(()=>document.querySelector('canvas[aria-label^="Rendered ship"]')&&window.__frames>0);
  await sleep(500);
 
  const active=await measure(page,cdp,requests,windowMs);
@@ -89,7 +90,7 @@ try{
  check('active simulation advances',active.labelBefore!==active.labelAfter,{from:active.labelBefore,to:active.labelAfter});
 
  const untouched=await measure(page,cdp,requests,windowMs,async()=>{
-  await page.getByText('Failure breakup · stress 100% · separation 100% · particles 0%').waitFor({timeout:20000});
+  await page.getByText('Failure · the debris has left the field').waitFor({timeout:20000});
   await sleep(200);
  });
  report.measurements.untouchedSettled=untouched;
@@ -118,9 +119,8 @@ try{
  check('idle page makes no requests',idle.requests.length<=limits.idleRequests,{requests:idle.requests});
  check('idle page stays within the script budget',idle.scriptMs<=limits.idleScriptMs,{scriptMs:idle.scriptMs,max:limits.idleScriptMs});
 
- await page.getByRole('combobox',{name:'State'}).selectOption('failed');
- await page.getByRole('button',{name:'Resume',exact:true}).click();
- await page.getByText('Failure breakup · stress 100% · separation 100% · particles 0%').waitFor({timeout:15000});
+ await page.getByRole('button',{name:'Failed',exact:true}).click();
+ await page.getByText('Failure · the debris has left the field').waitFor({timeout:15000});
  const settled=await measure(page,cdp,requests,windowMs);
  report.measurements.settled=settled;
  check('settled breakup with spin stopped draws no ship frames',settled.frames<=limits.settledFrames,{frames:settled.frames});

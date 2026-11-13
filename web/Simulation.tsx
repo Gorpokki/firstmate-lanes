@@ -2,56 +2,72 @@ import React,{useEffect,useState} from 'react';
 import {Holo} from './Holo';
 import {budget,simulationTicks} from './animation-budget';
 import {usePageHidden} from './page-visibility';
+import type {BlastPhase} from './scenes';
+import {stateColors} from './stations';
 import type {TriangleMesh} from './holo-renderer';
-import {createSimulation,fractureAt,fractureDuration,simulationStates,stepSimulation,type SimulationState} from './simulation-model';
 
 type SimulationMesh={id:string;name:string;mesh:TriangleMesh};
 type SimulationProps={meshes:SimulationMesh[]};
-
-type SimState=ReturnType<typeof createSimulation>;
-type Choice=SimulationState|'blocked'|'failed';
-type Mode='ascii'|'quadrant';
-const choiceState=(state:Choice):SimState=>state==='failed'?{state:'done',failed:true,fractureElapsed:0}:state==='blocked'?{state:'needs you',sourceState:'blocked',failed:false,fractureElapsed:0}:{state,failed:false,fractureElapsed:0};
-const label=(sim:SimState)=>sim.failed?'failed breakup':sim.sourceState??sim.state;
+type Step={label:string;state:string;sourceState?:string;progress?:number;note:string};
+// One ship run through each state a lane can have, so the holo view can be reviewed state by state. It ends in the
+// failure: stress, the rupture, and debris that drifts out of the field; then the page rests.
+const STEPS:Step[]=[
+ {label:'Queued',state:'working',progress:.12,note:'scaffold: the wire frame, nothing built'},
+ {label:'Working',state:'working',note:'the hull grows from the stern'},
+ {label:'Waiting, not on you',state:'waiting',note:'the hull is nearly complete'},
+ {label:'Needs you',state:'needs you',note:'the same hull in the needs-you colour'},
+ {label:'Blocked',state:'needs you',sourceState:'blocked',note:'the build stops at half, a steady grey ship'},
+ {label:'Holding',state:'holding',note:'a part hull in grey'},
+ {label:'Done',state:'done',note:'the hull is complete: launched'},
+ {label:'Failed',state:'needs you',note:'the ship fails: stress, a rupture, then debris that drifts out of the field'},
+];
+const LAST=STEPS.length-1;
+const PHASE_LINE:Record<BlastPhase,string>={stress:'Failure · stress: the hull erupts',rupture:'Failure · rupture: the blast',debris:'Failure · debris drifting',settled:'Failure · the debris has left the field'};
 function useSelectedMesh(meshes:SimulationMesh[]){
  const [meshId,setMeshId]=useState(meshes[0]?.id??'');
  const selected=meshes.find(mesh=>mesh.id===meshId)??meshes[0];
  useEffect(()=>{if(!meshes.some(mesh=>mesh.id===meshId))setMeshId(meshes[0]?.id??'');},[meshes,meshId]);
  return [selected,setMeshId] as const;
 }
-function useSimulationClock(running:boolean,settled:boolean,setSimulation:React.Dispatch<React.SetStateAction<SimState>>){
+// the states advance one step each simulationStepMs while shown and running; the failure is the last step
+function useSimulationClock(running:boolean,done:boolean,setStep:React.Dispatch<React.SetStateAction<number>>){
  const hidden=usePageHidden();
- useEffect(()=>{if(!simulationTicks({hidden,running,settled}))return;const timer=window.setInterval(()=>setSimulation(current=>stepSimulation(current)),budget.simulationStepMs);return()=>window.clearInterval(timer);},[hidden,running,settled]);
+ useEffect(()=>{if(!simulationTicks({hidden,running,settled:done}))return;const timer=window.setInterval(()=>setStep(n=>Math.min(LAST,n+1)),budget.simulationStepMs);return()=>window.clearInterval(timer);},[hidden,running,done]);
 }
-function FailureReadout({elapsed}:{elapsed:number}){
- const fracture=fractureAt(elapsed);
- return <div aria-live="polite" style={{marginTop:12}}>Failure breakup · stress {Math.round(fracture.stress*100)}% · separation {Math.round(fracture.separation*100)}% · particles {Math.round(fracture.particles*100)}%</div>;
-}
-function Stage({selected,simulation,mode,settled}:{selected?:SimulationMesh;simulation:SimState;mode:Mode;settled:boolean}){
- return <div style={{border:'1px solid #596171',borderRadius:12,padding:16,background:'radial-gradient(ellipse at center,#1d2a39,#10151d 75%)',minHeight:300,display:'grid',placeItems:'center'}}>
-   <Holo mesh={selected?.mesh} name={selected?.name??'No ships loaded'} idle={settled} state={simulation.failed?'done':simulation.state} progress={simulation.failed?1:undefined} options={{mode:mode==='ascii'?'lit':'blocks',blocks:simulation.sourceState==='blocked',fractureElapsed:simulation.failed?simulation.fractureElapsed:undefined}} />
-  </div>;
+function ShipPicker({meshes,selected,setMeshId}:{meshes:SimulationMesh[];selected?:SimulationMesh;setMeshId:(id:string)=>void}){
+ const index=Math.max(0,meshes.findIndex(mesh=>mesh.id===selected?.id)),pick=(by:number)=>meshes.length&&setMeshId(meshes[(index+by+meshes.length)%meshes.length]!.id);
+ return <div className="simrow">
+  <label className="lab">Ship <select aria-label="Ship" value={selected?.id??''} onChange={event=>setMeshId(event.target.value)}>{meshes.map(mesh=><option key={mesh.id} value={mesh.id}>{mesh.name}</option>)}</select></label>
+  <span className="lab">{meshes.length?`${index+1} of ${meshes.length}`:'No admitted ship'}</span>
+  <button type="button" className="btn" onClick={()=>pick(-1)}>‹ previous</button><button type="button" className="btn" onClick={()=>pick(1)}>next ›</button>
+ </div>;
 }
 export function Simulation({meshes}:SimulationProps){
- const [simulation,setSimulation]=useState(createSimulation),[running,setRunning]=useState(true),[mode,setMode]=useState<Mode>('ascii');
+ const [step,setStep]=useState(0),[running,setRunning]=useState(true),[blast,setBlast]=useState<number|null>(null),[phase,setPhase]=useState<BlastPhase|null>(null);
  const [selected,setMeshId]=useSelectedMesh(meshes);
- const settled=simulation.failed&&simulation.fractureElapsed>=fractureDuration;
- useSimulationClock(running,settled,setSimulation);
- const selectState=(state:Choice)=>{setSimulation(choiceState(state));};
- return <section aria-label="Lane simulation" style={{color:'#e8edf5',maxWidth:900,margin:'0 auto',padding:20}}>
-  <h1>Lane simulation</h1>
- <p>Synthetic lane · {label(simulation)}</p>
-  <div style={{display:'flex',flexWrap:'wrap',gap:12,alignItems:'center',marginBottom:16}}>
-   <label>Ship <select aria-label="Ship" value={selected?.id??''} onChange={event=>setMeshId(event.target.value)}>{meshes.map(mesh=><option key={mesh.id} value={mesh.id}>{mesh.name}</option>)}</select></label>
-   <button type="button" onClick={()=>setRunning(value=>!value)}>{running?'Pause':'Resume'}</button>
-   <button type="button" onClick={()=>setSimulation(createSimulation())}>Restart</button>
-   <button type="button" onClick={()=>setSimulation(stepSimulation)}>Step</button>
-   <label>State <select aria-label="State" value={simulation.failed?'failed':simulation.sourceState??simulation.state} onChange={event=>selectState(event.target.value as Choice)}>
-    {simulationStates.map(state=><option key={state}>{state}</option>)}<option value="blocked">blocked (needs you)</option><option value="failed">failed</option>
-   </select></label>
-   <label>Output <select aria-label="Output mode" value={mode} onChange={event=>setMode(event.target.value as Mode)}><option value="ascii">ASCII</option><option value="quadrant">Quadrant</option></select></label>
+ const failing=step===LAST,current=STEPS[step]!;
+ useSimulationClock(running,failing,setStep);
+ useEffect(()=>{setPhase(null);setBlast(failing?performance.now():null);},[failing,selected?.id]); // the failure blows the ship up; every other state builds it again
+ const blowUp=()=>{setStep(LAST);setRunning(true);setPhase(null);setBlast(performance.now());};
+ useEffect(()=>{const key=(event:KeyboardEvent)=>{if(event.key==='x'&&!event.metaKey&&!event.ctrlKey&&!event.altKey&&!(event.target as HTMLElement).closest('input,select,textarea'))blowUp();};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
+ const choose=(index:number)=>{if(index===LAST)blowUp();else{setStep(index);setRunning(false);}};
+ return <section aria-label="Lane simulation" className="lane sim">
+  <div className="holo">
+   <Holo mesh={selected?.mesh} name={selected?.name??'No ships loaded'} state={current.state} sourceState={current.sourceState} progress={current.progress} options={{failed:failing}} idle={phase==='settled'} blast={blast} paused={!running} onPhase={setPhase}/>
   </div>
-  <Stage selected={selected} simulation={simulation} mode={mode} settled={settled}/>
-  {simulation.failed&&<FailureReadout elapsed={simulation.fractureElapsed}/>}
+  <div className="side">
+   <div><a className="link" href="/">‹ back to the board</a></div>
+   <h2>Lane simulation</h2>
+   <p className="now">Synthetic lane · {current.label}</p>
+   <ShipPicker meshes={meshes} selected={selected} setMeshId={setMeshId}/>
+   <div className="simrow"><span className="lab">State</span>
+    <button type="button" className="btn" onClick={()=>setRunning(value=>!value)}>{running?'Pause':'Resume'}</button>
+    <button type="button" className="btn" onClick={()=>{setStep(0);setRunning(true);}}>Restart</button>
+    <button type="button" className="btn" onClick={()=>setStep(n=>Math.min(LAST,n+1))}>Step</button>
+    <button type="button" className="btn" onClick={blowUp}>Blow it up<kbd>x</kbd></button>
+   </div>
+   <div className="simsteps" role="group" aria-label="State">{STEPS.map((s,i)=><button key={s.label} type="button" className={i===step?'on':''} aria-pressed={i===step} title={s.note} onClick={()=>choose(i)}><i style={{background:stateColors[s.sourceState?'holding':s.state]}}/><b>{s.label}</b></button>)}</div>
+   <p className="now" aria-live="polite">{failing&&phase?PHASE_LINE[phase]:`${current.label}: ${current.note}.`}</p>
+  </div>
  </section>;
 }

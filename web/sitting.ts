@@ -34,6 +34,9 @@ export function deferForLater(fleet:Fleet,refs:readonly string[]):SittingItem[]{
 // One batch: send only once every ask still in the sitting has a choice, own answer, skip or grill. Deferred asks have left the sitting.
 export const unansweredCount=(items:readonly SittingItem[],answers:Readonly<Record<string,SittingAnswer>>)=>items.filter(item=>!answers[item.ref]).length;
 export const batchReady=(items:readonly SittingItem[],answers:Readonly<Record<string,SittingAnswer>>)=>items.length>0&&unansweredCount(items,answers)===0;
+// A lane's batch holds at most four asks, the most one answer command takes. It keeps its asks while any is still pending, so a refresh, a defer or a refusal does not pull in the next asks; once none is pending, the next four take its place.
+export const laneBatch=(pending:readonly string[],batch:readonly string[])=>batch.some(key=>pending.includes(key))?[...batch]:pending.slice(0,4);
+export const acceptedKeys=(results:readonly DeliveryResult[]|null)=>new Set((results??[]).filter(result=>result.accepted).map(result=>result.key));
 
 export function undoAnswer(answers:Record<string,SittingAnswer>,ref:string):Record<string,SittingAnswer>{
  const next={...answers};
