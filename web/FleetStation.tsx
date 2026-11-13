@@ -68,7 +68,7 @@ export function FleetStation({fleet,meshes,lane,motion,flash,onSelect,onOpen}:Pr
   const key=(e:KeyboardEvent)=>{const run=keys[e.key];if(!run||fieldKey(e))return;e.preventDefault();run();};
   window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);
  },[yard]);
- return <section className="fleet-station" aria-label="Fleet">
+ return <section className={`fleet-station${yard?' shipyard':''}`} aria-label="Fleet">
   <div className="vtitle">
    <span className="lab">Fleet · {rows.length} {rows.length===1?'lane':'lanes'}</span>
    <span className="seg2" role="group" aria-label="Fleet display"><button type="button" className={yard?'':'on'} aria-pressed={!yard} onClick={()=>setYard(false)}>Heat grid</button><button type="button" className={yard?'on':''} aria-pressed={yard} onClick={()=>setYard(true)}>Shipyard</button></span><Key k="b"/>

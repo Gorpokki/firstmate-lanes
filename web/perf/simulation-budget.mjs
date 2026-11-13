@@ -191,6 +191,14 @@ try{
  const yardRequests=yardHidden.requests.filter(path=>path!=='/fleet.json');
  check('hidden shipyard makes no requests of its own',yardRequests.length<=limits.hiddenRequests,{requests:yardRequests});
  check('hidden shipyard stays within the script budget',yardHidden.scriptMs<=limits.hiddenScriptMs,{scriptMs:yardHidden.scriptMs,max:limits.hiddenScriptMs});
+
+ // The shipyard ends inside the frame and the station does not scroll, so fit all fits the yard that is in view.
+ await page.evaluate(()=>window.__setHidden(false));
+ for(const [width,height] of [[1440,900],[1280,720]]){
+  await page.setViewportSize({width,height});await sleep(300);
+  const fit=await page.evaluate(()=>{const main=document.querySelector('main.main'),yard=document.querySelector('canvas[aria-label^="Shipyard:"]');return {yardBottom:Math.round(yard.getBoundingClientRect().bottom),frameBottom:Math.round(main.getBoundingClientRect().bottom),stationScroll:main.scrollHeight-main.clientHeight};});
+  check(`shipyard fits the frame at ${width} x ${height}`,fit.yardBottom<=fit.frameBottom&&fit.stationScroll<=0,fit);
+ }
 }finally{
  await browser?.close();server?.stop();
 }
