@@ -120,7 +120,6 @@ try{
  check('idle page stays within the script budget',idle.scriptMs<=limits.idleScriptMs,{scriptMs:idle.scriptMs,max:limits.idleScriptMs});
 
  await page.getByRole('button',{name:'Failed',exact:true}).click();
- await page.getByRole('button',{name:'Resume',exact:true}).click();
  await page.getByText('Failure · the debris has left the field').waitFor({timeout:15000});
  const settled=await measure(page,cdp,requests,windowMs);
  report.measurements.settled=settled;

@@ -160,6 +160,7 @@ export function Holo({mesh,state,sourceState,progress,name,idle,options,blast=nu
  const {canvas,kick}=useShipCanvas(live,pose),{handlers,zoomBy,tilt,reset}=useGestures(canvas,pose,kick);
  useShipKeys(turnKeys,by=>{pose.current.left+=by;kick();});
  useEffect(()=>{if(blast===null)setPhase(null);},[blast]);
+ useEffect(()=>{if(paused)pose.current.prog=goal;},[goal,state,sourceState]);
  useEffect(()=>kick(),[mesh,state,status,goal,view.mode,view.inner,spinning,paused,hidden,blast]);
  return <section aria-label="Holo view" className="holo-view">
   <canvas ref={canvas} className="ship" role="img" aria-label={`Rendered ship: ${name}`} {...handlers}/>

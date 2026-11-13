@@ -50,7 +50,7 @@ export function Simulation({meshes}:SimulationProps){
  useEffect(()=>{setPhase(null);setBlast(failing?performance.now():null);},[failing,selected?.id]); // the failure blows the ship up; every other state builds it again
  const blowUp=()=>{setStep(LAST);setRunning(true);setPhase(null);setBlast(performance.now());};
  useEffect(()=>{const key=(event:KeyboardEvent)=>{if(event.key==='x'&&!event.metaKey&&!event.ctrlKey&&!event.altKey&&!(event.target as HTMLElement).closest('input,select,textarea'))blowUp();};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
- const choose=(index:number)=>{setStep(index);setRunning(false);if(index===LAST){setPhase(null);setBlast(performance.now());}};
+ const choose=(index:number)=>{if(index===LAST)blowUp();else{setStep(index);setRunning(false);}};
  return <section aria-label="Lane simulation" className="lane sim">
   <div className="holo">
    <Holo mesh={selected?.mesh} name={selected?.name??'No ships loaded'} state={current.state} sourceState={current.sourceState} progress={current.progress} options={{failed:failing}} idle={phase==='settled'} blast={blast} paused={!running} onPhase={setPhase}/>
