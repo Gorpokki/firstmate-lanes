@@ -21,9 +21,7 @@ func TestRecordPreferredAndMissingRecordFallsBack(t *testing.T) {
 	}
 	sentence := "Compare three cache layers for the read API and write the results to a report"
 	backlog := "## In flight\n- [ ] fallback - " + sentence + " (kind: scout)\n- [ ] example - A sentence the record name replaces (kind: ship)\n"
-	if err := os.WriteFile(filepath.Join(home, "data", "backlog.md"), []byte(backlog), 0600); err != nil {
-		t.Fatal(err)
-	}
+	writeTestFile(t, filepath.Join(home, "data", "backlog.md"), []byte(backlog))
 	for name, data := range map[string]string{
 		"example.status":    "done [at=1768046400]: Obsolete status",
 		"fallback.status":   "working [at=1768046400]: Status example",
@@ -48,8 +46,9 @@ func TestRecordPreferredAndMissingRecordFallsBack(t *testing.T) {
 	if found["fallback"].Now != "Status example" {
 		t.Fatalf("fallback lost: %#v", found["fallback"])
 	}
-	if f, e := found["fallback"], found["example"]; f.Name != "fallback" || f.Title != sentence || e.Name != "Record example" || e.Title != "" {
-		t.Fatalf("names: fallback %q/%q, record %q/%q", f.Name, f.Title, e.Name, e.Title)
+	f, e := found["fallback"], found["example"]
+	if got, want := [4]string{f.Name, f.Title, e.Name, e.Title}, [4]string{"fallback", sentence, "Record example", ""}; got != want {
+		t.Fatalf("fallback and record name/title = %q, want %q", got, want)
 	}
 }
 
