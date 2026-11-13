@@ -267,7 +267,7 @@ func TestCaptainHoldTextStaysInLaneViewOfLongLog(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := model{fleet: BuildFleet(lanes, start.Add(time.Hour)), view: 3, w: 100, h: 30}
-	if view := m.View(); !strings.Contains(view, "Owner picks the route") || !strings.Contains(view, "recent step 19") {
+	if view := m.View(); !strings.Contains(view, "Owner picks the route") || !strings.Contains(view, "recent step 18") || strings.Contains(view, "early step 0") {
 		t.Fatalf("captain hold text or recent status missing from the Lane view:\n%s", view)
 	}
 }
