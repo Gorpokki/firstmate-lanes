@@ -69,7 +69,7 @@ type BatchProps={lane:Lane;answers:Answers;left:number;deferred:number;ready:boo
 function LaneBatch(p:BatchProps){
  const sent=acceptedKeys(p.delivery);
  const rows=Object.values(p.answers).flatMap(answer=>{const ask=p.lane.asks.find(a=>a.key===answer.key);return ask?[{key:ask.key,q:question(ask),a:answerWords(ask,answer),sent:sent.has(ask.key)}]:[];});
- const pending=rows.filter(row=>!row.sent).length,allAccepted=!!p.delivery?.every(r=>r.accepted);
+ const pending=rows.filter(row=>!row.sent).length,allAccepted=!!p.delivery?.every(r=>r.accepted||sent.has(r.key));
  if(!rows.length&&!p.delivery&&!p.error)return null;
  return <div className="answers" aria-label="Answers on this lane">
   <span className="lab">{pending?'Your answers on this lane':allAccepted?'Sent':'Delivery'}</span>
