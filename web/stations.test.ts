@@ -34,6 +34,9 @@ test('the summary brightens only the need-you numbers and names what changed',()
 test('the strip and Find keep one lane order',()=>{
  expect(fleetOrder(fleet).map(l=>l.id)).toEqual(['old','new','work','parked']);
  expect(findLanes(fleet,'PAR').rows.map(l=>l.id)).toEqual(['parked']);
+ const sentenced={...fleet,stationLanes:[{...lane('fallback','working','',''),title:'Compare three cache layers in the report'}]};
+ expect(findLanes(sentenced,'cache layers').rows.map(l=>l.id)).toEqual(['fallback']);
+ expect(findLanes(sentenced,'fallback').rows.map(l=>l.id)).toEqual(['fallback']);
  expect(findLanes(fleet,'  ').n).toBe(0);
  expect(findFoot('zz',0,0)).toBe('No lane has this name.');
 });

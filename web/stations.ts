@@ -65,7 +65,7 @@ export function boardSummary(fleet:Fleet):SummaryPart[][] {
 export const FIND_LIMIT=6;
 export function findLanes(fleet:Fleet,query:string) {
  const words=query.toLowerCase().split(/\s+/).filter(Boolean);
- const all=words.length?fleetOrder(fleet).filter(l=>words.every(w=>l.name.toLowerCase().includes(w))):[];
+ const all=words.length?fleetOrder(fleet).filter(l=>{const text=`${l.name} ${l.title??''}`.toLowerCase();return words.every(w=>text.includes(w));}):[];
  return {rows:all.slice(0,FIND_LIMIT),n:all.length};
 }
 export const findFoot=(query:string,shown:number,n:number)=>!query.trim()?'esc closes':!n?'No lane has this name.':`${n>shown?`${shown} of ${n} lanes · type more to narrow · `:''}↑ ↓ choose · enter opens the lane · esc closes`;
