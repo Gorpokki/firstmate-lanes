@@ -3,7 +3,6 @@ import {spinFrameDue,spinTicks} from './animation-budget';
 import {usePageHidden} from './page-visibility';
 import {fractureDuration} from './simulation-model';
 import {renderHolo,type RenderOptions,type TriangleMesh} from './holo-renderer';
-import {stateColors} from './stations';
 
 type HoloProps={mesh?:TriangleMesh;state:string;sourceState?:string;progress?:number;name:string;idle?:boolean;options?:(Pick<RenderOptions,'blocks'|'fragments'|'mode'|'fractureElapsed'>&{failed?:boolean})};
 const reducedMotion=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -50,7 +49,7 @@ function useDragRotate(setAngle:React.Dispatch<React.SetStateAction<{yaw:number;
 function HoloControls({spinning,setSpinning,setZoom}:{spinning:boolean;setSpinning:React.Dispatch<React.SetStateAction<boolean>>;setZoom:React.Dispatch<React.SetStateAction<number>>}){
  return <div><button type="button" aria-label={spinning?'Stop ship spin':'Start ship spin'} onClick={()=>setSpinning(value=>!value)}>{spinning?'Pause spin':'Spin'}</button><button type="button" aria-label="Zoom out" onClick={()=>setZoom(value=>Math.max(.55,value-.15))}>−</button><button type="button" aria-label="Zoom in" onClick={()=>setZoom(value=>Math.min(2.5,value+.15))}>+</button></div>;
 }
-const shipColor=(blocks:boolean|undefined,state:string)=>blocks?'#ff6464':stateColors[state]??'#8fe6ff';
+const shipColor=(blocks:boolean|undefined,state:string)=>blocks?'#ff6464':state==='holding'?'#b6a4c7':'#8fe6ff';
 function ShipText({frame,blocks,state,zoom}:{frame:string;blocks?:boolean;state:string;zoom:number}){
  return <pre aria-label="Rendered ship" className={blocks?'holo-blocked':undefined} style={{margin:0,color:shipColor(blocks,state),fontSize:`${12*zoom}px`,lineHeight:1,whiteSpace:'pre',textShadow:'0 0 8px currentColor'}}>{frame}</pre>;
 }
