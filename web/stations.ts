@@ -25,7 +25,7 @@ export const keepNeedingTicks=(fleet:Fleet,ticked:ReadonlySet<string>)=>new Set(
 type Focused={tagName?:string;type?:string;isContentEditable?:boolean}|null;
 export function keepsKey(el:Focused,key:string){
  const tag=el?.tagName,presses=tag==='BUTTON'||tag==='A'||tag==='SUMMARY';
- if(el?.isContentEditable||tag==='TEXTAREA'||tag==='SELECT'||(tag==='INPUT'&&el?.type!=='checkbox'&&el?.type!=='radio'))return true;
+ if(el?.isContentEditable||tag==='TEXTAREA'||tag==='SELECT'||(tag==='INPUT'&&el?.type!=='checkbox'))return true;
  return key==='Space'?presses||tag==='INPUT':key==='Enter'&&presses;
 }
 // An ask's age: one bar segment per day up to a week; from 5.5 days it is overdue, and the sixth and seventh segments are bright and tall.
