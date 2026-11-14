@@ -196,8 +196,7 @@ Choice asks require two to four labelled choices with effects.
 `pick` is an optional zero-based choice index; a supplied pick requires `pick_reason`.
 `no_pick_reason` may explain why the crew gave no pick.
 `effort` is `quick` or `read`.
-`close` is optional and is `done` or `release`. A question-shaped ask leaves it out. An ask whose key is a held work item sets `release`, so the answer lifts the hold and does not complete the work. Any other value makes the ask malformed. An answer names the `close` mode its ask showed; the mode sent comes from the current ask, and an answer made for another mode is refused as no longer open.
-A discussion ask uses `form: "discussion"`, `topic` and a nonempty `must_decide` string array instead of `question`, `choices` and a pick.
+`close` is optional and is `done` or `release`. A question-shaped ask leaves it out. An ask whose key is a held work item sets `release`, so the answer lifts the hold and does not complete the work. Any other value makes the ask malformed.A discussion ask uses `form: "discussion"`, `topic` and a nonempty `must_decide` string array instead of `question`, `choices` and a pick.
 Links have `id`, `title` and `url`; history entries have `at`, `state` and optional `text`.
 Use a current `asked` timestamp when trying the example; old asks intentionally disappear from sittings.
 The second mate belongs to the lane, not to each ask.

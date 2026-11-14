@@ -19,8 +19,6 @@ type SittingAnswer struct {
 	Choice int       `json:"choice,omitempty"`
 	Text   string    `json:"text,omitempty"`
 	Asked  time.Time `json:"asked"`
-	// Close is the close mode the user saw. It only has to match the current ask; the mode sent comes from that ask.
-	Close string `json:"close,omitempty"`
 }
 type DeliveryResult struct {
 	Lane     string `json:"lane"`
@@ -106,7 +104,7 @@ func answersOpenKeys(lanes []Lane) map[string]int {
 
 func answersFindAsk(row StationLane, answer SittingAnswer) *StationAsk {
 	for j := range row.Asks {
-		if row.Asks[j].Key == answer.Key && row.Asks[j].Asked.Equal(answer.Asked) && row.Asks[j].Close == answer.Close {
+		if row.Asks[j].Key == answer.Key && row.Asks[j].Asked.Equal(answer.Asked) {
 			return &row.Asks[j]
 		}
 	}

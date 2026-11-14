@@ -1,6 +1,6 @@
 import type {Ask,Fleet} from './stations';
 
-export type SittingAnswer={lane:string;key:string;kind:'choice'|'own'|'skip'|'grill';choice?:number;text?:string;asked:string;close?:string};
+export type SittingAnswer={lane:string;key:string;kind:'choice'|'own'|'skip'|'grill';choice?:number;text?:string;asked:string};
 export type DeliveryResult={lane:string;key:string;accepted:boolean;reason:string};
 export type SittingItem={lane:Fleet['stationLanes'][number];ask:Ask;ref:string;round:number};
 export type ReviewRow={lane:string;key:string;question:string;answer:string};
@@ -23,7 +23,7 @@ export function buildSitting(fleet:Fleet,selectedLaneIds?:string[],deferred:Read
 }
 
 export function answerFor(item:SittingItem,kind:SittingAnswer['kind'],choice?:number,text?:string):SittingAnswer{
- return {lane:item.lane.id,key:item.ask.key,kind,asked:item.ask.asked,...(item.ask.close?{close:item.ask.close}:{}),...(kind==='choice'&&choice!==undefined?{choice}:{}),...(kind==='own'&&text!==undefined?{text}:{})};
+ return {lane:item.lane.id,key:item.ask.key,kind,asked:item.ask.asked,...(kind==='choice'&&choice!==undefined?{choice}:{}),...(kind==='own'&&text!==undefined?{text}:{})};
 }
 
 export function deferForLater(fleet:Fleet,refs:readonly string[]):SittingItem[]{

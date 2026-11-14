@@ -57,13 +57,6 @@ test('a sitting is sendable only when every ask still in it is answered, skipped
  expect(batchReady([],{})).toBe(false);
 });
 
-test('an answer names the close mode of the ask it answers, and only that',()=>{
- const release={...ask('a1'),close:'release'};
- const [held,plain]=buildSitting(fleet(lane('a','Mate',[release]),lane('b','Mate',[ask('b1')])));
- expect(answerFor(held,'skip').close).toBe('release');
- expect('close' in answerFor(plain,'skip')).toBe(false);
-});
-
 test('a lane is hollow only when each of its asks has an answer',()=>{
  const data=fleet(lane('a','Mate',[ask('a1'),ask('a2')]),lane('b','Mate',[ask('b1')]),lane('c','Mate',[]));
  const [a1,b1,a2]=buildSitting(data);
