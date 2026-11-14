@@ -141,8 +141,21 @@ func TestStationFleetOrdersNeedsYouByOldestAskThenStates(t *testing.T) {
 	for i, row := range rows {
 		got[i] = row.ID
 	}
-	// A lane with no known wait (a returned ask or a block with no time) follows every lane whose wait is known.
+	// A lane with no known wait (a returned ask with no time) follows every lane whose wait is known.
 	if want := []string{"needs-old", "needs-mixed", "needs-new", "quiet", "undated", "waiting", "working", "done", "holding"}; !slices.Equal(got, want) {
+		t.Fatalf("order = %v, want %v", got, want)
+	}
+}
+
+func TestStationFleetWaitsBlockedLaneFromItsUpdateBeforeUndatedReturn(t *testing.T) {
+	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	lanes := []Lane{
+		{ID: "alpha", OwnerDir: "/home", State: "needs-decision", UpdatedAt: now, Decisions: []Decision{{Key: "alpha", Verb: "needs-decision"}}},
+		{ID: "zeta", State: "needs you", UpdatedAt: now.Add(-48 * time.Hour), Record: &LaneRecord{}},
+	}
+	rows, _, _ := stationFleet(lanes, now)
+	got := []string{rows[0].ID, rows[1].ID}
+	if want := []string{"zeta", "alpha"}; !slices.Equal(got, want) {
 		t.Fatalf("order = %v, want %v", got, want)
 	}
 }

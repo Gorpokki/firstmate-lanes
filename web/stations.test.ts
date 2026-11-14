@@ -81,7 +81,7 @@ test('a tick box keeps only space; a text field keeps every key; a button keeps 
 });
 
 const returnedLane=(id:string,returnedSince:string,updatedAt:string,asked='')=>({...lane(id,'needs you','build',asked),invalidAsks:1,returnedSince,updatedAt});
-const boardOf=(...stationLanes:ReturnType<typeof returnedLane>[])=>({updatedAt:'2026-01-10T12:00:00Z',hiddenAsks:0,autonomyShare:0,changedLanes:[],stationLanes}) as unknown as Fleet;
+const boardOf=(...stationLanes:Lane[])=>({updatedAt:'2026-01-10T12:00:00Z',hiddenAsks:0,autonomyShare:0,changedLanes:[],stationLanes}) as unknown as Fleet;
 const ageOf=(board:Fleet,id:string)=>{const {quick,read}=listRows(board,'',Date.parse(board.updatedAt));return [...quick,...read].find(r=>r.lane.id===id)?.age;};
 
 test('a lane whose open asks are all returned waits from its oldest decision, not its latest note',()=>{
@@ -108,4 +108,12 @@ test('a returned ask without a time stays unknown, says why and sorts after lane
  expect(rows.map(r=>r.lane.id)).toEqual(['recent','undated']);
  expect(Number.isNaN(ageOf(board,'undated'))).toBe(true);
  expect(rows.map(unknownWhy)).toEqual(['','no ask time']);
+});
+
+test('a blocked lane with a real update time sorts before a returned ask with no time, and shows that wait',()=>{
+ const blocked={...lane('zeta','needs you','build',''),updatedAt:'2026-01-08T12:00:00Z'};
+ const board=boardOf(returnedLane('alpha','0001-01-01T00:00:00Z','2026-01-10T11:59:00Z'),blocked);
+ expect(fleetOrder(board).map(l=>l.id)).toEqual(['zeta','alpha']);
+ expect(ageOf(board,'zeta')).toBe(2*1440);
+ expect(ageOf(board,'alpha')).toBeNaN();
 });

@@ -12,18 +12,18 @@ export const mateOf=(lane:Lane)=>lane.secondMate||NO_MATE;
 export type ListRow={lane:Lane;ask?:Ask;age:number};
 const knownTime=(iso:string|undefined)=>{const t=Date.parse(iso||'');return t>0?t:NaN;}; // Go's zero time and a missing time are unknown
 const oldestFirst=(a:Ask,b:Ask)=>(knownTime(a.asked)||Infinity)-(knownTime(b.asked)||Infinity);
-const waitTimes=(lane:Lane):(string|undefined)[]=>lane.asks.length?lane.asks.map(a=>a.asked):[lane.returnedSince];
+const waitTimes=(lane:Lane):(string|undefined)[]=>lane.asks.length?lane.asks.map(a=>a.asked):[lane.returnedSince??(lane.state==='needs you'?lane.updatedAt:undefined)];
 const knownWait=(lane:Lane)=>Math.min(...waitTimes(lane).map(knownTime).filter(Number.isFinite));
 // Asks not in a fixed form (ADR 0003) are no cards: they go back to the crew and only their count shows.
 export const returnedWords=(n:number)=>`${plural(n,'ask')} not in the ask form went back to the crew.`;
 export const returnedOnly=(lane:Lane)=>lane.asks.length===0&&lane.returnedSince!==undefined;
 // Why a row's wait is unknown: what it waits from has no time. Empty when the wait is known.
-export const unknownWhy=({lane,age}:ListRow)=>Number.isFinite(age)?'':lane.asks.length||returnedOnly(lane)?'no ask time':'no update time';
+export const unknownWhy=({age}:ListRow)=>Number.isFinite(age)?'':'no ask time';
 export const listQuestion=({lane,ask}:ListRow)=>ask?ask.question||ask.topic||ask.key:returnedOnly(lane)?returnedWords(lane.invalidAsks??0):/^blocked\b/i.test(lane.now)?lane.now:`Blocked: ${lane.now||'the crew cannot clear it'}`;
 export function listRows(fleet:Fleet,mate='',now=Date.now()) {
  const need=fleetOrder(fleet).filter(l=>l.state==='needs you'),counts=new Map<string,number>();
  for(const lane of need)counts.set(mateOf(lane),(counts.get(mateOf(lane))??0)+1);
- const rows:ListRow[]=need.filter(l=>!mate||mateOf(l)===mate).map(lane=>{const ask=lane.asks.toSorted(oldestFirst)[0],open=lane.asks.length>0||lane.returnedSince!==undefined,since=open?knownWait(lane):knownTime(lane.updatedAt);return {lane,ask,age:Number.isFinite(since)?Math.max(0,(now-since)/60000):NaN};});
+ const rows:ListRow[]=need.filter(l=>!mate||mateOf(l)===mate).map(lane=>{const ask=lane.asks.toSorted(oldestFirst)[0],since=knownWait(lane);return {lane,ask,age:Number.isFinite(since)?Math.max(0,(now-since)/60000):NaN};});
  return {quick:rows.filter(r=>r.ask?.effort==='quick'),read:rows.filter(r=>r.ask?.effort!=='quick'),mates:[...counts].toSorted((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))};
 }
 // Ticked lanes that the mate filter hides from the List: they stay ticked and go into the sitting.

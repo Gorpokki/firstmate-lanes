@@ -129,6 +129,8 @@ func (l StationLane) waitSince() time.Time {
 	}
 	if len(l.Asks) == 0 && l.ReturnedSince != nil {
 		t = *l.ReturnedSince
+	} else if len(l.Asks) == 0 && l.State == "needs you" {
+		t = l.UpdatedAt
 	}
 	return t
 }
