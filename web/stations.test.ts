@@ -1,6 +1,9 @@
 import {test,expect} from 'bun:test';
 import {ageDays,boardSummary,findFoot,findLanes,fleetOrder,freshness,hiddenTicked,isOld,keepNeedingTicks,keepsKey,laneWords,listQuestion,listRows,overdue,returnedOnly,stateChanges,unknownWhy,type Lane} from './stations';
 import {buildSitting} from './sitting';
+import {createElement} from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {AgeBar,ListStation} from './ListStation';
 
 const lane=(id:string,state:string,secondMate:string,asked:string)=>({id,name:id,state,secondMate,home:'main',now:'Example',asks:asked?[{key:id,form:'discussion',question:'Example?',reason:'Choose',effort:'quick',asked,answerable:true}]:[]});
 const fleet={updatedAt:'2026-01-10T12:00:00Z',stationLanes:[lane('old','needs you','build','2026-01-09T12:00:00Z'),lane('new','needs you','design','2026-01-10T11:00:00Z'),lane('work','working','design',''),lane('parked','holding','','')],hiddenAsks:2,autonomyShare:0.5,changedLanes:['work']};
@@ -116,4 +119,14 @@ test('a blocked lane with a real update time sorts before a returned ask with no
  expect(fleetOrder(board).map(l=>l.id)).toEqual(['zeta','alpha']);
  expect(ageOf(board,'zeta')).toBe(2*1440);
  expect(ageOf(board,'alpha')).toBeNaN();
+});
+
+test('the List and Ask age bars share one name: Age before 5.5 days, Overdue from 5.5 days with tall sixth and seventh segments',()=>{
+ const ago=(days:number)=>new Date(Date.now()-days*86400000).toISOString(),noop=()=>{};
+ const board={...fleet,stationLanes:[lane('week','needs you','',ago(6.6)),lane('edge','needs you','',ago(5.5)),lane('under','needs you','',ago(5.5-1/1440))]};
+ const bars=(html:string)=>[...html.matchAll(/<span class="agebar"([^>]*)>(.*?)<\/span>/g)].map(([,attrs,segs])=>[attrs.trim(),(segs.match(/class="od"/g)||[]).length]);
+ const list=renderToStaticMarkup(createElement(ListStation,{fleet:board,mate:'',setMate:noop,ticked:new Set<string>(),tick:noop,selected:'',select:noop,openLane:noop,decide:noop}));
+ const want=[['role="img" aria-label="Overdue"',2],['role="img" aria-label="Overdue"',1],['role="img" aria-label="Age"',0]];
+ expect(bars(list)).toEqual(want);
+ expect([6.6,5.5,5.5-1/1440].flatMap(days=>bars(renderToStaticMarkup(createElement(AgeBar,{minutes:days*1440}))))).toEqual(want);
 });
