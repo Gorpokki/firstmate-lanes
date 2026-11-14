@@ -1,5 +1,6 @@
 // Measures the /simulation page against the idle and hidden budgets in
 // web/perf/budget.json, in a real headless Chromium against the real server.
+// Then checks that at phone width the Ask station's ship covers no text or control.
 //
 //   node web/perf/simulation-budget.mjs --binary ./fmlanes [--report out.json]
 //
@@ -46,7 +47,7 @@ async function startServer(extraLanes=0){
  const base=`http://127.0.0.1:${port}`,stop=()=>{child.kill();rmSync(state,{recursive:true,force:true});rmSync(dir,{recursive:true,force:true});};
  for(let i=0;i<100;i++){
   if(child.exitCode!==null){stop();throw Error(`server exited with ${child.exitCode}`);}
-  try{if((await fetch(`${base}/meshes.json`)).ok)return {base,stop};}catch{}
+  try{if((await fetch(`${base}/meshes.json`)).ok)return {base,home,stop};}catch{}
   await sleep(100);
  }
  stop();throw Error('server did not start');
@@ -80,6 +81,47 @@ async function measure(page,cdp,requests,ms,act,during){
   scriptMs:Math.round((after.metrics.ScriptDuration-before.metrics.ScriptDuration)*1000),
   taskMs:Math.round((after.metrics.TaskDuration-before.metrics.TaskDuration)*1000),
  };
+}
+
+// A lane whose four quick asks, first in the sitting, cover both ask forms, each with a one-line and a four-line question
+// and a long reason.
+function writePhoneAsks(home){
+ const asked=new Date().toISOString(),reason='The retry change waits on this answer. The crew tried each route on a copy of the night run, and each one breaks a different job, so this reason is long on purpose.';
+ const long=topic=>`Should the retry ${topic} for every client, including the two old clients that still send their requests by hand at night?`;
+ const choices=[{label:'Queue route',effect:'Retries wait in the shared queue'},{label:'Direct route',effect:'Each client retries on its own'},{label:'Both, by client',effect:'Old clients keep the direct route'}];
+ const choice=(key,question)=>({form:'choice',key,question,reason,choices,effort:'quick',asked});
+ const discussion=(key,topic)=>({form:'discussion',key,topic,must_decide:['Which clients move first','Who watches the night run'],reason,effort:'quick',asked});
+ const asks=[choice('route-short','Which route should the retry use?'),choice('route-long',long('use the queue route')),discussion('night-short','How should the night run change?'),discussion('night-long',long('wait for the night run'))];
+ writeFileSync(join(home,'state/phone-ask.lane.json'),JSON.stringify({name:'Retry route',state:'needs you',now:'Waiting for the route',start:asked,asks}));
+ return asks.length;
+}
+// In the page: the ship's box, the question's lines, and every text or control of the card that the ship covers.
+function measureAskCard(card){
+ const ship=card.querySelector('.shipbox canvas.ship').getBoundingClientRect(),q=card.querySelector('.q'),qBox=q.getBoundingClientRect();
+ const crosses=r=>r.left<ship.right&&ship.left<r.right&&r.top<ship.bottom&&ship.top<r.bottom;
+ const covered=[...card.querySelectorAll('.q,.why,.must li,.pickwhy,.opt,.ownans,button,input')].filter(e=>!e.closest('.shipbox')&&e.getClientRects().length&&crosses(e.getBoundingClientRect())).map(e=>(e.textContent||e.getAttribute('aria-label')||e.tagName).trim().slice(0,40));
+ const box=r=>({left:Math.round(r.left),top:Math.round(r.top),width:Math.round(r.width),height:Math.round(r.height)});
+ return {question:q.textContent.slice(0,40),questionLines:Math.round(qBox.height/parseFloat(getComputedStyle(q).lineHeight)),ship:box(ship),questionBox:box(qBox),covered,shipOnFirstScreen:ship.width>0&&ship.height>0&&ship.top>=0&&ship.bottom<=innerHeight};
+}
+// The Ask station on a touch phone: measures each card of the sitting, then taps skip to reach the next one.
+async function phoneAskCards(browser,base,count){
+ const context=await browser.newContext({viewport:{width:390,height:844},hasTouch:true,isMobile:true});
+ try{
+  const page=await context.newPage();
+  await page.goto(`${base}/`);
+  await page.locator('nav.tabs').getByRole('button',{name:/^Ask/}).tap();
+  const cards=[];
+  for(let i=1;i<=count;i++){
+   await page.locator('.ask .sit .of').filter({hasText:`${i} of ${count}`}).waitFor();
+   const card=page.locator('section.ask section.card');
+   await card.locator('canvas.ship').waitFor();
+   // the first screen of this card, once its entrance animation has ended
+   await card.evaluate(el=>{scrollTo(0,0);return Promise.all(el.getAnimations().map(animation=>animation.finished));});
+   cards.push(await card.evaluate(measureAskCard));
+   await card.getByRole('button',{name:/^skip/}).tap();
+  }
+  return cards;
+ }finally{await context.close();}
 }
 
 const results=[],check=(name,ok,detail)=>{results.push({name,ok,detail});console.log(`${ok?'pass':'FAIL'}  ${name}  ${JSON.stringify(detail)}`);};
@@ -220,6 +262,11 @@ try{
  const yardRequests=yardHidden.requests.filter(path=>path!=='/fleet.json');
  check('hidden shipyard makes no requests of its own',yardRequests.length<=limits.hiddenRequests,{requests:yardRequests});
  check('hidden shipyard stays within the script budget',yardHidden.scriptMs<=limits.hiddenScriptMs,{scriptMs:yardHidden.scriptMs,max:limits.hiddenScriptMs});
+ const askCards=await phoneAskCards(browser,server.base,writePhoneAsks(server.home));
+ report.measurements.phoneAsk=askCards;
+ for(const card of askCards)check(`phone Ask ship covers no text or control and is on the first screen (${card.questionLines}-line question)`,!card.covered.length&&card.shipOnFirstScreen,card);
+ const lines=askCards.map(card=>card.questionLines);
+ check('phone Ask check measured a one-line and a four-line question',lines.includes(1)&&Math.max(...lines)>=4,{lines});
 
  await checkShipyardFit(browser,0);
  await checkShipyardFit(browser,100);
