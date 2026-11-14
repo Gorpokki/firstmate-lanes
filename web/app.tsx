@@ -9,6 +9,7 @@ import {
 	hiddenTicked,
 	isOld,
 	keepNeedingTicks,
+	keepsKey,
 	laneWords,
 	stateChanges,
 	stateColors,
@@ -508,10 +509,14 @@ function useFrameKeys(
 		};
 		const key = (e: KeyboardEvent) => {
 			const run = keys[e.key];
-			const field = (e.target as HTMLElement).closest(
-				"input,textarea,select,[contenteditable=true]",
-			);
-			if (!run || e.metaKey || e.ctrlKey || e.altKey || field) return;
+			if (
+				!run ||
+				e.metaKey ||
+				e.ctrlKey ||
+				e.altKey ||
+				keepsKey(e.target as HTMLElement, e.key)
+			)
+				return;
 			e.preventDefault();
 			run();
 		};
@@ -699,14 +704,7 @@ function App() {
 				e.metaKey ||
 				e.ctrlKey ||
 				e.altKey ||
-				(e.target as HTMLElement).closest(
-					"input,textarea,select,[contenteditable=true]",
-				)
-			)
-				return;
-			if (
-				(e.key === "Enter" || e.code === "Space") &&
-				(e.target as HTMLElement).closest("button,a,summary")
+				keepsKey(e.target as HTMLElement, e.code === "Space" ? "Space" : e.key)
 			)
 				return;
 			const keys: Record<string, Station> = {
