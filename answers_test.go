@@ -65,6 +65,89 @@ func TestConfirmedAnswersBatchByHomeAndRefuseStale(t *testing.T) {
 	}
 }
 
+// closeModeHome writes one lane per ask form and close mode, plus a stand-in intake that records its stdin.
+func closeModeHome(t *testing.T, asked time.Time) (home, received, command string) {
+	t.Helper()
+	home = t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, "state"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	when := `"reason":"Needed","effort":"quick","asked":"` + asked.Format(time.RFC3339) + `"`
+	choice := func(key, close string) string {
+		return `{"form":"choice","key":"` + key + `","question":"Route?",` + when + `,"choices":[{"label":"North","effect":"Go north"},{"label":"South","effect":"Go south"}]` + close + `}`
+	}
+	discussion := func(key, close string) string {
+		return `{"form":"discussion","key":"` + key + `","topic":"Plan","must_decide":["Scope"],` + when + close + `}`
+	}
+	asks := map[string]string{"question": choice("question", ""), "work": choice("work", `,"close":"release"`), "talk": discussion("talk", `,"close":"release"`), "explicit": discussion("explicit", `,"close":"done"`)}
+	for lane, ask := range asks {
+		record := `{"name":"Synthetic","state":"waiting","now":"Awaiting","start":"2026-01-01T00:00:00Z","asks":[` + ask + `]}`
+		if err := os.WriteFile(filepath.Join(home, "state", lane+".lane.json"), []byte(record), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	received, command = filepath.Join(home, "received.tsv"), filepath.Join(home, "answer-command")
+	script := "#!/bin/sh\ncat > '" + received + "'\nwhile IFS=\"$(printf '\\t')\" read -r key rest; do printf 'closed: %s\\n' \"$key\"; done < '" + received + "'\n"
+	if err := os.WriteFile(command, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	return home, received, command
+}
+
+// A held work item is released; a question keeps the intake default. The real batch writer
+// feeds a stand-in intake that records its stdin, and both ask forms and all answer kinds go through it.
+func TestCloseModeReachesTheIntakeFourthField(t *testing.T) {
+	asked := time.Now().UTC().Truncate(time.Second)
+	home, received, command := closeModeHome(t, asked)
+	service := AnswerService{Reader: NewReader(), Home: home, Command: command}
+	results, err := service.Send(context.Background(), true, []SittingAnswer{
+		{Lane: "question", Key: "question", Kind: "choice", Choice: 1, Asked: asked},
+		{Lane: "work", Key: "work", Kind: "own", Text: "Use the coast", Asked: asked, Close: "release"},
+		{Lane: "talk", Key: "talk", Kind: "skip", Asked: asked, Close: "release"},
+		{Lane: "explicit", Key: "explicit", Kind: "grill", Asked: asked, Close: "done"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range results {
+		if !r.Accepted {
+			t.Fatalf("results: %#v", results)
+		}
+	}
+	got, err := os.ReadFile(received)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "question\tSouth: Go south\tchoice\n" +
+		"work\tUse the coast\town\trelease\n" +
+		"talk\tSkipped: the crew chooses and reports its choice in its next status line.\tskip\trelease\n" +
+		"explicit\tGrill requested: discuss this ask with the crew before choosing.\tgrill\tdone\n"
+	if string(got) != want {
+		t.Fatalf("intake received:\n%q\nwant:\n%q", got, want)
+	}
+}
+
+// The close mode sent comes from the current ask. An answer that names another mode, or none,
+// was made for a different ask (a stale sitting or an override attempt) and reaches no intake.
+func TestAnswerNamingAnotherCloseModeIsRefusedAndNeverSent(t *testing.T) {
+	asked := time.Now().UTC().Truncate(time.Second)
+	home, log, command := answersTestBatchHome(t, asked)
+	record := `{"name":"Example","state":"waiting","now":"Awaiting","start":"2026-01-01T00:00:00Z","asks":[{"form":"discussion","key":"alpha","topic":"Plan","must_decide":["Scope"],"reason":"Needed","effort":"quick","asked":"` + asked.Format(time.RFC3339) + `","close":"release"}]}`
+	if err := os.WriteFile(filepath.Join(home, "state", "alpha.lane.json"), []byte(record), 0600); err != nil {
+		t.Fatal(err)
+	}
+	service := AnswerService{Reader: NewReader(), Home: home, Command: command}
+	for _, answered := range []string{"", "done", "other"} {
+		results, err := service.Send(context.Background(), true, []SittingAnswer{{Lane: "alpha", Key: "alpha", Kind: "skip", Asked: asked, Close: answered}})
+		if err != nil || results[0].Accepted || results[0].Reason != "Ask is no longer open" {
+			t.Fatalf("answer made for close %q: results=%#v err=%v", answered, results, err)
+		}
+	}
+	if _, err := os.Stat(log); !os.IsNotExist(err) {
+		t.Fatal("a mismatched answer reached the intake")
+	}
+}
+
 func TestKeylessAndSharedTaskIDsAreNotDelivered(t *testing.T) {
 	home := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(home, "state"), 0700); err != nil {

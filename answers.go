@@ -19,6 +19,8 @@ type SittingAnswer struct {
 	Choice int       `json:"choice,omitempty"`
 	Text   string    `json:"text,omitempty"`
 	Asked  time.Time `json:"asked"`
+	// Close is the close mode the user saw. It only has to match the current ask; the mode sent comes from that ask.
+	Close string `json:"close,omitempty"`
 }
 type DeliveryResult struct {
 	Lane     string `json:"lane"`
@@ -58,13 +60,13 @@ func (s *AnswerService) Send(ctx context.Context, confirmed bool, answers []Sitt
 	seen := map[string]bool{}
 	for i, answer := range answers {
 		results[i] = DeliveryResult{Lane: answer.Lane, Key: answer.Key}
-		lane, text, reason := answersPrepare(answer, current, openKeys, seen)
+		lane, payload, reason := answersPrepare(answer, current, openKeys, seen)
 		if reason != "" {
 			results[i].Reason = reason
 			continue
 		}
 		seen[lane.OwnerDir+"\x00"+answer.Key] = true
-		payloads[i] = answer.Key + "\t" + text + "\t" + answer.Kind + "\n"
+		payloads[i] = payload
 		batches[lane.OwnerDir] = append(batches[lane.OwnerDir], i)
 	}
 	homes := make([]string, 0, len(batches))
@@ -104,14 +106,15 @@ func answersOpenKeys(lanes []Lane) map[string]int {
 
 func answersFindAsk(row StationLane, answer SittingAnswer) *StationAsk {
 	for j := range row.Asks {
-		if row.Asks[j].Key == answer.Key && row.Asks[j].Asked.Equal(answer.Asked) {
+		if row.Asks[j].Key == answer.Key && row.Asks[j].Asked.Equal(answer.Asked) && row.Asks[j].Close == answer.Close {
 			return &row.Asks[j]
 		}
 	}
 	return nil
 }
 
-// answersPrepare returns the lane and TSV text for an answer, or a non-empty refusal reason.
+// answersPrepare returns the lane and the TSV line for an answer, or a non-empty refusal reason.
+// The line's fourth field is the ask's close mode; an ask without one sends three fields.
 func answersPrepare(answer SittingAnswer, current map[string]Lane, openKeys map[string]int, seen map[string]bool) (Lane, string, string) {
 	const closed = "Ask is no longer open"
 	lane, ok := current[answer.Lane]
@@ -144,7 +147,11 @@ func answersPrepare(answer SittingAnswer, current map[string]Lane, openKeys map[
 	if text == "" || len(text) > 8192 || strings.ContainsAny(text, "\r\n\t\x00") {
 		return lane, "", "Answer must be a single non-empty line without control separators"
 	}
-	return lane, text, ""
+	fields := []string{answer.Key, text, answer.Kind}
+	if ask.Close != "" {
+		fields = append(fields, ask.Close)
+	}
+	return lane, strings.Join(fields, "\t") + "\n", ""
 }
 
 func answersText(answer SittingAnswer, ask *StationAsk) (string, string) {
@@ -206,7 +213,7 @@ func (s *AnswerService) answersRecord(result *DeliveryResult, home string, answe
 	if accepted[answer.Key] {
 		result.Accepted = true
 		result.Reason = "Accepted"
-		if err := s.Reader.acknowledge(home, answer.Lane, answer.Key, answer.Asked); err != nil {
+		if err := s.Reader.acknowledge(home, answer.Lane, answer.Key, answer.Close, answer.Asked); err != nil {
 			result.Reason = "Accepted; local receipt could not be saved"
 		}
 		return

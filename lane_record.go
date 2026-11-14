@@ -57,6 +57,7 @@ type LaneRecordAsk struct {
 	PullRequests []LaneRecordLink   `json:"pull_requests,omitempty"`
 	GrillPages   []LaneRecordLink   `json:"grill_pages,omitempty"`
 	WaitsOnThis  string             `json:"waits_on_this,omitempty"`
+	Close        string             `json:"close,omitempty"` // how the intake closes the held task: "done" (the default when absent) or "release"
 	Asked        time.Time          `json:"asked"`
 	Answerable   bool               `json:"answerable"`
 }
@@ -168,6 +169,9 @@ func laneRecordState(state string) bool {
 }
 
 func validLaneRecordAsk(a LaneRecordAsk) bool {
+	if a.Close != "" && a.Close != "done" && a.Close != "release" {
+		return false
+	}
 	if !slugRe.MatchString(a.Key) || strings.TrimSpace(a.Reason) == "" || a.Asked.IsZero() || (a.Effort != "quick" && a.Effort != "read") {
 		return false
 	}

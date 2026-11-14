@@ -260,7 +260,7 @@ func (s *sitting) commit(kind, txt string, choice int) {
 	if !ok {
 		return
 	}
-	answer := SittingAnswer{Lane: it.lane.ID, Key: it.ask.Key, Kind: kind, Text: txt, Choice: choice, Asked: it.ask.Asked}
+	answer := SittingAnswer{Lane: it.lane.ID, Key: it.ask.Key, Kind: kind, Text: txt, Choice: choice, Asked: it.ask.Asked, Close: it.ask.Close}
 	delete(s.deferred, itemKey(it))
 	for i, a := range s.answers {
 		if answerKey(a) == itemKey(it) {
