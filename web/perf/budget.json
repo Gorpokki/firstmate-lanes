@@ -11,5 +11,8 @@
  "idleRequests": 0,
  "idleScriptMs": 20,
  "settledFrames": 0,
- "simulationFleetRequests": 0
+ "simulationFleetRequests": 0,
+ "longHistoryReadingBytes": 65536,
+ "logPageLines": 100,
+ "longHistoryLongTasks": 0
 }

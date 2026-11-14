@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -253,9 +254,25 @@ func boardHandler(home string, config runtimeConfig, reader *Reader, look *lastL
 			http.Error(w, fmt.Sprintf("cannot read fleet: %v", err), http.StatusServiceUnavailable)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		json.NewEncoder(w).Encode(fleet)
+		// The page polls this reading; each lane's status log stays out and is read a page at a time below.
+		for i := range fleet.Stations {
+			fleet.Stations[i].History = nil
+		}
+		writeJSON(w, fleet)
+	})
+	mux.HandleFunc("GET /lane-history.json", func(w http.ResponseWriter, r *http.Request) {
+		fleet, err := readFleet(reader, home, nil)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("cannot read fleet: %v", err), http.StatusServiceUnavailable)
+			return
+		}
+		i := slices.IndexFunc(fleet.Stations, func(l StationLane) bool { return l.ID == r.URL.Query().Get("lane") })
+		if i < 0 {
+			http.Error(w, "no such lane", http.StatusNotFound)
+			return
+		}
+		before, _ := strconv.Atoi(r.URL.Query().Get("before")) // not a number: the newest page
+		writeJSON(w, historyPage(fleet.Stations[i].History, before))
 	})
 	mux.HandleFunc("POST /last-look", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Fleet-Action") != "save" {
@@ -285,6 +302,12 @@ func boardHandler(home string, config runtimeConfig, reader *Reader, look *lastL
 	})
 	mux.Handle("GET /", http.FileServerFS(site))
 	return hostGuard(mux, allow), nil
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(v)
 }
 
 func hostGuard(next http.Handler, names []string) http.Handler {

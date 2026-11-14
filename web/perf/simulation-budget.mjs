@@ -1,12 +1,13 @@
 // Measures the /simulation page against the idle and hidden budgets in
 // web/perf/budget.json, in a real headless Chromium against the real server.
-// Then checks that at phone width the Ask station's ship covers no text or control.
+// Then checks that at phone width the Ask station's ship covers no text or control, and that a home with a long
+// history keeps the polled reading and the Lane station small.
 //
 //   node web/perf/simulation-budget.mjs --binary ./fmlanes [--report out.json]
 //
 // Needs Playwright with a Chromium build on NODE_PATH.
 import {spawn} from 'node:child_process';
-import {cpSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
+import {cpSync,mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {createServer} from 'node:net';
 import {tmpdir} from 'node:os';
@@ -41,8 +42,22 @@ function fixtureHome(extraLanes){
  return {dir,home};
 }
 
-async function startServer(extraLanes=0){
- const port=await freePort(),state=mkdtempSync(join(tmpdir(),'fmlanes-budget-')),{dir,home}=fixtureHome(extraLanes);
+// A home with a long history: one lane of 5,000 status lines, 30,000 lines in the fleet. The long lane's last line is
+// stamped now, so the lane is in work.
+function longHistoryHome(){
+ const dir=mkdtempSync(join(tmpdir(),'fmlanes-long-')),home=join(dir,'long-home'),now=Math.floor(Date.now()/1000);
+ mkdirSync(join(home,'state'),{recursive:true});
+ const lane=(id,lines)=>{
+  writeFileSync(join(home,'state',`${id}.meta`),'kind=ship\nbackend=tmux\n');
+  writeFileSync(join(home,'state',`${id}.status`),Array.from({length:lines},(_,i)=>`working [at=${now-(lines-1-i)*60}]: step ${i+1} of ${lines}: the crew read the client wrapper again and wrote down what it found for the next shift\n`).join(''));
+ };
+ lane('long-run',5000);
+ for(let i=1;i<=25;i++)lane(`steady-${String(i).padStart(2,'0')}`,1000);
+ return {dir,home};
+}
+
+async function startServer(fixture=fixtureHome(0)){
+ const port=await freePort(),state=mkdtempSync(join(tmpdir(),'fmlanes-budget-')),{dir,home}=fixture;
  const child=spawn(binary,['--home',home,'--serve',`127.0.0.1:${port}`],{env:{...process.env,XDG_STATE_HOME:state,FM_LANES_CONFIG:''},stdio:['ignore','inherit','inherit']});
  const base=`http://127.0.0.1:${port}`,stop=()=>{child.kill();rmSync(state,{recursive:true,force:true});rmSync(dir,{recursive:true,force:true});};
  for(let i=0;i<100;i++){
@@ -124,6 +139,35 @@ async function phoneAskCards(browser,base,count){
  }finally{await context.close();}
 }
 
+// The Lane station of the longest lane, on the long-history home: the reading it polls, the log it draws and its
+// long tasks in steady state, with the ship stopped.
+async function longHistory(browser){
+ const server=await startServer(longHistoryHome()),page=await browser.newPage({viewport:{width:1440,height:900}});
+ try{
+  await page.addInitScript(()=>{window.__longTasks=[];new PerformanceObserver(list=>{for(const task of list.getEntries())window.__longTasks.push(Math.round(task.duration));}).observe({type:'longtask'});});
+  const readings=[];page.on('response',async response=>{if(new URL(response.url()).pathname==='/fleet.json')readings.push((await response.body().catch(()=>'')).length);});
+  await page.goto(`${server.base}/`);
+  await page.waitForFunction(()=>!document.querySelector('main[role="status"]'));
+  // the key handler attaches just after the frame shows, so the key is pressed until Find lane opens
+  const find=page.getByLabel('Lane name');
+  for(let i=0;i<40&&!(await find.count());i++){await page.keyboard.press('/');await sleep(100);}
+  await find.fill('long-run');
+  await page.keyboard.press('Enter');
+  await page.locator('.log ol li').first().waitFor();
+  const log=()=>page.evaluate(()=>({label:document.querySelector('.log .nowlab').textContent,lines:document.querySelectorAll('.log ol li').length,strip:document.querySelectorAll('.log .logstrip i').length,newest:document.querySelector('.log ol li .tx').textContent.slice(0,20)}));
+  const newest=await log();
+  // The ship is stopped, so the window measures the reading and the log alone; two polls of the reading pass in it.
+  await page.getByRole('button',{name:'Stop ship spin'}).click();
+  await sleep(1000);
+  await page.evaluate(()=>{window.__longTasks.length=0;});
+  await sleep(2*windowMs);
+  const longTasks=await page.evaluate(()=>window.__longTasks);
+  await page.getByRole('button',{name:/older lines/}).click();
+  await page.locator('.log .nowlab').filter({hasText:'lines 4801 to 4900'}).waitFor();
+  return {readingBytes:Math.max(...readings),readings:readings.length,elements:await page.evaluate(()=>document.querySelectorAll('*').length),newest,older:await log(),longTasks};
+ }finally{await page.close();server.stop();}
+}
+
 const results=[],check=(name,ok,detail)=>{results.push({name,ok,detail});console.log(`${ok?'pass':'FAIL'}  ${name}  ${JSON.stringify(detail)}`);};
 
 async function openShipyard(page,base){
@@ -143,7 +187,7 @@ const fitAll=page=>page.getByRole('group',{name:'Yard zoom'}).getByRole('button'
 // The shipyard ends inside the frame and the station does not scroll at 1440 x 900 and 1280 x 720, with the sample's lanes
 // and with about 100 lanes, after fit all at each size.
 async function checkShipyardFit(browser,extraLanes){
- const server=await startServer(extraLanes),page=await browser.newPage({viewport:{width:1440,height:900}});
+ const server=await startServer(fixtureHome(extraLanes)),page=await browser.newPage({viewport:{width:1440,height:900}});
  try{
   await page.addInitScript(visibilityControl);
   await openShipyard(page,server.base);
@@ -165,6 +209,11 @@ let server,browser;
 try{
  server=await startServer();
  browser=await chromium.launch();
+ const long=await longHistory(browser);
+ report.measurements.longHistory=long;
+ check('long history: the polled reading stays small',long.readings>=2&&long.readingBytes<=limits.longHistoryReadingBytes,{bytes:long.readingBytes,max:limits.longHistoryReadingBytes,readings:long.readings});
+ check('long history: the Lane station draws one page of its log',[long.newest,long.older].every(log=>log.lines>0&&log.lines<=limits.logPageLines&&log.strip===log.lines)&&long.newest.newest.startsWith('step 5000 ')&&long.older.newest.startsWith('step 4900 '),{newest:long.newest,older:long.older,max:limits.logPageLines,elements:long.elements});
+ check('long history: no long task in steady state',long.longTasks.length<=limits.longHistoryLongTasks,{longTasksMs:long.longTasks});
  const page=await browser.newPage({viewport:{width:1000,height:800}});
  await page.addInitScript(visibilityControl);
  const requests=[];page.on('request',request=>requests.push(new URL(request.url()).pathname));

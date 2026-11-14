@@ -119,6 +119,7 @@ canvas.ship { display:block; width:100%; height:clamp(220px,40vh,420px); cursor:
 .lane p.now { margin:0; color:var(--dim); font-size:16.5px; } .lane p.big { color:var(--text); font-size:22px; } .lane .last { display:flex; flex-direction:column; gap:8px; }
 .log { display:flex; flex-direction:column; gap:8px; max-height:188px; overflow-y:auto; margin-top:6px; padding-right:6px; }
 .logstrip { display:flex; gap:2px; height:8px; flex:none; } .logstrip i { flex:1; border-radius:2px; }
+.logpage { display:flex; gap:18px; flex:none; } .logpage button:disabled { opacity:.4; cursor:default; }
 .log ol { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:5px; }
 .log li { display:grid; grid-template-columns:136px 96px 1fr; gap:0 10px; font-size:15px; color:var(--dim); } .log li b { font:600 13.5px/1.5 var(--lab); letter-spacing:.08em; text-transform:uppercase; }
 .log .at { font-family:Menlo,'SF Mono',Consolas,monospace; font-size:13px; color:#B8AB9B; } .log .tx { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; } .log li:hover .tx, .log li:focus .tx { -webkit-line-clamp:unset; color:var(--text); }
