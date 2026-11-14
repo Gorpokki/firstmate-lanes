@@ -2,7 +2,7 @@ import {expect,test} from 'bun:test';
 import {acceptedKeys,answerFor,answeredLanes,batchReady,buildSitting,deferForLater,laneBatch,readOnlyReason,reviewAnswers,undoAnswer,type SittingAnswer} from './sitting';
 import type {Fleet,Lane} from './stations';
 
-const lane=(id:string,secondMate:string,asks:Lane['asks']):Lane=>({id,name:`Lane ${id}`,home:'main',secondMate,state:'needs you',now:'',history:[],asks});
+const lane=(id:string,secondMate:string,asks:Lane['asks']):Lane=>({id,name:`Lane ${id}`,home:'main',secondMate,state:'needs you',now:'',asks});
 const ask=(key:string,effort='quick',form='choice',asked='2026-01-01T00:00:00Z'):Lane['asks'][number]=>({key,form,question:`Question ${key}?`,topic:`Topic ${key}`,reason:'Reason',choices:[{label:'Yes',effect:'Do it'},{label:'No',effect:'Stop'}],pick:0,pick_reason:'Crew reason',no_pick_reason:'Dashboard reason',effort,asked,answerable:true});
 const fleet=(...stationLanes:Lane[]):Fleet=>({updatedAt:'2026-01-02T00:00:00Z',stationLanes,hiddenAsks:0,autonomyShare:0,changedLanes:[]});
 

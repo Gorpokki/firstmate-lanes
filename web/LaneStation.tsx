@@ -11,19 +11,45 @@ type Acts={[key:string]:Act};
 const question=(ask:Ask)=>ask.question||ask.topic||ask.key;
 const fieldKey=(event:KeyboardEvent)=>event.metaKey||event.ctrlKey||event.altKey||(event.target instanceof HTMLElement&&!!event.target.closest('input,textarea,select,[contenteditable=true]'));
 const duration=(ms:number)=>ms<60000?`${Math.floor(ms/1000)}s`:ms<3600000?`${Math.floor(ms/60000)}m`:`${Math.floor(ms/3600000)}h`;
-const when=(at:string)=>{const t=Date.parse(at);return t>0?new Date(t).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'time unknown';};
+// one formatter for every log line: building one per line made each poll's render a long task
+const stamp=new Intl.DateTimeFormat([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+const when=(at:string)=>{const t=Date.parse(at);return t>0?stamp.format(t):'time unknown';};
 const answerWords=(ask:Ask,answer:SittingAnswer)=>answer.kind==='choice'?ask.choices?.[answer.choice??-1]?.label||`Choice ${answer.choice}`:answer.kind==='own'?answer.text||'Own answer':answer.kind==='skip'?'Crew decides':'Grill requested';
 
 // a status line's verb in its state colour; a plain note stays neutral
 const VERB_STATE:Record<string,string>={'needs-decision':'needs you',blocked:'needs you',failed:'needs you','captain-held':'needs you',working:'working',paused:'holding',done:'done',resolved:'done',published:'done',ready:'waiting'};
 const logColor=(verb:string)=>stateColors[verb]??stateColors[VERB_STATE[verb]??'']??'#8F8477';
-// The lane's status log under its ship: one bar per line in a strip (oldest at the left), then the lines, newest first.
+// One page of a lane's status log, as GET /lane-history.json gives it: oldest line first.
+type LogPage={total:number;from:number;until?:string;lines:{at:string;state:string;text:string}[]};
+// The server gives no more lines than this in one page; "newer" steps by it.
+const LOG_PAGE=100;
+// The lane's status log under its ship, one page at a time: one bar per line in a strip (oldest at the left), then the
+// lines, newest first. The newest page follows the lane; an older page stays as it was read.
 function LaneLog({lane}:{lane:Lane}){
- const now=Date.now();
- const rows=lane.history.map((item,index)=>{const start=Date.parse(item.at),end=index+1<lane.history.length?Date.parse(lane.history[index+1]!.at):now;return {...item,lasted:start>0&&Number.isFinite(end)?Math.max(0,end-start):0};});
- if(!rows.length)return <p className="now">No status line yet.</p>;
+ const [request,setRequest]=useState({before:0}); // the page ends before request.before; 0 is the newest page
+ const [page,setPage]=useState<LogPage>();
+ const [failed,setFailed]=useState(false);
+ const {before}=request,count=lane.historyLines??0,follows=before?0:count;
+ useEffect(()=>{
+  if(!count)return;
+  const controller=new AbortController();
+  fetch(`/lane-history.json?lane=${encodeURIComponent(lane.id)}&before=${before}`,{cache:'no-store',signal:controller.signal})
+   .then(response=>response.ok?response.json():Promise.reject(Error(response.statusText)))
+   .then(data=>{setPage(data);setFailed(false);})
+   .catch(()=>{if(!controller.signal.aborted)setFailed(true);}); // a failed read keeps the page already shown; the frame reports a board that cannot be read
+  return ()=>controller.abort();
+ },[lane.id,request,follows]);
+ useEffect(()=>{if(failed)setRequest(old=>({before:old.before}));},[lane]);
+ if(!count)return <p className="now">No status line yet.</p>;
+ if(!page)return <p className="now">Reading the status log…</p>;
+ const now=Date.now(),end=page.from+page.lines.length;
+ const rows=page.lines.map((item,index)=>{const start=Date.parse(item.at),next=page.lines[index+1]?.at??page.until,stop=next?Date.parse(next):now;return {...item,lasted:start>0&&Number.isFinite(stop)?Math.max(0,stop-start):0};});
  return <div className="log">
-  <span className="nowlab">Status log · {rows.length} {rows.length===1?'line':'lines'}, newest first</span>
+  <span className="nowlab">Status log · {page.total} {page.total===1?'line':'lines'}{page.total>rows.length?` · lines ${page.from+1} to ${end}`:''}, newest first</span>
+  {page.total>rows.length&&<span className="logpage">
+   <button type="button" className="link" disabled={!page.from} onClick={()=>setRequest({before:page.from})}>◂ older lines</button>
+   <button type="button" className="link" disabled={end>=page.total} onClick={()=>setRequest({before:end+LOG_PAGE>=page.total?0:end+LOG_PAGE})}>newer lines ▸</button>
+  </span>}
   <div className="logstrip" title="the same lines as a strip, oldest at the left">{rows.map((item,i)=><i key={i} style={{background:logColor(item.state)}} title={`${when(item.at)} · ${item.state}`}/>)}</div>
   <ol>{rows.toReversed().map((item,i)=><li key={i} tabIndex={0}><span className="at" title={item.at}>{when(item.at)}</span><b style={{color:logColor(item.state)}}>{item.state}</b><span className="tx">{item.text} <small>· {duration(item.lasted)}</small></span></li>)}</ol>
  </div>;

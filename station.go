@@ -16,7 +16,8 @@ type StationLane struct {
 	SourceState   string          `json:"sourceState"`
 	Now           string          `json:"now"`
 	UpdatedAt     time.Time       `json:"updatedAt"`
-	History       []StationChange `json:"history"`
+	History       []StationChange `json:"history,omitempty"` // the whole status log; the polled web reading leaves it out
+	HistoryLines  int             `json:"historyLines"`
 	Asks          []StationAsk    `json:"asks"`
 	Start         time.Time       `json:"start"`
 	Ticket        *LaneRecordLink `json:"ticket,omitempty"`
@@ -30,6 +31,30 @@ type StationChange struct {
 	Text  string    `json:"text"`
 }
 type StationAsk = LaneRecordAsk
+
+// historyPageLines bounds one page of a lane's status log; the Lane station draws one page at a time.
+const historyPageLines = 100
+
+// HistoryPage is one page of a lane's status log, oldest line first.
+type HistoryPage struct {
+	Total int             `json:"total"`
+	From  int             `json:"from"`            // index of the page's first line in the whole log
+	Until *time.Time      `json:"until,omitempty"` // time of the line after the page; absent on the newest page
+	Lines []StationChange `json:"lines"`
+}
+
+// historyPage returns the page that ends before line index before. A before outside the log gives the newest page.
+func historyPage(history []StationChange, before int) HistoryPage {
+	if before <= 0 || before > len(history) {
+		before = len(history)
+	}
+	from := max(0, before-historyPageLines)
+	page := HistoryPage{Total: len(history), From: from, Lines: history[from:before]}
+	if before < len(history) {
+		page.Until = &history[before].At
+	}
+	return page
+}
 
 func readOnlyReason(lane StationLane) string {
 	if lane.Home == "local" && lane.SecondMate == "" {
@@ -67,6 +92,7 @@ func stationLane(l Lane, at time.Time) (StationLane, int) {
 		out.History = append(out.History, StationChange{At: e.At, State: e.Verb, Text: e.Text})
 	}
 	sort.SliceStable(out.History, func(i, j int) bool { return out.History[i].At.Before(out.History[j].At) })
+	out.HistoryLines = len(out.History)
 	out.State = stationLaneState(l, len(out.Asks)+returned, at)
 	out.Progress = stationLaneProgress(out)
 	return out, hidden

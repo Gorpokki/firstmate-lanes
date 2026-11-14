@@ -2,7 +2,7 @@ import {test,expect} from 'bun:test';
 import type {Fleet} from './stations';
 import {clickShown,deriveFleet,shownStates,YARD_SHOWN} from './fleet-model';
 
-const lane=(id:string,state:string,sourceState=state)=>({id,name:id,state,sourceState,secondMate:'',home:'main',now:'',history:[],asks:[]});
+const lane=(id:string,state:string,sourceState=state)=>({id,name:id,state,sourceState,secondMate:'',home:'main',now:'',asks:[]});
 const fleet:Fleet={updatedAt:'2026-01-10T12:00:00Z',hiddenAsks:0,autonomyShare:.5,changedLanes:[],stationLanes:[lane('w','working'),lane('n','needs you'),lane('q','holding','working'),lane('p','holding','parked'),lane('b','holding','blocked'),lane('d','done')]};
 
 test('Fleet groups lanes in play by state and counts the holding row as parked and gone quiet',()=>{
