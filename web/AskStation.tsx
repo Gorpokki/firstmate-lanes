@@ -1,5 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {AGE_DAYS,ageDays,ageTone,ageWords,overdue,returnedWords,stateColors,type Fleet,type Lane,type Link} from './stations';
+import {ageWords,returnedWords,stateColors,type Fleet,type Lane,type Link} from './stations';
+import {AgeBar} from './ListStation';
 import {assignedShip,type ShipMesh} from './mesh-catalog';
 import {Holo} from './Holo';
 import {answerFor,answeredLanes,batchReady,buildSitting,deferForLater,minutesSince,reviewAnswers,undoAnswer,type DeliveryResult,type SittingAnswer,type SittingItem} from './sitting';
@@ -18,11 +19,6 @@ const answerWords=(item:SittingItem,answer:SittingAnswer)=>answer.kind==='choice
 function linksOf(lane:Lane,item:SittingItem):[string,Link][]{
  const all:[string,Link][]=[...(lane.ticket?[['ticket',lane.ticket] as [string,Link]]:[]),...(item.ask.tickets||[]).map(link=>['ticket',link] as [string,Link]),...(item.ask.pull_requests||[]).map(link=>['pull request',link] as [string,Link]),...(item.ask.grill_pages||[]).map(link=>['grill page',link] as [string,Link])];
  return all.filter(([,link],i)=>all.findIndex(([,other])=>other.url===link.url)===i);
-}
-function AgeBar({minutes}:{minutes:number}){
- if(!Number.isFinite(minutes))return null;
- const days=ageDays(minutes);
- return <span className="agebar" role="img" aria-label={overdue(minutes)?'Overdue':'Age'}>{Array.from({length:AGE_DAYS},(_,i)=><i key={i} className={i<days&&i>=5?'od':undefined} style={{background:i>=days?'#2A2630':i>=5?'#FF9900':ageTone(minutes)}}/>)}</span>;
 }
 // The lane's ticket, pull requests and grill pages, and what waits on the answer: not part of the decision, so out of sight
 // until the pointer rests on the widget or it has focus. A click or a tap holds it open.
@@ -51,7 +47,7 @@ function Card({item,lane,lead,raw,hinted,meshes,ownRef,onOpenLane,choose,own,ski
   <div className="cmain">
    <div className="ctop">
     <button className="who" onClick={()=>onOpenLane?.(lane.id)} title="Open this lane"><span className="next">Next · </span>{lane.secondMate&&<span className="next">{lane.secondMate} · </span>}{lane.name}</button>
-    <span className="age"><AgeBar minutes={minutes}/><span><b>{lead?'Waiting longest · ':''}{ageWords(minutes)}</b> · <span className="nb">{ask.effort==='quick'?'quick':'to read'}</span></span></span>
+    <span className="age">{Number.isFinite(minutes)&&<AgeBar minutes={minutes}/>}<span><b>{lead?'Waiting longest · ':''}{ageWords(minutes)}</b> · <span className="nb">{ask.effort==='quick'?'quick':'to read'}</span></span></span>
    </div>
    <div className="qa"><h1 className="q">{askQuestion(item)}</h1>{ask.reason&&<p className="why">{ask.reason}</p>}
     {ask.form==='discussion'&&!!ask.must_decide?.length&&<ul className="must" aria-label="Must decide">{ask.must_decide.map((decision,i)=><li key={`${i}-${decision}`}>{decision}</li>)}</ul>}

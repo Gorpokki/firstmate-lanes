@@ -28,17 +28,17 @@ type ListProps = {
 // The List's columns; the fourth is the lane's count of open asks.
 const COLS = ["Waiting", "", "Lane", "Asks", "Its oldest ask"];
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-// One segment per day; an overdue day is bright and tall.
-function AgeBar({ age }: { age: number }) {
-	const days = ageDays(age);
+// One segment per day; an overdue day is bright and tall. The List and the Ask card both draw it.
+export function AgeBar({ minutes }: { minutes: number }) {
+	const days = ageDays(minutes);
 	return (
-		<span className="agebar" aria-hidden>
+		<span className="agebar" role="img" aria-label={overdue(minutes) ? "Overdue" : "Age"}>
 			{Array.from({ length: AGE_DAYS }, (_, i) => (
 				<i
 					key={i}
 					className={i < days && i >= 5 ? "od" : undefined}
 					style={{
-						background: i >= days ? "#2A2630" : i >= 5 ? "#FF9900" : ageTone(age),
+						background: i >= days ? "#2A2630" : i >= 5 ? "#FF9900" : ageTone(minutes),
 					}}
 				/>
 			))}
@@ -77,7 +77,7 @@ function Row(p: { row: ListRow } & Omit<ListProps, "fleet" | "mate" | "setMate" 
 				onKeyUp={key}
 				aria-label={`${lane.name}${on ? ", ticked" : ""}: ${plural(lane.asks.length, "ask")}, waiting ${words}${why && `: ${why}`}${late ? ", overdue" : ""}. ${listQuestion(p.row)}`}
 			>
-				<AgeBar age={p.row.age} />
+				<AgeBar minutes={p.row.age} />
 				<span className="a">
 					{words}
 					{why && <small>{why}</small>}
