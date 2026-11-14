@@ -159,7 +159,7 @@ State, drop-in creation and configured conversion output are rejected inside kno
 1. Re-read the current fleet and validate every answer against a current, recent, open ask.
 2. Reject stale timestamps, invalid choices, duplicate keys and read-only drop-in lanes. Asks without a native task ID, and asks on drop-in lanes, are shown read-only and never take a sitting slot. A task ID shared by two open asks in one home is refused before any delivery, even when only one of them is selected.
 3. Invoke the installed `bin/fm-captain-hold.sh answers --source fm-lanes` once per owning home, setting `FM_HOME` for that batch.
-4. Send the existing tab-separated key/answer/label contract on stdin; never invoke a shell with answer text.
+4. Send the existing tab-separated key/answer/label contract on stdin; never invoke a shell with answer text. An ask with a `close` mode adds it as a fourth field; an ask without one sends three, and the intake closes it as done.
 5. Report actual `closed`, `skipped` and `refused` command results. Exit success alone is not acceptance. There is no automatic retry.
 
 `FM_LANES_ANSWER_COMMAND` can select another installed intake executable, including a deterministic stand-in for isolated verification.
@@ -196,6 +196,7 @@ Choice asks require two to four labelled choices with effects.
 `pick` is an optional zero-based choice index; a supplied pick requires `pick_reason`.
 `no_pick_reason` may explain why the crew gave no pick.
 `effort` is `quick` or `read`.
+`close` is optional and is `done` or `release`. A question-shaped ask leaves it out. An ask whose key is a held work item sets `release`, so the answer lifts the hold and does not complete the work. Any other supplied value, including an empty string or `null`, makes the ask malformed; only a missing `close` keeps the default.
 A discussion ask uses `form: "discussion"`, `topic` and a nonempty `must_decide` string array instead of `question`, `choices` and a pick.
 Links have `id`, `title` and `url`; history entries have `at`, `state` and optional `text`.
 Use a current `asked` timestamp when trying the example; old asks intentionally disappear from sittings.

@@ -57,6 +57,7 @@ type LaneRecordAsk struct {
 	PullRequests []LaneRecordLink   `json:"pull_requests,omitempty"`
 	GrillPages   []LaneRecordLink   `json:"grill_pages,omitempty"`
 	WaitsOnThis  string             `json:"waits_on_this,omitempty"`
+	Close        string             `json:"close,omitempty"` // how the intake closes the held task: "done" (the default when absent) or "release"
 	Asked        time.Time          `json:"asked"`
 	Answerable   bool               `json:"answerable"`
 }
@@ -137,6 +138,13 @@ func checkLaneRecordFields(record LaneRecord) error {
 func decodeLaneRecordAsk(raw json.RawMessage) (LaneRecordAsk, bool) {
 	var ask LaneRecordAsk
 	if err := json.Unmarshal(raw, &ask); err != nil {
+		return ask, false
+	}
+	// A supplied close (even "" or null) must be done or release; only a missing key keeps the default.
+	var supplied struct {
+		Close json.RawMessage `json:"close"`
+	}
+	if err := json.Unmarshal(raw, &supplied); err != nil || (len(supplied.Close) > 0 && ask.Close != "done" && ask.Close != "release") {
 		return ask, false
 	}
 	for _, value := range []*string{&ask.Question, &ask.Topic, &ask.Reason, &ask.PickReason, &ask.NoPickReason, &ask.Detail, &ask.WaitsOnThis} {

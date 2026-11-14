@@ -54,6 +54,22 @@ func TestParseLaneRecordOmitsMalformedAsksAndCountsThem(t *testing.T) {
 	}
 }
 
+func TestParseLaneRecordAcceptsOnlyDoneAndReleaseCloseModes(t *testing.T) {
+	ask := func(key, close string) string {
+		return `{"form":"discussion","key":"` + key + `","topic":"Topic","must_decide":["Decision"],"reason":"Reason","effort":"read","asked":"2026-01-02T00:00:00Z"` + close + `}`
+	}
+	asks := []string{ask("plain", ""), ask("done", `,"close":"done"`), ask("release", `,"close":"release"`), ask("abort", `,"close":"abort"`), ask("loud", `,"close":"Release"`), ask("padded", `,"close":" release"`), ask("typed", `,"close":true`), ask("blank", `,"close":""`), ask("null", `,"close":null`)}
+	record, invalid, err := ParseLaneRecord([]byte(`{"name":"Synthetic","state":"working","now":"Working","start":"2026-01-01T00:00:00Z","asks":[` + strings.Join(asks, ",") + `]}`))
+	if err != nil || invalid != 6 || len(record.Asks) != 3 {
+		t.Fatalf("invalid=%d asks=%d err=%v", invalid, len(record.Asks), err)
+	}
+	for i, want := range []string{"", "done", "release"} {
+		if record.Asks[i].Close != want {
+			t.Fatalf("ask %q close=%q want %q", record.Asks[i].Key, record.Asks[i].Close, want)
+		}
+	}
+}
+
 func TestParseLaneRecordValidatesChoiceBoundariesAndLinks(t *testing.T) {
 	for _, count := range []int{2, 3, 4} {
 		choices := ""
