@@ -18,7 +18,7 @@ const knownWait=(lane:Lane)=>Math.min(...waitTimes(lane).map(knownTime).filter(N
 export const returnedWords=(n:number)=>`${plural(n,'ask')} not in the ask form went back to the crew.`;
 export const returnedOnly=(lane:Lane)=>lane.asks.length===0&&lane.returnedSince!==undefined;
 // Why a row's wait is unknown: what it waits from has no time. Empty when the wait is known.
-export const unknownWhy=({lane,age}:ListRow)=>Number.isFinite(age)?'':lane.asks.length||returnedOnly(lane)?'no ask has a time':'the lane has no update time';
+export const unknownWhy=({lane,age}:ListRow)=>Number.isFinite(age)?'':lane.asks.length||returnedOnly(lane)?'no ask time':'no update time';
 export const listQuestion=({lane,ask}:ListRow)=>ask?ask.question||ask.topic||ask.key:returnedOnly(lane)?returnedWords(lane.invalidAsks??0):/^blocked\b/i.test(lane.now)?lane.now:`Blocked: ${lane.now||'the crew cannot clear it'}`;
 export function listRows(fleet:Fleet,mate='',now=Date.now()) {
  const need=fleetOrder(fleet).filter(l=>l.state==='needs you'),counts=new Map<string,number>();

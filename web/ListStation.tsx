@@ -75,16 +75,19 @@ function Row(p: { row: ListRow } & Omit<ListProps, "fleet" | "mate" | "setMate" 
 				onFocus={() => p.select(lane.id)}
 				onKeyDown={key}
 				onKeyUp={key}
-				aria-label={`${lane.name}${on ? ", ticked" : ""}: ${plural(lane.asks.length, "ask")}, waiting ${words}${why && `, ${why}`}${late ? ", overdue" : ""}. ${listQuestion(p.row)}`}
+				aria-label={`${lane.name}${on ? ", ticked" : ""}: ${plural(lane.asks.length, "ask")}, waiting ${words}${why && `: ${why}`}${late ? ", overdue" : ""}. ${listQuestion(p.row)}`}
 			>
 				<AgeBar age={p.row.age} />
-				<span className="a">{words}</span>
+				<span className="a">
+					{words}
+					{why && <small>{why}</small>}
+				</span>
 				<span className="n">{lane.name}</span>
 				<span className="m">{lane.asks.length}</span>
 				<span className="q2">
 					{listQuestion(p.row)}
 					{!!lane.invalidAsks && !returnedOnly(lane) && <em> · {lane.invalidAsks} malformed asks omitted</em>}
-					{why && <em> · wait unknown: {why}</em>}
+					{why && <em className="why"> · wait unknown: {why}</em>}
 				</span>
 			</button>
 		</div>
@@ -169,7 +172,7 @@ const LIST_CSS = `
 .lst .lrow{display:grid;grid-template-columns:15px 1fr;gap:0 14px;align-items:center;width:100%;padding:1px 10px;min-height:21px;border-radius:4px;box-shadow:inset 0 -1px 0 #17141B;font-size:16.5px;line-height:1.24}
 .lst .cols{display:grid;grid-template-columns:74px 62px 230px 60px 1fr;gap:0 14px;align-items:center;width:100%;padding:0;border:0;border-radius:0;background:none;color:var(--text);font:inherit;text-align:left;cursor:pointer}
 .lst .cols span{overflow-wrap:anywhere}.lst .lrow .a,.lst .lrow .m{color:var(--dim);white-space:nowrap}.lst .lrow .n{font-weight:400}.lst .lrow.sel .n{font-weight:600}
-.lst .lrow .q2{color:var(--dim);max-width:86ch;line-height:1.22}.lst .q2 em{font-style:normal;color:#E9A35A}.lst .lrow.sel .q2{color:#FFF4DC}
+.lst .lrow .q2{color:var(--dim);max-width:86ch;line-height:1.22}.lst .lrow .a small{display:block;font-size:12.5px;line-height:1.1}.lst .q2 .why{display:none}.lst .q2 em{font-style:normal;color:#E9A35A}.lst .lrow.sel .q2{color:#FFF4DC}
 .lst section .lrow:nth-of-type(even){background:#0E0C11}.lst .lrow:hover,.lst .lrow.sel{background:#1D1921}
 .lst .lhead{min-height:18px;box-shadow:inset 0 -1px 0 #3A3440;color:#B8AB9B;font:600 13px/1 var(--lab);letter-spacing:.1em;text-transform:uppercase}.lst .lhead .cols{cursor:default}
 .lst .tk{display:flex;align-items:center;align-self:stretch;cursor:pointer}
@@ -178,6 +181,6 @@ const LIST_CSS = `
 .lst .big{font:500 36px/1.16 var(--body);margin:30px 0 0}
 @media (max-width:760px){
 .lst .lhead{display:none}.lst .lrow{grid-template-columns:30px 1fr;gap:0 4px;padding:8px 4px}.lst .tick{width:22px;height:22px}
-.lst .cols{grid-template-columns:62px 1fr auto;gap:2px 10px}.lst .lrow .a{display:none}.lst .lrow .m{text-align:right}.lst .lrow .q2{grid-column:1 / 4}
+.lst .cols{grid-template-columns:62px 1fr auto;gap:2px 10px}.lst .lrow .a{display:none}.lst .q2 .why{display:inline}.lst .lrow .m{text-align:right}.lst .lrow .q2{grid-column:1 / 4}
 .lst .go{margin-left:0;flex-basis:100%;flex-wrap:wrap}.lst .link.act{padding:11px 12px;white-space:normal}.lst .lfilter>button{min-height:36px}.lst .big{font-size:27px}
 }`;

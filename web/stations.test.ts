@@ -107,5 +107,5 @@ test('a returned ask without a time stays unknown, says why and sorts after lane
  const rows=listRows(board,'',Date.parse(board.updatedAt)).read;
  expect(rows.map(r=>r.lane.id)).toEqual(['recent','undated']);
  expect(Number.isNaN(ageOf(board,'undated'))).toBe(true);
- expect(rows.map(unknownWhy)).toEqual(['','no ask has a time']);
+ expect(rows.map(unknownWhy)).toEqual(['','no ask time']);
 });
