@@ -26,17 +26,20 @@ const LOG_PAGE=100;
 // The lane's status log under its ship, one page at a time: one bar per line in a strip (oldest at the left), then the
 // lines, newest first. The newest page follows the lane; an older page stays as it was read.
 function LaneLog({lane}:{lane:Lane}){
- const [before,setBefore]=useState(0); // the page ends before this line; 0 is the newest page
+ const [request,setRequest]=useState({before:0}); // the page ends before request.before; 0 is the newest page
  const [page,setPage]=useState<LogPage>();
- const count=lane.historyLines??0,follows=before?0:count;
+ const [failed,setFailed]=useState(false);
+ const {before}=request,count=lane.historyLines??0,follows=before?0:count;
  useEffect(()=>{
   if(!count)return;
   const controller=new AbortController();
   fetch(`/lane-history.json?lane=${encodeURIComponent(lane.id)}&before=${before}`,{cache:'no-store',signal:controller.signal})
-   .then(response=>response.ok?response.json():Promise.reject(Error(response.statusText))).then(setPage)
-   .catch(()=>{}); // a failed read keeps the page already shown; the frame reports a board that cannot be read
+   .then(response=>response.ok?response.json():Promise.reject(Error(response.statusText)))
+   .then(data=>{setPage(data);setFailed(false);})
+   .catch(()=>{if(!controller.signal.aborted)setFailed(true);}); // a failed read keeps the page already shown; the frame reports a board that cannot be read
   return ()=>controller.abort();
- },[lane.id,before,follows]);
+ },[lane.id,request,follows]);
+ useEffect(()=>{if(failed)setRequest(old=>({before:old.before}));},[lane]);
  if(!count)return <p className="now">No status line yet.</p>;
  if(!page)return <p className="now">Reading the status log…</p>;
  const now=Date.now(),end=page.from+page.lines.length;
@@ -44,8 +47,8 @@ function LaneLog({lane}:{lane:Lane}){
  return <div className="log">
   <span className="nowlab">Status log · {page.total} {page.total===1?'line':'lines'}{page.total>rows.length?` · lines ${page.from+1} to ${end}`:''}, newest first</span>
   {page.total>rows.length&&<span className="logpage">
-   <button type="button" className="link" disabled={!page.from} onClick={()=>setBefore(page.from)}>◂ older lines</button>
-   <button type="button" className="link" disabled={end>=page.total} onClick={()=>setBefore(end+LOG_PAGE>=page.total?0:end+LOG_PAGE)}>newer lines ▸</button>
+   <button type="button" className="link" disabled={!page.from} onClick={()=>setRequest({before:page.from})}>◂ older lines</button>
+   <button type="button" className="link" disabled={end>=page.total} onClick={()=>setRequest({before:end+LOG_PAGE>=page.total?0:end+LOG_PAGE})}>newer lines ▸</button>
   </span>}
   <div className="logstrip" title="the same lines as a strip, oldest at the left">{rows.map((item,i)=><i key={i} style={{background:logColor(item.state)}} title={`${when(item.at)} · ${item.state}`}/>)}</div>
   <ol>{rows.toReversed().map((item,i)=><li key={i} tabIndex={0}><span className="at" title={item.at}>{when(item.at)}</span><b style={{color:logColor(item.state)}}>{item.state}</b><span className="tx">{item.text} <small>· {duration(item.lasted)}</small></span></li>)}</ol>
