@@ -110,8 +110,8 @@ func laneSource(l Lane) string {
 	return "home " + l.Home
 }
 
-func (r *Reader) isAccepted(owner, lane, key, close string, asked time.Time) bool {
-	at, ok := r.accepted[receiptID(owner, lane, key, close)]
+func (r *Reader) isAccepted(owner, lane, key string, asked time.Time) bool {
+	at, ok := r.accepted[receiptID(owner, lane, key)]
 	return ok && !asked.IsZero() && at.Equal(asked)
 }
 
@@ -123,7 +123,7 @@ func (r *Reader) removeAccepted(lanes []Lane) {
 		if lane.Record != nil {
 			kept := lane.Record.Asks[:0]
 			for _, ask := range lane.Record.Asks {
-				if !r.isAccepted(lane.OwnerDir, lane.ID, ask.Key, ask.Close, ask.Asked) {
+				if !r.isAccepted(lane.OwnerDir, lane.ID, ask.Key, ask.Asked) {
 					kept = append(kept, ask)
 				}
 			}
@@ -131,7 +131,7 @@ func (r *Reader) removeAccepted(lanes []Lane) {
 		}
 		kept := lane.Decisions[:0]
 		for _, ask := range lane.Decisions {
-			if !r.isAccepted(lane.OwnerDir, lane.ID, ask.Key, "", ask.At) {
+			if !r.isAccepted(lane.OwnerDir, lane.ID, ask.Key, ask.At) {
 				kept = append(kept, ask)
 			}
 		}

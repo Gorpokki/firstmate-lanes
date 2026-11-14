@@ -213,7 +213,7 @@ func (s *AnswerService) answersRecord(result *DeliveryResult, home string, answe
 	if accepted[answer.Key] {
 		result.Accepted = true
 		result.Reason = "Accepted"
-		if err := s.Reader.acknowledge(home, answer.Lane, answer.Key, answer.Close, answer.Asked); err != nil {
+		if err := s.Reader.acknowledge(home, answer.Lane, answer.Key, answer.Asked); err != nil {
 			result.Reason = "Accepted; local receipt could not be saved"
 		}
 		return

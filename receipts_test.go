@@ -38,7 +38,7 @@ func TestAcceptedReceiptsSurviveRestartWithoutHidingNewAsks(t *testing.T) {
 	receipts := filepath.Join(root, "app-state", "accepted.json")
 	first := NewReader()
 	first.receiptPath = receipts
-	if err = first.acknowledge(canonical, "sample", record.Asks[0].Key, record.Asks[0].Close, record.Asks[0].Asked); err != nil {
+	if err = first.acknowledge(canonical, "sample", record.Asks[0].Key, record.Asks[0].Asked); err != nil {
 		t.Fatal(err)
 	}
 	restarted := NewReader()
@@ -71,7 +71,7 @@ func TestConcurrentReadersPreserveEachAcceptedReceipt(t *testing.T) {
 			defer workers.Done()
 			reader := NewReader()
 			reader.receiptPath = path
-			if err := reader.acknowledge("owner", "lane", key, "", asked); err != nil {
+			if err := reader.acknowledge("owner", "lane", key, asked); err != nil {
 				t.Error(err)
 			}
 		}(key)
@@ -88,33 +88,10 @@ func TestConcurrentReadersPreserveEachAcceptedReceipt(t *testing.T) {
 	}
 }
 
-// A done ask and a release ask with the same key and time are different asks: a receipt for one
-// must not hide the other, while receipts written before close modes existed still hide a default ask.
-func TestAcceptedReceiptBindsTheCloseMode(t *testing.T) {
-	asked := time.Date(2026, 1, 10, 9, 0, 0, 0, time.UTC)
-	for _, c := range []struct {
-		accepted, current string
-		hidden            bool
-	}{
-		{"", "", true}, {"", "done", true}, {"done", "", true}, {"release", "release", true},
-		{"", "release", false}, {"done", "release", false}, {"release", "", false}, {"release", "done", false},
-	} {
-		reader := NewReader()
-		if err := reader.acknowledge("owner", "alpha", "task", c.accepted, asked); err != nil {
-			t.Fatal(err)
-		}
-		lanes := []Lane{{ID: "alpha", OwnerDir: "owner", Record: &LaneRecord{Asks: []LaneRecordAsk{{Key: "task", Asked: asked, Close: c.current}}}}}
-		reader.removeAccepted(lanes)
-		if hidden := len(lanes[0].Record.Asks) == 0; hidden != c.hidden {
-			t.Fatalf("receipt for close %q, ask with close %q: hidden=%v want %v", c.accepted, c.current, hidden, c.hidden)
-		}
-	}
-}
-
 func TestAcceptedReceiptDoesNotHideSameKeyInAnotherLane(t *testing.T) {
 	reader := NewReader()
 	asked := time.Date(2026, 1, 10, 9, 0, 0, 0, time.UTC)
-	if err := reader.acknowledge("owner", "alpha", "shared", "", asked); err != nil {
+	if err := reader.acknowledge("owner", "alpha", "shared", asked); err != nil {
 		t.Fatal(err)
 	}
 	lanes := []Lane{{ID: "beta", OwnerDir: "owner", Decisions: []Decision{{Key: "shared", Verb: "needs-decision", At: asked}}}}

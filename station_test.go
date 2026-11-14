@@ -93,7 +93,7 @@ func TestStatusLineAsksGoBackToTheCrewAsACount(t *testing.T) {
 
 func TestZeroTimeReceiptHidesNothing(t *testing.T) {
 	r := &Reader{}
-	if err := r.acknowledge("/home", "owned", "route", "", time.Time{}); err != nil {
+	if err := r.acknowledge("/home", "owned", "route", time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	lanes := []Lane{{ID: "owned", OwnerDir: "/home", Decisions: []Decision{{Key: "route", Verb: "needs-decision"}}}}
@@ -101,7 +101,7 @@ func TestZeroTimeReceiptHidesNothing(t *testing.T) {
 	if len(lanes[0].Decisions) != 1 {
 		t.Fatal("zero-time receipt hid a re-held undated ask")
 	}
-	stale := &Reader{accepted: map[string]time.Time{receiptID("/home", "owned", "route", ""): {}}}
+	stale := &Reader{accepted: map[string]time.Time{receiptID("/home", "owned", "route"): {}}}
 	stale.removeAccepted(lanes)
 	if len(lanes[0].Decisions) != 1 {
 		t.Fatal("persisted zero-time receipt hid a re-held undated ask")

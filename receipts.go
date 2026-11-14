@@ -40,23 +40,16 @@ func (r *Reader) loadReceipts() error {
 	r.accepted = receipts
 	return nil
 }
-
-// receiptID names one exact ask. A release ask is a different ask from a done ask with the same key,
-// so a receipt for one never hides the other; absent and "done" share the legacy id.
-func receiptID(home, lane, key, close string) string {
-	id := home + "\x00" + lane + "\x00" + key
-	if close == "release" {
-		id += "\x00release"
-	}
-	return id
+func receiptID(home, lane, key string) string {
+	return home + "\x00" + lane + "\x00" + key
 }
-func (r *Reader) acknowledge(home, lane, key, close string, asked time.Time) error {
+func (r *Reader) acknowledge(home, lane, key string, asked time.Time) error {
 	if asked.IsZero() {
 		return nil
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	id := receiptID(home, lane, key, close)
+	id := receiptID(home, lane, key)
 	if r.accepted == nil {
 		r.accepted = map[string]time.Time{}
 	}
