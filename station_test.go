@@ -132,17 +132,31 @@ func TestStationFleetOrdersNeedsYouByOldestAskThenStates(t *testing.T) {
 		decided("needs-old", now.Add(-72*time.Hour)),
 		{ID: "waiting", State: "waiting", UpdatedAt: now},
 		{ID: "quiet", State: "needs you", UpdatedAt: now, Record: &LaneRecord{}},
+		decided("needs-mixed", time.Time{}),
 	}
+	mixed := &lanes[len(lanes)-1].Record.Asks
+	*mixed = append(*mixed, LaneRecordAsk{Form: "discussion", Key: "dated", Topic: "dated", MustDecide: []string{"dated"}, Reason: "Pick", Effort: "read", Asked: now.Add(-48 * time.Hour)})
 	rows, _, _ := stationFleet(lanes, now)
 	got := make([]string, len(rows))
 	for i, row := range rows {
 		got[i] = row.ID
 	}
-	if len(got) != 8 || got[0] == got[1] || !(got[0] == "undated" || got[0] == "quiet") || !(got[1] == "undated" || got[1] == "quiet") {
-		t.Fatalf("unknown-age needs-you lanes must lead, got %v", got)
+	// A lane with no known wait (a returned ask with no time) follows every lane whose wait is known.
+	if want := []string{"needs-old", "needs-mixed", "needs-new", "quiet", "undated", "waiting", "working", "done", "holding"}; !slices.Equal(got, want) {
+		t.Fatalf("order = %v, want %v", got, want)
 	}
-	if want := []string{"needs-old", "needs-new", "waiting", "working", "done", "holding"}; !slices.Equal(got[2:], want) {
-		t.Fatalf("order after unknown-age lanes = %v, want %v", got[2:], want)
+}
+
+func TestStationFleetWaitsBlockedLaneFromItsUpdateBeforeUndatedReturn(t *testing.T) {
+	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	lanes := []Lane{
+		{ID: "alpha", OwnerDir: "/home", State: "needs-decision", UpdatedAt: now, Decisions: []Decision{{Key: "alpha", Verb: "needs-decision"}}},
+		{ID: "zeta", State: "needs you", UpdatedAt: now.Add(-48 * time.Hour), Record: &LaneRecord{}},
+	}
+	rows, _, _ := stationFleet(lanes, now)
+	got := []string{rows[0].ID, rows[1].ID}
+	if want := []string{"zeta", "alpha"}; !slices.Equal(got, want) {
+		t.Fatalf("order = %v, want %v", got, want)
 	}
 }
 

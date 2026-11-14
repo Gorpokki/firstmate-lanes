@@ -1,5 +1,5 @@
 import {test,expect} from 'bun:test';
-import {ageDays,boardSummary,findFoot,findLanes,fleetOrder,freshness,hiddenTicked,isOld,keepNeedingTicks,keepsKey,laneWords,listQuestion,listRows,overdue,returnedOnly,stateChanges,type Lane} from './stations';
+import {ageDays,boardSummary,findFoot,findLanes,fleetOrder,freshness,hiddenTicked,isOld,keepNeedingTicks,keepsKey,laneWords,listQuestion,listRows,overdue,returnedOnly,stateChanges,unknownWhy,type Lane} from './stations';
 import {buildSitting} from './sitting';
 
 const lane=(id:string,state:string,secondMate:string,asked:string)=>({id,name:id,state,secondMate,home:'main',now:'Example',asks:asked?[{key:id,form:'discussion',question:'Example?',reason:'Choose',effort:'quick',asked,answerable:true}]:[]});
@@ -81,7 +81,7 @@ test('a tick box keeps only space; a text field keeps every key; a button keeps 
 });
 
 const returnedLane=(id:string,returnedSince:string,updatedAt:string,asked='')=>({...lane(id,'needs you','build',asked),invalidAsks:1,returnedSince,updatedAt});
-const boardOf=(...stationLanes:ReturnType<typeof returnedLane>[])=>({updatedAt:'2026-01-10T12:00:00Z',hiddenAsks:0,autonomyShare:0,changedLanes:[],stationLanes}) as unknown as Fleet;
+const boardOf=(...stationLanes:Lane[])=>({updatedAt:'2026-01-10T12:00:00Z',hiddenAsks:0,autonomyShare:0,changedLanes:[],stationLanes}) as unknown as Fleet;
 const ageOf=(board:Fleet,id:string)=>{const {quick,read}=listRows(board,'',Date.parse(board.updatedAt));return [...quick,...read].find(r=>r.lane.id===id)?.age;};
 
 test('a lane whose open asks are all returned waits from its oldest decision, not its latest note',()=>{
@@ -101,8 +101,19 @@ test('a record block keeps its reason beside its malformed-ask count; a status-l
  expect(listQuestion({lane:asked,ask:asked.asks[0],age:NaN})).toBe('Example?');
 });
 
-test('a returned ask without a decision time stays unknown and sorts ahead of dated lanes',()=>{
- const board=boardOf(returnedLane('recent','2026-01-10T11:00:00Z','2026-01-10T08:00:00Z'),returnedLane('undated','0001-01-01T00:00:00Z','2026-01-10T11:59:00Z'));
- expect(fleetOrder(board).map(l=>l.id)).toEqual(['undated','recent']);
+test('a returned ask without a time stays unknown, says why and sorts after lanes with a known wait',()=>{
+ const board=boardOf(returnedLane('undated','0001-01-01T00:00:00Z','2026-01-10T11:59:00Z'),returnedLane('recent','2026-01-10T11:00:00Z','2026-01-10T08:00:00Z'),returnedLane('week','','2026-01-10T11:00:00Z','2026-01-03T12:00:00Z'));
+ expect(fleetOrder(board).map(l=>l.id)).toEqual(['week','recent','undated']);
+ const rows=listRows(board,'',Date.parse(board.updatedAt)).read;
+ expect(rows.map(r=>r.lane.id)).toEqual(['recent','undated']);
  expect(Number.isNaN(ageOf(board,'undated'))).toBe(true);
+ expect(rows.map(unknownWhy)).toEqual(['','no ask time']);
+});
+
+test('a blocked lane with a real update time sorts before a returned ask with no time, and shows that wait',()=>{
+ const blocked={...lane('zeta','needs you','build',''),updatedAt:'2026-01-08T12:00:00Z'};
+ const board=boardOf(returnedLane('alpha','0001-01-01T00:00:00Z','2026-01-10T11:59:00Z'),blocked);
+ expect(fleetOrder(board).map(l=>l.id)).toEqual(['zeta','alpha']);
+ expect(ageOf(board,'zeta')).toBe(2*1440);
+ expect(ageOf(board,'alpha')).toBeNaN();
 });

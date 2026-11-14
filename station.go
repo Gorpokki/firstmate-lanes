@@ -119,15 +119,18 @@ func returnDecisions(ds []Decision, at time.Time, out *StationLane) (hidden, ret
 	return hidden, returned
 }
 
+// waitSince is the oldest known time the lane waits from; zero when no time is known.
 func (l StationLane) waitSince() time.Time {
 	var t time.Time
-	for i, ask := range l.Asks {
-		if i == 0 || ask.Asked.Before(t) {
+	for _, ask := range l.Asks {
+		if !ask.Asked.IsZero() && (t.IsZero() || ask.Asked.Before(t)) {
 			t = ask.Asked
 		}
 	}
 	if len(l.Asks) == 0 && l.ReturnedSince != nil {
 		t = *l.ReturnedSince
+	} else if len(l.Asks) == 0 && l.State == "needs you" {
+		t = l.UpdatedAt
 	}
 	return t
 }
@@ -186,8 +189,8 @@ func stationFleet(lanes []Lane, at time.Time) ([]StationLane, int, float64) {
 		if rank[a.State] != rank[b.State] {
 			return rank[a.State] < rank[b.State]
 		}
-		if a.State == "needs you" && !a.waitSince().Equal(b.waitSince()) {
-			return a.waitSince().Before(b.waitSince())
+		if ta, tb := a.waitSince(), b.waitSince(); a.State == "needs you" && !ta.Equal(tb) {
+			return tb.IsZero() || !ta.IsZero() && ta.Before(tb) // an unknown wait follows every known one
 		}
 		return a.ID < b.ID
 	})
