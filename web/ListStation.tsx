@@ -9,6 +9,7 @@ import {
 	listRows,
 	overdue,
 	returnedOnly,
+	unknownWhy,
 	type Fleet,
 	type ListRow,
 } from "./stations";
@@ -47,6 +48,7 @@ function AgeBar({ age }: { age: number }) {
 function Row(p: { row: ListRow } & Omit<ListProps, "fleet" | "mate" | "setMate" | "decide">) {
 	const { lane } = p.row,
 		on = p.ticked.has(lane.id),
+		why = unknownWhy(p.row),
 		words = ageWords(p.row.age),
 		late = overdue(p.row.age);
 	// Space ticks the lane from the row as from its box; Enter and a click open the lane.
@@ -73,7 +75,7 @@ function Row(p: { row: ListRow } & Omit<ListProps, "fleet" | "mate" | "setMate" 
 				onFocus={() => p.select(lane.id)}
 				onKeyDown={key}
 				onKeyUp={key}
-				aria-label={`${lane.name}${on ? ", ticked" : ""}: ${plural(lane.asks.length, "ask")}, waiting ${words}${late ? ", overdue" : ""}. ${listQuestion(p.row)}`}
+				aria-label={`${lane.name}${on ? ", ticked" : ""}: ${plural(lane.asks.length, "ask")}, waiting ${words}${why && `, ${why}`}${late ? ", overdue" : ""}. ${listQuestion(p.row)}`}
 			>
 				<AgeBar age={p.row.age} />
 				<span className="a">{words}</span>
@@ -82,6 +84,7 @@ function Row(p: { row: ListRow } & Omit<ListProps, "fleet" | "mate" | "setMate" 
 				<span className="q2">
 					{listQuestion(p.row)}
 					{!!lane.invalidAsks && !returnedOnly(lane) && <em> · {lane.invalidAsks} malformed asks omitted</em>}
+					{why && <em> · wait unknown: {why}</em>}
 				</span>
 			</button>
 		</div>

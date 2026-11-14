@@ -13,11 +13,12 @@ export type ListRow={lane:Lane;ask?:Ask;age:number};
 const knownTime=(iso:string|undefined)=>{const t=Date.parse(iso||'');return t>0?t:NaN;}; // Go's zero time and a missing time are unknown
 const oldestFirst=(a:Ask,b:Ask)=>(knownTime(a.asked)||Infinity)-(knownTime(b.asked)||Infinity);
 const waitTimes=(lane:Lane):(string|undefined)[]=>lane.asks.length?lane.asks.map(a=>a.asked):[lane.returnedSince];
-const oldestWait=(lane:Lane)=>Math.min(...waitTimes(lane).map(iso=>Date.parse(iso||'')).filter(Number.isFinite));
 const knownWait=(lane:Lane)=>Math.min(...waitTimes(lane).map(knownTime).filter(Number.isFinite));
 // Asks not in a fixed form (ADR 0003) are no cards: they go back to the crew and only their count shows.
 export const returnedWords=(n:number)=>`${plural(n,'ask')} not in the ask form went back to the crew.`;
 export const returnedOnly=(lane:Lane)=>lane.asks.length===0&&lane.returnedSince!==undefined;
+// Why a row's wait is unknown: what it waits from has no time. Empty when the wait is known.
+export const unknownWhy=({lane,age}:ListRow)=>Number.isFinite(age)?'':lane.asks.length||returnedOnly(lane)?'no ask has a time':'the lane has no update time';
 export const listQuestion=({lane,ask}:ListRow)=>ask?ask.question||ask.topic||ask.key:returnedOnly(lane)?returnedWords(lane.invalidAsks??0):/^blocked\b/i.test(lane.now)?lane.now:`Blocked: ${lane.now||'the crew cannot clear it'}`;
 export function listRows(fleet:Fleet,mate='',now=Date.now()) {
  const need=fleetOrder(fleet).filter(l=>l.state==='needs you'),counts=new Map<string,number>();
@@ -50,8 +51,8 @@ export function freshness(updated:string,now=Date.now()) {
  const minutes=minutesSince(updated,now);
  return minutes<1?'Live':minutes<OLD_MINUTES?`Updated ${Math.floor(minutes)} min ago`:`Saved ${elapsed(minutes)} ago`;
 }
-// Lanes in the board's one order: need you (oldest ask first), waiting, working, done, holding.
-export const fleetOrder=(fleet:Fleet)=>fleet.stationLanes.toSorted((a,b)=>states.indexOf(a.state)-states.indexOf(b.state)||oldestWait(a)-oldestWait(b)||a.name.localeCompare(b.name));
+// Lanes in the board's one order: need you (oldest known ask first, an unknown wait last), waiting, working, done, holding.
+export const fleetOrder=(fleet:Fleet)=>fleet.stationLanes.toSorted((a,b)=>states.indexOf(a.state)-states.indexOf(b.state)||knownWait(a)-knownWait(b)||a.name.localeCompare(b.name));
 // The lanes whose state differs from the reading before: their strip marks light once.
 export const stateChanges=(was:Record<string,string>|null,fleet:Fleet)=>was?fleet.stationLanes.filter(l=>l.id in was&&was[l.id]!==l.state).map(l=>l.id):[];
 // The summary: row 1 the state, only the need-you numbers bright; row 2 what changed and the share that ran without the user.
