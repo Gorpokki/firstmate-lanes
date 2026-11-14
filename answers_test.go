@@ -79,7 +79,7 @@ func closeModeHome(t *testing.T, asked time.Time) (home, received, command strin
 	discussion := func(key, close string) string {
 		return `{"form":"discussion","key":"` + key + `","topic":"Plan","must_decide":["Scope"],` + when + close + `}`
 	}
-	asks := map[string]string{"question": choice("question", ""), "work": choice("work", `,"close":"release"`), "talk": discussion("talk", `,"close":"release"`), "explicit": discussion("explicit", `,"close":"done"`)}
+	asks := map[string]string{"question": choice("question", ""), "work": choice("work", `,"close":"release"`), "talk": discussion("talk", `,"close":"release"`), "explicit": discussion("explicit", `,"close":"done"`), "blank": choice("blank", `,"close":""`)}
 	for lane, ask := range asks {
 		record := `{"name":"Synthetic","state":"waiting","now":"Awaiting","start":"2026-01-01T00:00:00Z","asks":[` + ask + `]}`
 		if err := os.WriteFile(filepath.Join(home, "state", lane+".lane.json"), []byte(record), 0600); err != nil {
@@ -124,6 +124,14 @@ func TestCloseModeReachesTheIntakeFourthField(t *testing.T) {
 		"explicit\tGrill requested: discuss this ask with the crew before choosing.\tgrill\tdone\n"
 	if string(got) != want {
 		t.Fatalf("intake received:\n%q\nwant:\n%q", got, want)
+	}
+	// The ask that supplied an empty close is malformed, so it is not open and the intake is not called again.
+	blank, err := service.Send(context.Background(), true, []SittingAnswer{{Lane: "blank", Key: "blank", Kind: "choice", Choice: 0, Asked: asked}})
+	if err != nil || blank[0].Accepted || blank[0].Reason != "Ask is no longer open" {
+		t.Fatalf("blank close: results=%#v err=%v", blank, err)
+	}
+	if again, _ := os.ReadFile(received); string(again) != want {
+		t.Fatalf("a malformed ask reached the intake: %q", again)
 	}
 }
 

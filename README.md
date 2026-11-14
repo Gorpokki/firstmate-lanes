@@ -196,7 +196,7 @@ Choice asks require two to four labelled choices with effects.
 `pick` is an optional zero-based choice index; a supplied pick requires `pick_reason`.
 `no_pick_reason` may explain why the crew gave no pick.
 `effort` is `quick` or `read`.
-`close` is optional and is `done` or `release`. A question-shaped ask leaves it out. An ask whose key is a held work item sets `release`, so the answer lifts the hold and does not complete the work. Any other value makes the ask malformed.
+`close` is optional and is `done` or `release`. A question-shaped ask leaves it out. An ask whose key is a held work item sets `release`, so the answer lifts the hold and does not complete the work. Any other supplied value, including an empty string or `null`, makes the ask malformed; only a missing `close` keeps the default.
 A discussion ask uses `form: "discussion"`, `topic` and a nonempty `must_decide` string array instead of `question`, `choices` and a pick.
 Links have `id`, `title` and `url`; history entries have `at`, `state` and optional `text`.
 Use a current `asked` timestamp when trying the example; old asks intentionally disappear from sittings.

@@ -140,6 +140,13 @@ func decodeLaneRecordAsk(raw json.RawMessage) (LaneRecordAsk, bool) {
 	if err := json.Unmarshal(raw, &ask); err != nil {
 		return ask, false
 	}
+	// A supplied close (even "" or null) must be done or release; only a missing key keeps the default.
+	var supplied struct {
+		Close json.RawMessage `json:"close"`
+	}
+	if err := json.Unmarshal(raw, &supplied); err != nil || (len(supplied.Close) > 0 && ask.Close != "done" && ask.Close != "release") {
+		return ask, false
+	}
 	for _, value := range []*string{&ask.Question, &ask.Topic, &ask.Reason, &ask.PickReason, &ask.NoPickReason, &ask.Detail, &ask.WaitsOnThis} {
 		*value = clean(*value)
 	}
@@ -169,9 +176,6 @@ func laneRecordState(state string) bool {
 }
 
 func validLaneRecordAsk(a LaneRecordAsk) bool {
-	if a.Close != "" && a.Close != "done" && a.Close != "release" {
-		return false
-	}
 	if !slugRe.MatchString(a.Key) || strings.TrimSpace(a.Reason) == "" || a.Asked.IsZero() || (a.Effort != "quick" && a.Effort != "read") {
 		return false
 	}
