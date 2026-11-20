@@ -183,7 +183,7 @@ export function LaneStation({lane,mesh,shipName,onBack,onConfirm}:LaneProps){
  useLaneKeys({answerable:!!ask&&ask.answerable&&!batch.isLocked(ask),count,ready:batch.ready&&!!onConfirm,idx,choose:i=>{if(ask?.choices?.[i])save('choice',i);},save,defer,undo,move:by=>setLa(Math.max(0,Math.min(count-1,index+by))),openIndex:()=>setIdx(count>0),send:batch.send,back:onBack,ownRef});
  return <div className="lane" aria-label={`Lane ${lane.name}`}>
   <div className="holo">
-   <Holo mesh={mesh} state={lane.state} sourceState={lane.sourceState} progress={lane.progress} name={shipName||'No admitted ship'} turnKeys/>
+   <Holo mesh={mesh} state={lane.state} sourceState={lane.sourceState} name={shipName||'No admitted ship'} turnKeys/>
    <LaneLog lane={lane}/>
   </div>
   <div className="side">

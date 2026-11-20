@@ -44,7 +44,7 @@ const HoldRow=({open,flip,held,parked,quiet}:{open:boolean;flip:()=>void;held:La
 function Panel({sel,meshes,onOpen}:{sel:Lane;meshes:ShipMesh[];onOpen:(id:string)=>void}){
  const ship=assignedShip(sel.id,meshes);
  return <aside className="panel" aria-label="Selected lane">
-  <Holo key={sel.id} mesh={ship?.mesh} state={sel.state} sourceState={sel.sourceState} progress={sel.progress} name={ship?.name||'No admitted ship'}/>
+  <Holo key={sel.id} mesh={ship?.mesh} state={sel.state} sourceState={sel.sourceState} name={ship?.name||'No admitted ship'}/>
   <h2>{sel.name}</h2>
   <div className="state"><i style={{background:stateColors[sel.state]}}/><b>{sel.state}</b></div>
   <p className="sw">{laneWords(sel)}</p>
