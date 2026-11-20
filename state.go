@@ -33,17 +33,18 @@ type Decision struct {
 
 // Lane is one supervised unit of work: a task or a second mate.
 type Lane struct {
-	ID, Kind, Title  string
-	Home, SecondMate string
-	OwnerDir         string
-	Record           *LaneRecord
-	InvalidAsks      int
-	HadRecordAsks    bool
-	State            string // needs-decision, blocked, working, paused, done, failed, unknown
-	UpdatedAt        time.Time
-	Events           []Event
-	Decisions        []Decision
-	Hold             string // backlog hold note, if any
+	ID, Kind, Title    string
+	Home, SecondMate   string
+	OwnerDir           string
+	Record             *LaneRecord
+	InvalidAsks        int
+	HadRecordAsks      bool
+	State              string // needs-decision, blocked, working, paused, done, failed, unknown
+	UpdatedAt          time.Time
+	Events             []Event
+	Decisions          []Decision
+	Hold               string // backlog hold note, if any
+	CurrentCaptainHold bool
 }
 
 func (l Lane) Latest() (Event, bool) {
@@ -355,10 +356,10 @@ func (r *Reader) Load(home string) ([]Lane, error) {
 
 func (r *Reader) lane(home, id string, b, mate entry) Lane {
 	meta := readMeta(filepath.Join(home, "state", id+".meta"))
-	l := Lane{ID: id, Kind: first(meta["kind"], b.Kind, mate.Kind, "unknown"), Title: first(b.Title, mate.Title, id), Hold: b.Hold}
+	l := Lane{ID: id, Kind: first(meta["kind"], b.Kind, mate.Kind, "unknown"), Title: first(b.Title, mate.Title, id), Hold: b.Hold, CurrentCaptainHold: b.HoldKind == "captain" && b.Section != "Done"}
 	l.Events, l.UpdatedAt = r.events(filepath.Join(home, "state", id+".status"))
 	l.Decisions = OpenDecisions(l.Events, l.Kind)
-	if b.HoldKind == "captain" && b.Section != "Done" && !hasHoldAsk(l.Decisions, id) {
+	if l.CurrentCaptainHold && !hasHoldAsk(l.Decisions, id) {
 		l.Decisions = append(l.Decisions, Decision{Key: id, Verb: "captain-hold", Text: b.Hold})
 	}
 	l.State = laneState(l.Events, l.Decisions)

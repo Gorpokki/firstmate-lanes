@@ -79,7 +79,7 @@ func stationLane(l Lane, at time.Time) (StationLane, int) {
 		out.Start, out.Ticket = l.Record.Start, l.Record.Ticket
 		out.Now = l.Record.Now
 		for _, ask := range l.Record.Asks {
-			if !ask.Asked.IsZero() && ask.Asked.Before(at.Add(-7*24*time.Hour)) {
+			if !ask.Asked.IsZero() && ask.Asked.Before(at.Add(-7*24*time.Hour)) && !(l.CurrentCaptainHold && ask.Key == l.ID) {
 				hidden++
 				continue
 			}

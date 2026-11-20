@@ -133,7 +133,7 @@ Five station states:
 | holding | Parked, silent working, failed, or otherwise inactive |
 | done | Completed without a recent open ask |
 
-Asks exactly seven days old remain visible; older asks are hidden and counted.
+Asks exactly seven days old remain visible; older asks are hidden and counted unless their task remains on a current captain hold. Accepted answers remain suppressed.
 Working becomes holding at exactly two hours.
 Autonomy share counts lanes without recorded human involvement, including structured asks and history.
 The board also shows freshness and lane-state changes since the explicit last look.
@@ -199,7 +199,7 @@ Choice asks require two to four labelled choices with effects.
 `close` is optional and is `done` or `release`. A question-shaped ask leaves it out. An ask whose key is a held work item sets `release`, so the answer lifts the hold and does not complete the work. Any other supplied value, including an empty string or `null`, makes the ask malformed; only a missing `close` keeps the default.
 A discussion ask uses `form: "discussion"`, `topic` and a nonempty `must_decide` string array instead of `question`, `choices` and a pick.
 Links have `id`, `title` and `url`; history entries have `at`, `state` and optional `text`.
-Use a current `asked` timestamp when trying the example; old asks intentionally disappear from sittings.
+Use a current `asked` timestamp when trying the example; older asks disappear from sittings unless their work item remains on a current captain hold.
 The second mate belongs to the lane, not to each ask.
 
 ## Add a model

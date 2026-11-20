@@ -345,3 +345,58 @@ func TestReturnedAsksWaitFromTheirOwnDecision(t *testing.T) {
 		t.Fatalf("returned text not kept in the log: %+v", row.History)
 	}
 }
+func TestExpiredAsksRemainVisibleOnlyForCurrentCaptainHolds(t *testing.T) {
+	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	asked := now.Add(-8 * 24 * time.Hour)
+	activeHold := "## In flight\n- [ ] route - Choose route (kind: ship) (hold: Choose route) (hold-kind: captain)\n"
+	plainTask := "## In flight\n- [ ] route - Choose route (kind: ship)\n"
+	status := fmt.Sprintf("needs-decision [key=route] [at=%d]: Choose route\n", asked.Unix())
+	cases := []struct {
+		name, backlog, status string
+		asked                 time.Time
+		accepted              bool
+		wantVisible           bool
+		wantHidden            int
+	}{
+		{"old active hold", activeHold, "", asked, false, true, 0},
+		{"fresh active hold", activeHold, "", now, false, true, 0},
+		{"old open but unheld", plainTask, status, asked, false, false, 1},
+		{"old answered ask", plainTask, status + fmt.Sprintf("resolved [key=route] [at=%d]: Route chosen\n", now.Unix()), asked, true, false, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			for _, dir := range []string{"state", "data"} {
+				if err := os.Mkdir(filepath.Join(home, dir), 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.WriteFile(filepath.Join(home, "data", "backlog.md"), []byte(tc.backlog), 0600); err != nil {
+				t.Fatal(err)
+			}
+			record := fmt.Sprintf(`{"name":"Route","state":"waiting","now":"Awaiting route","start":"2026-01-01T00:00:00Z","asks":[{"form":"choice","key":"route","question":"Choose route?","reason":"A route is required","choices":[{"label":"North","effect":"Use the north route"},{"label":"South","effect":"Use the south route"}],"effort":"quick","asked":%q}]}`, tc.asked.Format(time.RFC3339))
+			if err := os.WriteFile(filepath.Join(home, "state", "route.lane.json"), []byte(record), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(home, "state", "route.status"), []byte(tc.status), 0600); err != nil {
+				t.Fatal(err)
+			}
+			reader := NewReader()
+			if tc.accepted {
+				reader.receiptPath = filepath.Join(home, "accepted.json")
+				if err := reader.acknowledge(home, "route", "route", tc.asked); err != nil {
+					t.Fatal(err)
+				}
+			}
+			lanes, err := reader.LoadFleet(home)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fleet := BuildFleet(lanes, now)
+			row := fleet.Stations[0]
+			if visible := len(row.Asks) == 1; visible != tc.wantVisible || fleet.HiddenAsks != tc.wantHidden {
+				t.Fatalf("visible=%t, state=%q, hidden=%d; want visible=%t hidden=%d", visible, row.State, fleet.HiddenAsks, tc.wantVisible, tc.wantHidden)
+			}
+		})
+	}
+}
