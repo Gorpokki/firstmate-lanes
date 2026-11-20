@@ -354,13 +354,14 @@ func TestExpiredAsksRemainVisibleOnlyForCurrentCaptainHolds(t *testing.T) {
 	cases := []struct {
 		name, backlog, status string
 		asked                 time.Time
+		accepted              bool
 		wantVisible           bool
 		wantHidden            int
 	}{
-		{"old active hold", activeHold, "", asked, true, 0},
-		{"fresh active hold", activeHold, "", now, true, 0},
-		{"old open but unheld", plainTask, status, asked, false, 2},
-		{"old answered ask", plainTask, status + fmt.Sprintf("resolved [key=route] [at=%d]: Route chosen\n", now.Unix()), asked, false, 1},
+		{"old active hold", activeHold, "", asked, false, true, 0},
+		{"fresh active hold", activeHold, "", now, false, true, 0},
+		{"old open but unheld", plainTask, status, asked, false, false, 1},
+		{"old answered ask", plainTask, status + fmt.Sprintf("resolved [key=route] [at=%d]: Route chosen\n", now.Unix()), asked, true, false, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -380,7 +381,14 @@ func TestExpiredAsksRemainVisibleOnlyForCurrentCaptainHolds(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(home, "state", "route.status"), []byte(tc.status), 0600); err != nil {
 				t.Fatal(err)
 			}
-			lanes, err := NewReader().LoadFleet(home)
+			reader := NewReader()
+			if tc.accepted {
+				reader.receiptPath = filepath.Join(home, "accepted.json")
+				if err := reader.acknowledge(home, "route", "route", tc.asked); err != nil {
+					t.Fatal(err)
+				}
+			}
+			lanes, err := reader.LoadFleet(home)
 			if err != nil {
 				t.Fatal(err)
 			}
