@@ -23,7 +23,6 @@ type StationLane struct {
 	Ticket        *LaneRecordLink `json:"ticket,omitempty"`
 	InvalidAsks   int             `json:"invalidAsks"`
 	ReturnedSince *time.Time      `json:"returnedSince,omitempty"`
-	Progress      float64         `json:"progress"`
 }
 type StationChange struct {
 	At    time.Time `json:"at"`
@@ -94,7 +93,6 @@ func stationLane(l Lane, at time.Time) (StationLane, int) {
 	sort.SliceStable(out.History, func(i, j int) bool { return out.History[i].At.Before(out.History[j].At) })
 	out.HistoryLines = len(out.History)
 	out.State = stationLaneState(l, len(out.Asks)+returned, at)
-	out.Progress = stationLaneProgress(out)
 	return out, hidden
 }
 
@@ -149,19 +147,6 @@ func stationLaneState(l Lane, asks int, at time.Time) string {
 		return "waiting"
 	default:
 		return "holding"
-	}
-}
-
-func stationLaneProgress(out StationLane) float64 {
-	switch {
-	case out.SourceState == "failed" || out.State == "done":
-		return 1
-	case out.State == "working" || out.State == "needs you":
-		return .72
-	case out.State == "waiting":
-		return .48
-	default:
-		return .35
 	}
 }
 

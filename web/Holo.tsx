@@ -145,9 +145,9 @@ function ShipTools({view,spinning,setSpinning,zoomBy,tilt,fit}:{view:ShipView;sp
  </div>;
 }
 const PHASE_WORD:Record<BlastPhase,string>={stress:'failing: stress',rupture:'failing: rupture',debris:'failed: debris drifting',settled:'failed'};
-function caption(phase:BlastPhase|null,blasting:boolean,failed:boolean,blocked:boolean,goal:number){
+export function caption(phase:BlastPhase|null,blasting:boolean,failed:boolean,blocked:boolean){
  if(blasting)return PHASE_WORD[phase??'stress'];
- return failed?'failed':`${blocked?'blocked · ':''}${Math.round(goal*100)}% built`;
+ return failed?'failed':blocked?'blocked':'Hull follows lane state';
 }
 /** The holo view of one lane's ship: the board's one renderer, its view settings shared by every holo. */
 export function Holo({mesh,state,sourceState,progress,name,idle,options,blast=null,paused=false,onPhase,turnKeys}:HoloProps){
@@ -164,7 +164,7 @@ export function Holo({mesh,state,sourceState,progress,name,idle,options,blast=nu
  useEffect(()=>kick(),[mesh,state,status,goal,view.mode,view.inner,spinning,paused,hidden,blast]);
  return <section aria-label="Holo view" className="holo-view">
   <canvas ref={canvas} className="ship" role="img" aria-label={`Rendered ship: ${name}`} {...handlers}/>
-  <div className="shipname"><b>{name}</b><span>{caption(phase,blast!==null,failed,blocked,goal)}</span></div>
+  <div className="shipname"><b>{name}</b><span>{caption(phase,blast!==null,failed,blocked)}</span></div>
   <ShipTools view={view} spinning={spinning} setSpinning={setSpinning} zoomBy={zoomBy} tilt={tilt} fit={()=>{pose.current.zoom=1;kick();}}/>
  </section>;
 }

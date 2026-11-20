@@ -33,7 +33,7 @@ function Links({links,waits}:{links:[string,Link][];waits?:string}){
 function ShipBox({lane,meshes,onOpenLane}:{lane:Lane;meshes?:ShipMesh[];onOpenLane?:(id:string)=>void}){
  const ship=assignedShip(lane.id,meshes),source=lane.sourceState?.toLowerCase()||'',updated=minutesSince(lane.updatedAt||'');
  return <div className="shipbox">
-  <Holo mesh={ship?.mesh} state={lane.state} progress={lane.progress} name={ship?.name||'No admitted ship'} options={{blocks:/blocked|block/.test(source),fragments:/failed|failure|error/.test(source)?1:0}}/>
+  <Holo mesh={ship?.mesh} state={lane.state} name={ship?.name||'No admitted ship'} options={{blocks:/blocked|block/.test(source),fragments:/failed|failure|error/.test(source)?1:0}}/>
   <div className="lstate"><i style={{background:stateColors[lane.state]}}/>{lane.state!=='needs you'&&<b>{lane.state}</b>}{onOpenLane?<button className="link" onClick={()=>onOpenLane(lane.id)} title="Open the lane: its ship and its asks">{lane.asks.length===1?'open the lane':plural(lane.asks.length,'ask')} ▸<K k="enter"/></button>:<span>{plural(lane.asks.length,'ask')}</span>}</div>
   {lane.now&&<div className="last"><span className="nowlab">{"Crew's last word"}{Number.isFinite(updated)?` · ${ageWords(updated)} ago`:''}</span><p className="now">{lane.now}</p></div>}
  </div>;
