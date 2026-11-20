@@ -36,6 +36,20 @@ func TestRecordPreferredAndMissingRecordFallsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	fleet := BuildFleet(lanes, time.Date(2026, 1, 10, 13, 0, 0, 0, time.UTC))
+	encoded, err := json.Marshal(fleet.Stations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stationJSON []map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &stationJSON); err != nil {
+		t.Fatal(err)
+	}
+	for _, station := range stationJSON {
+		if _, exists := station["progress"]; exists {
+			t.Fatalf("fleet exposed fabricated lane progress: %s", encoded)
+		}
+	}
+
 	found := map[string]StationLane{}
 	for _, l := range fleet.Stations {
 		found[l.ID] = l

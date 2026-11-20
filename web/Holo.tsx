@@ -145,7 +145,7 @@ function ShipTools({view,spinning,setSpinning,zoomBy,tilt,fit}:{view:ShipView;sp
  </div>;
 }
 const PHASE_WORD:Record<BlastPhase,string>={stress:'failing: stress',rupture:'failing: rupture',debris:'failed: debris drifting',settled:'failed'};
-export function caption(phase:BlastPhase|null,blasting:boolean,failed:boolean,blocked:boolean){
+function caption(phase:BlastPhase|null,blasting:boolean,failed:boolean,blocked:boolean){
  if(blasting)return PHASE_WORD[phase??'stress'];
  return failed?'failed':blocked?'blocked':'Hull follows lane state';
 }
