@@ -36,19 +36,7 @@ func TestRecordPreferredAndMissingRecordFallsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	fleet := BuildFleet(lanes, time.Date(2026, 1, 10, 13, 0, 0, 0, time.UTC))
-	encoded, err := json.Marshal(fleet.Stations)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var stationJSON []map[string]json.RawMessage
-	if err := json.Unmarshal(encoded, &stationJSON); err != nil {
-		t.Fatal(err)
-	}
-	for _, station := range stationJSON {
-		if _, exists := station["progress"]; exists {
-			t.Fatalf("fleet exposed fabricated lane progress: %s", encoded)
-		}
-	}
+	assertStationsOmitProgress(t, fleet.Stations)
 
 	found := map[string]StationLane{}
 	for _, l := range fleet.Stations {
@@ -63,6 +51,23 @@ func TestRecordPreferredAndMissingRecordFallsBack(t *testing.T) {
 	f, e := found["fallback"], found["example"]
 	if got, want := [4]string{f.Name, f.Title, e.Name, e.Title}, [4]string{"fallback", sentence, "Record example", ""}; got != want {
 		t.Fatalf("fallback and record name/title = %q, want %q", got, want)
+	}
+}
+
+func assertStationsOmitProgress(t *testing.T, stations []StationLane) {
+	t.Helper()
+	encoded, err := json.Marshal(stations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stationJSON []map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &stationJSON); err != nil {
+		t.Fatal(err)
+	}
+	for _, station := range stationJSON {
+		if _, exists := station["progress"]; exists {
+			t.Fatalf("fleet exposed fabricated lane progress: %s", encoded)
+		}
 	}
 }
 
