@@ -7,3 +7,12 @@ test('blocked or failed hull shape stops at half, regardless of supplied progres
  expect(buildOf('done',false,true,1)).toBe(.5);
  expect(buildOf('working',false,false,.35)).toBe(.35);
 });
+
+// oracle: the server's stationLaneProgress table at 79d369d (station.go), the fractions the board drew before progress moved client-side
+test('an unblocked, unfailed lane without supplied progress builds by its state as before',()=>{
+ expect(buildOf('done',false,false)).toBe(1);
+ expect(buildOf('working',false,false)).toBe(.72);
+ expect(buildOf('needs you',false,false)).toBe(.72);
+ expect(buildOf('waiting',false,false)).toBe(.48);
+ expect(buildOf('holding',false,false)).toBe(.35);
+});

@@ -110,16 +110,14 @@ func shipCell(lane StationLane, tick int, triangles [][3]meshPoint, row, col, ro
 
 func hullBuild(lane StationLane) float64 {
 	switch {
-	case lane.SourceState == "blocked" || lane.SourceState == "failed":
-		return .5
-	case lane.State == "done":
+	case lane.SourceState == "failed" || lane.State == "done":
 		return 1
-	case lane.State == "needs you" || lane.State == "waiting":
+	case lane.State == "working" || lane.State == "needs you":
 		return .72
-	case lane.State == "working":
-		return .6
+	case lane.State == "waiting":
+		return .48
 	default:
-		return .45
+		return .35
 	}
 }
 

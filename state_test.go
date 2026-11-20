@@ -128,6 +128,26 @@ func TestServeHostGuard(t *testing.T) {
 	}
 }
 
+func TestHullBuildByLaneStateAsBefore(t *testing.T) {
+	// oracle: the server's stationLaneProgress table at 79d369d (station.go), the fractions the terminal drew before progress moved client-side
+	cases := []struct {
+		state, source string
+		want          float64
+	}{
+		{"done", "", 1},
+		{"working", "working", .72},
+		{"needs you", "", .72},
+		{"waiting", "", .48},
+		{"holding", "working", .35},
+		{"working", "failed", 1},
+	}
+	for _, c := range cases {
+		if got := hullBuild(StationLane{State: c.state, SourceState: c.source}); got != c.want {
+			t.Errorf("hullBuild(%q, %q) = %v, want %v", c.state, c.source, got, c.want)
+		}
+	}
+}
+
 func TestTerminalShipRotationPauseAndFiniteBreakup(t *testing.T) {
 	for _, id := range []string{"sample-a", "sample-b"} {
 		lane := StationLane{ID: id, State: "working", SourceState: "working"}
