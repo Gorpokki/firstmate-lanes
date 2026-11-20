@@ -99,13 +99,28 @@ func shipCell(lane StationLane, tick int, triangles [][3]meshPoint, row, col, ro
 			rank := cellRank(row, col)
 			if lane.SourceState == "failed" && rank < math.Min(1, float64(tick)/24) {
 				return '·'
-			} else if rank > lane.Progress {
+			} else if rank > hullBuild(lane) {
 				return '▒'
 			}
 			return '█'
 		}
 	}
 	return ' '
+}
+
+func hullBuild(lane StationLane) float64 {
+	switch {
+	case lane.SourceState == "blocked" || lane.SourceState == "failed":
+		return .5
+	case lane.State == "done":
+		return 1
+	case lane.State == "needs you" || lane.State == "waiting":
+		return .72
+	case lane.State == "working":
+		return .6
+	default:
+		return .45
+	}
 }
 
 func insideTriangle(x, y float64, t [3]meshPoint) bool {

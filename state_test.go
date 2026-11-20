@@ -130,7 +130,7 @@ func TestServeHostGuard(t *testing.T) {
 
 func TestTerminalShipRotationPauseAndFiniteBreakup(t *testing.T) {
 	for _, id := range []string{"sample-a", "sample-b"} {
-		lane := StationLane{ID: id, State: "working", SourceState: "working", Progress: 1}
+		lane := StationLane{ID: id, State: "working", SourceState: "working"}
 		m := model{}
 		start := strings.Join(shipLines(lane, m.tick, 52, 18), "\n")
 		for range 16 {
