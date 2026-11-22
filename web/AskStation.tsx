@@ -3,7 +3,7 @@ import {ageWords,returnedWords,stateColors,type Fleet,type Lane,type Link} from 
 import {AgeBar} from './ListStation';
 import {assignedShip,type ShipMesh} from './mesh-catalog';
 import {Holo} from './Holo';
-import {acceptedRefs,answerFor,answeredLanes,batchReady,minutesSince,reviewAnswers,undoAnswer,upcomingSitting,type DeliveryResult,type SittingAnswer,type SittingItem} from './sitting';
+import {acceptedAsks,answerFor,answeredLanes,batchReady,minutesSince,reviewAnswers,undoAnswer,upcomingSitting,type DeliveryResult,type SittingAnswer,type SittingItem} from './sitting';
 
 export type {DeliveryResult,SittingAnswer} from './sitting';
 type AskStationProps={fleet:Fleet;active:boolean;selectedLaneIds?:string[];hiddenSelected:number;meshes?:ShipMesh[];onBack:()=>void;onConfirm?:(answers:SittingAnswer[])=>Promise<DeliveryResult[]>;onOpenLane?:(id:string)=>void;onAnswered?:(laneIds:string[])=>void};
@@ -103,7 +103,7 @@ export function AskStation({fleet,active,selectedLaneIds,hiddenSelected,meshes,o
  const defer=()=>{if(!cur||locked)return;setDeferred(old=>[...old,cur.ref]);setAnswers(old=>undoAnswer(old,cur.ref));setTrail(old=>[...old.filter(ref=>ref!==cur.ref),cur.ref]);setRaw(false);};
  const undo=()=>{const ref=trail.at(-1);if(!ref||locked)return;setTrail(old=>old.slice(0,-1));setAnswers(old=>undoAnswer(old,ref));setDeferred(old=>old.filter(entry=>entry!==ref));};
  const keepPicks=()=>{if(locked||!keep.length)return;setAnswers(old=>({...old,...Object.fromEntries(keep.map(item=>[item.ref,answerFor(item,'choice',item.ask.pick)]))}));setTrail(old=>[...old.filter(ref=>!keep.some(item=>item.ref===ref)),...keep.map(item=>item.ref)]);setPaste(true);};
- const confirm=async()=>{if(!onConfirm||locked||!ready||!n)return;setSending(true);setError('');try{const results=await onConfirm(reviewed);setDelivery(results);setSent(old=>new Set([...old,...acceptedRefs(results)]));}catch(e){setError(e instanceof Error?e.message:'Could not send answers.');}finally{setSending(false);}};
+ const confirm=async()=>{if(!onConfirm||locked||!ready||!n)return;setSending(true);setError('');try{const results=await onConfirm(reviewed);setDelivery(results);setSent(old=>new Set([...old,...acceptedAsks(results,reviewed)]));}catch(e){setError(e instanceof Error?e.message:'Could not send answers.');}finally{setSending(false);}};
  const keyRef=useRef<(event:KeyboardEvent)=>void>(()=>{});
  const enterLane=(event:KeyboardEvent)=>{if(cur&&!(event.target instanceof HTMLElement&&event.target.closest('button,a,summary')))onOpenLane?.(cur.lane.id);};
  const keyActions=():Record<string,(()=>void)|false>=>({s:!!cur&&(()=>save(cur,answerFor(cur,'skip'))),w:!!cur&&defer,d:!!cur&&(()=>setRaw(value=>!value)),g:!!cur&&(()=>save(cur,answerFor(cur,'grill'))),o:!!cur&&(()=>ownRef.current?.focus()),u:undo,y:!cur&&confirm,k:keepPicks,n:nextCount>0&&(()=>nextSitting()),e:quickCount>0&&(()=>nextSitting(true)),p:n>0&&(()=>setPaste(value=>!value))});

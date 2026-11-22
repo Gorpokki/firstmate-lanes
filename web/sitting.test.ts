@@ -1,5 +1,5 @@
 import {expect,test} from 'bun:test';
-import {acceptedKeys,acceptedRefs,answerFor,answeredLanes,batchReady,buildSitting,deferForLater,laneBatch,readOnlyReason,reviewAnswers,undoAnswer,upcomingSitting,type SittingAnswer} from './sitting';
+import {acceptedAsks,acceptedKeys,answerFor,answeredLanes,batchReady,buildSitting,deferForLater,laneBatch,readOnlyReason,reviewAnswers,undoAnswer,upcomingSitting,type SittingAnswer} from './sitting';
 import type {Fleet,Lane} from './stations';
 
 const lane=(id:string,secondMate:string,asks:Lane['asks']):Lane=>({id,name:`Lane ${id}`,home:'main',secondMate,state:'needs you',now:'',asks});
@@ -11,11 +11,13 @@ test('only accepted delivery results count as sent, so a refused answer stays pe
  expect(acceptedKeys(null).size).toBe(0);
 });
 
-test('an accepted ask never returns as the next sitting while the fleet read still lists it, a refused one does',()=>{
+test('an accepted ask stays out of the next sitting only as that same ask: a re-asked key with a new asked time comes back',()=>{
  const data=fleet(lane('a','Mate',[ask('a1'),ask('a2'),ask('a3')]));
- const sent=new Set(acceptedRefs([{lane:'a',key:'a1',accepted:true,reason:'Accepted'},{lane:'a',key:'a2',accepted:false,reason:'Ask is no longer open'}]));
+ const [a1,a2]=buildSitting(data);
+ const sent=new Set(acceptedAsks([{lane:'a',key:'a1',accepted:true,reason:'Accepted'},{lane:'a',key:'a2',accepted:false,reason:'Ask is no longer open'}],[answerFor(a1,'choice',0),answerFor(a2,'choice',0)]));
  expect(upcomingSitting(data,undefined,new Set(),sent,false).map(item=>item.ask.key)).toEqual(['a2','a3']);
- expect(upcomingSitting(fleet(lane('a','Mate',[ask('a1')])),undefined,new Set(),new Set(acceptedRefs([{lane:'a',key:'a1',accepted:true,reason:'Accepted'}])),false)).toEqual([]);
+ expect(upcomingSitting(fleet(lane('a','Mate',[ask('a1','quick','choice','2026-01-03T00:00:00Z')])),undefined,new Set(),sent,false).map(item=>item.ask.key)).toEqual(['a1']);
+ expect(upcomingSitting(fleet(lane('a','Mate',[ask('a1')])),undefined,new Set(),sent,false)).toEqual([]);
 });
 
 test('sitting starts with each lane next ask, quick first, groups by mate, and restricts selected lanes',()=>{
