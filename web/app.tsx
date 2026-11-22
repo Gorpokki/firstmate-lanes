@@ -756,15 +756,6 @@ function App() {
 		});
 		if (!response.ok) throw Error(await response.text());
 		const results: DeliveryResult[] = await response.json();
-		try {
-			const refreshed = await fetch("/fleet.json", {
-				cache: "no-store",
-			});
-			if (!refreshed.ok) throw Error(await refreshed.text());
-			takeFleet(await refreshed.json());
-		} catch (e) {
-			setError(`Answer results received; fleet refresh failed: ${String(e)}`);
-		}
 		return results;
 	};
 	const saveLook = async () => {
