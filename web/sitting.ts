@@ -31,12 +31,20 @@ export function deferForLater(fleet:Fleet,refs:readonly string[]):SittingItem[]{
  return fleet.stationLanes.flatMap(lane=>lane.asks.filter(ask=>deferred.has(refFor(lane.id,ask.key))).map(ask=>({lane,ask,ref:refFor(lane.id,ask.key),round:0})));
 }
 
+// The next sitting leaves out deferred and sent asks, even while the fleet read still shows them; once nothing else waits, the deferred asks come back.
+export function upcomingSitting(fleet:Fleet,selectedLaneIds:string[]|undefined,waiting:ReadonlySet<string>,sent:ReadonlySet<string>,quick:boolean):SittingItem[]{
+ const next=buildSitting(fleet,selectedLaneIds,new Set([...waiting,...sent]));
+ if(quick)return next.filter(item=>item.ask.effort==='quick');
+ return next.length?next:deferForLater(fleet,[...waiting]).filter(item=>item.ask.answerable&&!sent.has(item.ref)).slice(0,4);
+}
+
 // One batch: send only once every ask still in the sitting has a choice, own answer, skip or grill. Deferred asks have left the sitting.
 export const unansweredCount=(items:readonly SittingItem[],answers:Readonly<Record<string,SittingAnswer>>)=>items.filter(item=>!answers[item.ref]).length;
 export const batchReady=(items:readonly SittingItem[],answers:Readonly<Record<string,SittingAnswer>>)=>items.length>0&&unansweredCount(items,answers)===0;
 // A lane's batch holds at most four asks, the most one answer command takes. It keeps its asks while any is still pending, so a refresh, a defer or a refusal does not pull in the next asks; once none is pending, the next four take its place.
 export const laneBatch=(pending:readonly string[],batch:readonly string[])=>batch.some(key=>pending.includes(key))?[...batch]:pending.slice(0,4);
 export const acceptedKeys=(results:readonly DeliveryResult[]|null)=>new Set((results??[]).filter(result=>result.accepted).map(result=>result.key));
+export const acceptedRefs=(results:readonly DeliveryResult[])=>results.filter(result=>result.accepted).map(result=>refFor(result.lane,result.key));
 
 export function undoAnswer(answers:Record<string,SittingAnswer>,ref:string):Record<string,SittingAnswer>{
  const next={...answers};
