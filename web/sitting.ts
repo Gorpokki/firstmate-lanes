@@ -31,12 +31,22 @@ export function deferForLater(fleet:Fleet,refs:readonly string[]):SittingItem[]{
  return fleet.stationLanes.flatMap(lane=>lane.asks.filter(ask=>deferred.has(refFor(lane.id,ask.key))).map(ask=>({lane,ask,ref:refFor(lane.id,ask.key),round:0})));
 }
 
+// The next sitting leaves out deferred and sent asks, even while the fleet read still shows them; once nothing else waits, the deferred asks come back.
+export function upcomingSitting(fleet:Fleet,selectedLaneIds:string[]|undefined,waiting:ReadonlySet<string>,sent:ReadonlySet<string>,quick:boolean):SittingItem[]{
+ const open:Fleet={...fleet,stationLanes:fleet.stationLanes.map(lane=>({...lane,asks:lane.asks.filter(ask=>!sent.has(askInstance(lane.id,ask.key,ask.asked)))}))};
+ const next=buildSitting(open,selectedLaneIds,waiting);
+ if(quick)return next.filter(item=>item.ask.effort==='quick');
+ return next.length?next:deferForLater(open,[...waiting]).filter(item=>item.ask.answerable).slice(0,4);
+}
+
 // One batch: send only once every ask still in the sitting has a choice, own answer, skip or grill. Deferred asks have left the sitting.
 export const unansweredCount=(items:readonly SittingItem[],answers:Readonly<Record<string,SittingAnswer>>)=>items.filter(item=>!answers[item.ref]).length;
 export const batchReady=(items:readonly SittingItem[],answers:Readonly<Record<string,SittingAnswer>>)=>items.length>0&&unansweredCount(items,answers)===0;
 // A lane's batch holds at most four asks, the most one answer command takes. It keeps its asks while any is still pending, so a refresh, a defer or a refusal does not pull in the next asks; once none is pending, the next four take its place.
 export const laneBatch=(pending:readonly string[],batch:readonly string[])=>batch.some(key=>pending.includes(key))?[...batch]:pending.slice(0,4);
 export const acceptedKeys=(results:readonly DeliveryResult[]|null)=>new Set((results??[]).filter(result=>result.accepted).map(result=>result.key));
+const askInstance=(lane:string,key:string,asked:string)=>`${lane}\0${key}\0${asked}`;
+export const acceptedAsks=(results:readonly DeliveryResult[],answers:readonly SittingAnswer[])=>answers.filter(answer=>results.some(result=>result.accepted&&result.lane===answer.lane&&result.key===answer.key)).map(answer=>askInstance(answer.lane,answer.key,answer.asked));
 
 export function undoAnswer(answers:Record<string,SittingAnswer>,ref:string):Record<string,SittingAnswer>{
  const next={...answers};
