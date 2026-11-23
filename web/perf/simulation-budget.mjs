@@ -144,6 +144,8 @@ async function phoneAskCards(browser,base,count){
 async function longHistory(browser){
  const server=await startServer(longHistoryHome()),page=await browser.newPage({viewport:{width:1440,height:900}});
  try{
+ await page.addInitScript(visibilityControl);
+ await page.clock.install();
   await page.addInitScript(()=>{window.__longTasks=[];new PerformanceObserver(list=>{for(const task of list.getEntries())window.__longTasks.push(Math.round(task.duration));}).observe({type:'longtask'});});
   const readings=[];page.on('response',async response=>{if(new URL(response.url()).pathname==='/fleet.json')readings.push((await response.body().catch(()=>'')).length);});
   await page.goto(`${server.base}/`);
@@ -156,14 +158,25 @@ async function longHistory(browser){
   await page.locator('.log ol li').first().waitFor();
   const log=()=>page.evaluate(()=>({label:document.querySelector('.log .nowlab').textContent,lines:document.querySelectorAll('.log ol li').length,strip:document.querySelectorAll('.log .logstrip i').length,newest:document.querySelector('.log ol li .tx').textContent.slice(0,20)}));
   const newest=await log();
-  // The ship is stopped, so the window measures the reading and the log alone; two polls of the reading pass in it.
+ // Stop the ship and advance a minute to include the next fleet reading without a minute of wall time.
   await page.getByRole('button',{name:'Stop ship spin'}).click();
   await sleep(1000);
   await page.evaluate(()=>{window.__longTasks.length=0;});
+ const nextReading=page.waitForResponse(response=>new URL(response.url()).pathname==='/fleet.json');
+ await page.clock.fastForward(60000);
+ await nextReading;
   await sleep(2*windowMs);
   const longTasks=await page.evaluate(()=>window.__longTasks);
   await page.getByRole('button',{name:/older lines/}).click();
   await page.locator('.log .nowlab').filter({hasText:'lines 4801 to 4900'}).waitFor();
+  await page.evaluate(()=>window.__setHidden(true));
+  const hiddenReadings=readings.length;
+  await page.clock.fastForward(120000);
+  await sleep(100);
+  check('hidden board pauses fleet reads across refresh intervals',readings.length===hiddenReadings,{before:hiddenReadings,after:readings.length});
+  const visibleReading=page.waitForResponse(response=>new URL(response.url()).pathname==='/fleet.json');
+  await page.evaluate(()=>window.__setHidden(false));
+  check('visible board reads immediately after returning',(await visibleReading).ok(),{});
   return {readingBytes:Math.max(...readings),readings:readings.length,elements:await page.evaluate(()=>document.querySelectorAll('*').length),newest,older:await log(),longTasks};
  }finally{await page.close();server.stop();}
 }
@@ -307,9 +320,7 @@ try{
  const yardHidden=await measure(page,cdp,requests,windowMs,async()=>{await page.keyboard.press('m');await page.evaluate(()=>window.__setHidden(true));});
  report.measurements.shipyardHidden=yardHidden;
  check('hidden shipyard draws no frames',yardHidden.yardFrames<=limits.hiddenFrames,{frames:yardHidden.yardFrames});
- // The board's own 3 s /fleet.json poll keeps the reading's age current and is not the yard's: only other requests count.
- const yardRequests=yardHidden.requests.filter(path=>path!=='/fleet.json');
- check('hidden shipyard makes no requests of its own',yardRequests.length<=limits.hiddenRequests,{requests:yardRequests});
+ check('hidden board makes no requests',yardHidden.requests.length<=limits.hiddenRequests,{requests:yardHidden.requests});
  check('hidden shipyard stays within the script budget',yardHidden.scriptMs<=limits.hiddenScriptMs,{scriptMs:yardHidden.scriptMs,max:limits.hiddenScriptMs});
  const askCards=await phoneAskCards(browser,server.base,writePhoneAsks(server.home));
  report.measurements.phoneAsk=askCards;
