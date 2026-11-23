@@ -672,26 +672,27 @@ function App() {
 			});
 		return () => controller.abort();
 	}, []);
+	const readFleet = async (signal?: AbortSignal) => {
+		try {
+			const response = await fetch("/fleet.json", {
+				cache: "no-store",
+				signal,
+			});
+			if (!response.ok) throw Error(await response.text());
+			const data = await response.json();
+			takeFleet(data);
+			setError("");
+		} catch (e) {
+			if (signal?.aborted) return;
+			setError(String(e));
+			// A failed read still re-renders, so the reading's age keeps moving.
+			setFailedReads((n) => n + 1);
+		}
+	};
 	useEffect(() => {
 		if (simulation || hidden) return;
 		const controller = new AbortController();
-		const load = async () => {
-			try {
-				const response = await fetch("/fleet.json", {
-					cache: "no-store",
-					signal: controller.signal,
-				});
-				if (!response.ok) throw Error(await response.text());
-				const data = await response.json();
-				takeFleet(data);
-				setError("");
-			} catch (e) {
-				if (controller.signal.aborted) return;
-				setError(String(e));
-				// A failed read still re-renders, so the reading's age keeps moving.
-				setFailedReads((n) => n + 1);
-			}
-		};
+		const load = () => readFleet(controller.signal);
 		load();
 		const timer = setInterval(load, POLL_MS);
 		return () => {
@@ -758,6 +759,7 @@ function App() {
 		});
 		if (!response.ok) throw Error(await response.text());
 		const results: DeliveryResult[] = await response.json();
+		void readFleet();
 		return results;
 	};
 	const saveLook = async () => {
@@ -767,6 +769,7 @@ function App() {
 				headers: { "X-Fleet-Action": "save" },
 			});
 			if (!response.ok) throw Error(await response.text());
+			void readFleet();
 		} catch (e) {
 			setError(String(e));
 		}
