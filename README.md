@@ -20,7 +20,10 @@ go build -o fmlanes .
 ```
 
 `--view` accepts `ask`, `list`, `fleet` or `lane`; List is the default.
-The terminal refreshes every second (`--every`); the web refreshes every three seconds.
+The terminal refreshes every second (`--every`).
+The web reads the fleet immediately when opened or brought back into view, then every minute while visible.
+Hidden pages pause fleet reads; `--every` does not control the web refresh.
+It also reads again immediately after an answer is sent or the last look is saved.
 For phone access, listen on a private-network interface and open that address on the phone.
 The board has **no login**: anyone who can reach it can read fleet data and submit confirmed answers.
 Do not expose it to an untrusted network.
