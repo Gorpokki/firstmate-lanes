@@ -27,8 +27,9 @@ import {
 import { ListStation } from "./ListStation";
 import { Simulation } from "./Simulation";
 import { assignedShip, loadCatalog, type ShipMesh } from "./mesh-catalog";
+import { usePageHidden } from "./page-visibility";
 
-const POLL_MS = 3000;
+const POLL_MS = 60000;
 type Pop = "find" | "changed" | "save" | "keys" | null;
 type Toggle = (pop: Pop) => void;
 const stationKeys: [Station, string, string][] = [
@@ -637,6 +638,7 @@ function App() {
 		[modelWarnings, setModelWarnings] = useState<string[]>([]);
 	const { motionOn, flipMotion, motion } = useMotion();
 	const flash = useFlash(fleet);
+	const hidden = usePageHidden();
 	const simulation = location.pathname === "/simulation";
 	// The Lane station's esc goes back to the station that opened it.
 	const go = (next: Station) => {
@@ -671,7 +673,7 @@ function App() {
 		return () => controller.abort();
 	}, []);
 	useEffect(() => {
-		if (simulation) return;
+		if (simulation || hidden) return;
 		const controller = new AbortController();
 		const load = async () => {
 			try {
@@ -696,7 +698,7 @@ function App() {
 			controller.abort();
 			clearInterval(timer);
 		};
-	}, [simulation]);
+	}, [simulation, hidden]);
 	useEffect(() => {
 		const key = (e: KeyboardEvent) => {
 			if (
