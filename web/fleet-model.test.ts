@@ -1,6 +1,6 @@
 import {test,expect} from 'bun:test';
 import type {Fleet} from './stations';
-import {clickShown,deriveFleet,shownStates,YARD_SHOWN} from './fleet-model';
+import {clickShown,deriveFleet,goneQuiet,shownStates,YARD_SHOWN} from './fleet-model';
 
 const lane=(id:string,state:string,sourceState=state)=>({id,name:id,state,sourceState,secondMate:'',home:'main',now:'',asks:[]});
 const fleet:Fleet={updatedAt:'2026-01-10T12:00:00Z',hiddenAsks:0,autonomyShare:.5,changedLanes:[],stationLanes:[lane('w','working'),lane('n','needs you'),lane('q','holding','working'),lane('p','holding','parked'),lane('b','holding','blocked'),lane('d','done')]};
@@ -41,4 +41,10 @@ test('the yard filter keeps a working lane shown in a fleet of working and holdi
  expect(present).toEqual(['working','holding']);
  expect(clickShown(YARD_SHOWN,'working',present)).toEqual(YARD_SHOWN);
  expect(clickShown(YARD_SHOWN,'holding',present)).toEqual([...YARD_SHOWN,'holding']);
+});
+
+test('gone quiet flags only a holding lane that says it works, never a parked one',()=>{
+ expect(goneQuiet(lane('q','holding','working'))).toBe(true);
+ expect(goneQuiet(lane('p','holding','paused'))).toBe(false);
+ expect(goneQuiet(lane('w','working'))).toBe(false);
 });
