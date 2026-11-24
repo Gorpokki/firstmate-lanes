@@ -16,8 +16,8 @@ type TileProps={lane:Lane;selected:string;motion:boolean;flash:string[];onSelect
 const Tile=({lane,selected,motion,flash,onSelect,onOpen}:TileProps)=><button type="button" aria-pressed={lane.id===selected}
  className={`tile${lane.state==='holding'?' grey':lane.state==='needs you'?'':' soft'}${lane.id===selected?' sel':''}${motion&&flash.includes(lane.id)?' flash':''}${lane.state==='working'?motion?' work':' work stop':''}`}
  style={lane.state==='holding'?undefined:{'--c':stateColors[lane.state]} as React.CSSProperties}
- onClick={()=>onSelect(lane.id)} onDoubleClick={()=>onOpen(lane.id)} title={`${lane.name}: ${lane.state}${goneQuiet(lane)?' · stale':''}`}>
- <span>{lane.name}{goneQuiet(lane)?' · stale':''}</span>{lane.asks.length>0&&<b>{lane.asks.length}</b>}
+ onClick={()=>onSelect(lane.id)} onDoubleClick={()=>onOpen(lane.id)} title={`${lane.name}: ${lane.state}${goneQuiet(lane)?' · gone quiet':''}`}>
+ <span>{lane.name}{goneQuiet(lane)?' · gone quiet':''}</span>{lane.asks.length>0&&<b>{lane.asks.length}</b>}
 </button>;
 // The shipyard's tools: the camera angle (t), zoom and fit, and the ship view (v) it shares with the side panel.
 function YardTools({top,setTop,camera}:{top:boolean;setTop:(on:boolean)=>void;camera:React.RefObject<YardCamera|null>}){
@@ -37,7 +37,7 @@ const Yardbar=({shares,showing,total,onClick}:{shares:Share[];showing:string[];t
 // The holding row, collapsed at first (h): its count, parked and gone quiet, and a dot for each holding lane.
 const HoldRow=({open,flip,held,parked,quiet}:{open:boolean;flip:()=>void;held:Lane[];parked:number;quiet:number})=><div className="hold">
  <button type="button" className="link" aria-expanded={open} onClick={flip}>Holding · {held.length} {open?'▾':'▸'}<Key k="h"/></button>
- <span>{parked} parked, {quiet} gone quiet{!open&&quiet>0&&` · stale: ${held.filter(goneQuiet).map(lane=>lane.name).join(', ')}`}</span>
+ <span>{parked} parked, {quiet} gone quiet{!open&&quiet>0&&`: ${held.filter(goneQuiet).map(lane=>lane.name).join(', ')}`}</span>
  {!open&&<span className="dots" aria-hidden="true">{held.map(lane=><i key={lane.id}/>)}</span>}
 </div>;
 // The side panel: the selected lane's ship turning in the holo, its state, its words and the crew's last word.
