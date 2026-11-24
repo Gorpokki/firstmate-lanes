@@ -10,6 +10,35 @@ import (
 	"time"
 )
 
+func TestStationFreshnessRecoversIndependentlyPerLane(t *testing.T) {
+	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	lanes := []Lane{
+		{ID: "alpha", State: "working", UpdatedAt: now},
+		{ID: "beta", State: "working", UpdatedAt: now.Add(-2 * time.Hour)},
+		{ID: "paused", State: "paused", UpdatedAt: now.Add(-24 * time.Hour)},
+		{ID: "done", State: "done", UpdatedAt: now.Add(-24 * time.Hour)},
+	}
+	type shown struct{ state, source string }
+	check := func(at time.Time, want map[string]shown) {
+		t.Helper()
+		rows, _, _ := stationFleet(lanes, at)
+		got := make(map[string]shown, len(rows))
+		for _, row := range rows {
+			got[row.ID] = shown{row.State, row.SourceState}
+		}
+		for id, w := range want {
+			if got[id] != w {
+				t.Errorf("%s = %+v; want %+v", id, got[id], w)
+			}
+		}
+	}
+	check(now, map[string]shown{"alpha": {"working", "working"}, "beta": {"holding", "working"}, "paused": {"holding", "paused"}, "done": {"done", "done"}})
+	lanes[0].UpdatedAt = now.Add(-2 * time.Hour)
+	check(now, map[string]shown{"alpha": {"holding", "working"}, "beta": {"holding", "working"}, "paused": {"holding", "paused"}, "done": {"done", "done"}})
+	lanes[0].UpdatedAt = now
+	check(now, map[string]shown{"alpha": {"working", "working"}, "beta": {"holding", "working"}, "paused": {"holding", "paused"}, "done": {"done", "done"}})
+}
+
 func TestStationStateBoundaries(t *testing.T) {
 	now := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
 	cases := []struct {
