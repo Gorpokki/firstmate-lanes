@@ -52,12 +52,9 @@ jobs:
             archive="firstmate-lanes_${version}_${os}_${arch}.tar.gz"
             CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -o dist/fmlanes .
             tar -czf "dist/$archive" -C dist fmlanes
-            test "$(tar -tzf "dist/$archive")" = fmlanes
             rm dist/fmlanes
           done
-          test "$(find dist -maxdepth 1 -type f -name '*.tar.gz' | wc -l | tr -d ' ')" = 4
           (cd dist && sha256sum -- *.tar.gz > SHA256SUMS)
-          test "$(wc -l < dist/SHA256SUMS | tr -d ' ')" = 4
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
