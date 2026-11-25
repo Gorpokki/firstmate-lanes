@@ -285,6 +285,13 @@ Set repository secret `LEAK_DENYLIST` from the private local denylist using repo
 Never commit or encode the value in artifacts or other public text.
 The scan fails when the secret is missing or blank.
 
+## Releasing
+
+1. Set `VERSION` to the new `X.Y.Z` and add `release-notes/vX.Y.Z.md`.
+2. Commit, then push the tag `vX.Y.Z` on that commit.
+
+The Release workflow runs on every `v*` tag. It checks that the tag matches `VERSION` and that the release notes exist, reruns `go vet`, `go test`, the web tests and the check that `web/app.js` matches a fresh build, then builds four archives, `darwin` and `linux` on `amd64` and `arm64`, with `SHA256SUMS`, and publishes them as a GitHub release.
+
 ## Web bundle
 
 Build `web/app.js` with bun 1.3.14, the version CI pins; other versions emit different bytes. After rebuilding it, rebuild the Go executable so it embeds the updated bundle.
