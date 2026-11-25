@@ -268,13 +268,6 @@ node web/perf/simulation-budget.mjs --binary ./fmlanes
 
 The quality workflow runs on pull requests and pushes to `main`; the no-leak workflow runs on pull request events.
 
-## Releasing
-
-1. Set `VERSION` to the new `X.Y.Z` and add `release-notes/vX.Y.Z.md`.
-2. Commit, then push the tag `vX.Y.Z` on that commit.
-
-The Release workflow runs on every `v*` tag. It checks that the tag matches `VERSION` and that the release notes exist, reruns `go vet`, `go test`, the web tests and the check that `web/app.js` matches a fresh build, then builds an archive per platform with `SHA256SUMS` and publishes them as a GitHub release.
-
 The function-complexity gate compares all tracked and unignored `.go`, `.js`, `.jsx`, `.py`, `.ts`, and `.tsx` source in the base and current tree, including new files.
 It excludes `vendor/`, `node_modules/`, `web/app.js`, files ending in `_generated.go`, `.gen.go`, or `.generated.go`, and files marked `Code generated ... DO NOT EDIT.`
 Only new or worsened functions above CCN 15 fail; unchanged functions above the limit do not fail.
@@ -291,6 +284,13 @@ The secret-bearing job runs only the trusted default-branch scanner and reads PR
 Set repository secret `LEAK_DENYLIST` from the private local denylist using repository Actions settings or a CLI that reads from stdin; never pass the value as an argument or print it.
 Never commit or encode the value in artifacts or other public text.
 The scan fails when the secret is missing or blank.
+
+## Releasing
+
+1. Set `VERSION` to the new `X.Y.Z` and add `release-notes/vX.Y.Z.md`.
+2. Commit, then push the tag `vX.Y.Z` on that commit.
+
+The Release workflow runs on every `v*` tag. It checks that the tag matches `VERSION` and that the release notes exist, reruns `go vet`, `go test`, the web tests and the check that `web/app.js` matches a fresh build, then builds an archive per platform with `SHA256SUMS` and publishes them as a GitHub release.
 
 ## Web bundle
 
