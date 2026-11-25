@@ -379,6 +379,10 @@ def self_test():
         host_forms = tuple(".".join(parts) for parts in (("printer", "local"), ("nas", "home", "arpa"), ("app", "localhost"), ("Johns-MacBook-Pro", "local"), ("NAS", "LOCAL")))
         noreply = "1+synthetic@" + "users.noreply.github.com"
 
+        # Keep synthetic commits independent of per-user hooks and templates.
+        hooks = Path(directory) / "empty-hooks"
+        hooks.mkdir()
+
         def commit(message="Synthetic commit", identity=("Synthetic", noreply), committer=None):
             committer = committer or identity
             env = {
@@ -390,7 +394,18 @@ def self_test():
             }
             subprocess.run(["git", "add", "-A"], cwd=directory, check=True)
             subprocess.run(
-                ["git", "commit", "--allow-empty", "-q", "-m", message],
+                [
+                    "git",
+                    "-c",
+                    f"core.hooksPath={hooks}",
+                    "-c",
+                    "commit.template=",
+                    "commit",
+                    "--allow-empty",
+                    "-q",
+                    "-m",
+                    message,
+                ],
                 cwd=directory,
                 env=env,
                 check=True,
