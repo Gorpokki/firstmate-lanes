@@ -290,7 +290,7 @@ The scan fails when the secret is missing or blank.
 1. Set `VERSION` to the new `X.Y.Z` and add `release-notes/vX.Y.Z.md`.
 2. Commit, then push the tag `vX.Y.Z` on that commit.
 
-The Release workflow runs on every `v*` tag. It checks that the tag matches `VERSION` and that the release notes exist, reruns `go vet`, `go test`, the web tests and the check that `web/app.js` matches a fresh build, then builds an archive per platform with `SHA256SUMS` and publishes them as a GitHub release.
+The Release workflow runs on every `v*` tag. It checks that the tag matches `VERSION` and that the release notes exist, reruns `go vet`, `go test`, the web tests and the check that `web/app.js` matches a fresh build, then builds four archives, `darwin` and `linux` on `amd64` and `arm64`, with `SHA256SUMS`, and publishes them as a GitHub release.
 
 ## Web bundle
 

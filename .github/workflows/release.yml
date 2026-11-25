@@ -44,20 +44,18 @@ jobs:
           set -euo pipefail
           version="$(tr -d '\r\n' < VERSION)"
           mkdir -p dist
-          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
+          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
             os="${target%/*}"
             arch="${target#*/}"
-            executable=fmlanes
-            if [[ "$os" == windows ]]; then executable=fmlanes.exe; fi
             archive="firstmate-lanes_${version}_${os}_${arch}.tar.gz"
-            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -o "dist/$executable" .
-            tar -czf "dist/$archive" -C dist "$executable"
-            test "$(tar -tzf "dist/$archive")" = "$executable"
-            rm "dist/$executable"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -o dist/fmlanes .
+            tar -czf "dist/$archive" -C dist fmlanes
+            test "$(tar -tzf "dist/$archive")" = fmlanes
+            rm dist/fmlanes
           done
-          test "$(find dist -maxdepth 1 -type f -name '*.tar.gz' | wc -l | tr -d ' ')" = 6
+          test "$(find dist -maxdepth 1 -type f -name '*.tar.gz' | wc -l | tr -d ' ')" = 4
           (cd dist && sha256sum *.tar.gz > SHA256SUMS)
-          test "$(wc -l < dist/SHA256SUMS | tr -d ' ')" = 6
+          test "$(wc -l < dist/SHA256SUMS | tr -d ' ')" = 4
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
