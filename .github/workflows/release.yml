@@ -54,7 +54,7 @@ jobs:
             rm dist/fmlanes
           done
           test "$(find dist -maxdepth 1 -type f -name '*.tar.gz' | wc -l | tr -d ' ')" = 4
-          (cd dist && sha256sum *.tar.gz > SHA256SUMS)
+          (cd dist && sha256sum -- *.tar.gz > SHA256SUMS)
           test "$(wc -l < dist/SHA256SUMS | tr -d ' ')" = 4
       - name: Publish GitHub release
         env:
