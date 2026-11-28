@@ -9,14 +9,17 @@ const lane=(id:string,state:string,secondMate:string,asked:string)=>({id,name:id
 const fleet={updatedAt:'2026-01-10T12:00:00Z',stationLanes:[lane('old','needs you','build','2026-01-09T12:00:00Z'),lane('new','needs you','design','2026-01-10T11:00:00Z'),lane('work','working','design',''),lane('parked','holding','','')],hiddenAsks:2,autonomyShare:0.5,changedLanes:['work']};
 const words=(row:{t:[string,string][]}[])=>row.map(part=>part.t.map(([w])=>w).join(''));
 
-test('the mate filter scopes the List only: a hidden ticked lane stays ticked, is counted and enters the sitting',()=>{
- const all=listRows(fleet,'',Date.parse(fleet.updatedAt));
- expect(all.quick.map(r=>r.lane.id)).toEqual(['old','new']);
- expect(all.mates).toEqual([['build',1],['design',1]]);
- const ticked=new Set(['old','new']),design=listRows(fleet,'design');
- expect(design.quick.map(r=>r.lane.id)).toEqual(['new']);
- expect(hiddenTicked(fleet,ticked,'design')).toBe(1);
- expect(hiddenTicked(fleet,ticked,'')).toBe(0);
+test('the List groups by second mate, all shown; each pill hides only its group; a hidden ticked lane stays ticked, is counted and enters the sitting',()=>{
+ const ids=(r:ReturnType<typeof listRows>)=>r.groups.map(([m,rows])=>[m,rows.map(row=>row.lane.id)]);
+ expect(ids(listRows(fleet,new Set(),Date.parse(fleet.updatedAt)))).toEqual([['build',['old']],['design',['new']]]);
+ expect(listRows(fleet).mates).toEqual([['build',1],['design',1]]);
+ const ticked=new Set(['old','new']);
+ expect(ids(listRows(fleet,new Set(['build'])))).toEqual([['design',['new']]]);
+ expect(ids(listRows(fleet,new Set(['design'])))).toEqual([['build',['old']]]);
+ expect(listRows(fleet,new Set(['build','design'])).groups).toEqual([]);
+ expect(hiddenTicked(fleet,ticked,new Set(['build']))).toBe(1);
+ expect(hiddenTicked(fleet,ticked,new Set(['build','design']))).toBe(2);
+ expect(hiddenTicked(fleet,ticked,new Set())).toBe(0);
  expect(buildSitting(fleet,[...ticked]).map(item=>item.lane.id).toSorted()).toEqual(['new','old']);
 });
 
@@ -85,7 +88,7 @@ test('a tick box keeps only space; a text field keeps every key; a button keeps 
 
 const returnedLane=(id:string,returnedSince:string,updatedAt:string,asked='')=>({...lane(id,'needs you','build',asked),invalidAsks:1,returnedSince,updatedAt});
 const boardOf=(...stationLanes:Lane[])=>({updatedAt:'2026-01-10T12:00:00Z',hiddenAsks:0,autonomyShare:0,changedLanes:[],stationLanes}) as unknown as Fleet;
-const ageOf=(board:Fleet,id:string)=>{const {quick,read}=listRows(board,'',Date.parse(board.updatedAt));return [...quick,...read].find(r=>r.lane.id===id)?.age;};
+const ageOf=(board:Fleet,id:string)=>listRows(board,new Set(),Date.parse(board.updatedAt)).groups.flatMap(([,rows])=>rows).find(r=>r.lane.id===id)?.age;
 
 test('a lane whose open asks are all returned waits from its oldest decision, not its latest note',()=>{
  const board=boardOf(returnedLane('ann','2026-01-10T11:00:00Z','2026-01-10T08:00:00Z'),returnedLane('zed','2026-01-05T12:00:00Z','2026-01-10T11:59:00Z'));
@@ -99,7 +102,7 @@ test('a record block keeps its reason beside its malformed-ask count; a status-l
  const asked={...lane('asked','needs you','build','2026-01-10T11:00:00Z'),invalidAsks:1} as unknown as Lane;
  expect(listQuestion({lane:block,age:NaN})).toBe('Blocked: Waiting on the owner to pick the route');
  expect(returnedOnly(block)).toBe(false);
- expect(listQuestion({lane:returned,age:NaN})).toBe('1 ask not in the ask form went back to the crew.');
+ expect(listQuestion({lane:returned,age:NaN})).toBe('1 malformed ask returned');
  expect(returnedOnly(returned)).toBe(true);
  expect(listQuestion({lane:asked,ask:asked.asks[0],age:NaN})).toBe('Example?');
 });
@@ -107,10 +110,10 @@ test('a record block keeps its reason beside its malformed-ask count; a status-l
 test('a returned ask without a time stays unknown, says why and sorts after lanes with a known wait',()=>{
  const board=boardOf(returnedLane('undated','0001-01-01T00:00:00Z','2026-01-10T11:59:00Z'),returnedLane('recent','2026-01-10T11:00:00Z','2026-01-10T08:00:00Z'),returnedLane('week','','2026-01-10T11:00:00Z','2026-01-03T12:00:00Z'));
  expect(fleetOrder(board).map(l=>l.id)).toEqual(['week','recent','undated']);
- const rows=listRows(board,'',Date.parse(board.updatedAt)).read;
- expect(rows.map(r=>r.lane.id)).toEqual(['recent','undated']);
+ const rows=listRows(board,new Set(),Date.parse(board.updatedAt)).groups[0][1];
+ expect(rows.map(r=>r.lane.id)).toEqual(['week','recent','undated']);
  expect(Number.isNaN(ageOf(board,'undated'))).toBe(true);
- expect(rows.map(unknownWhy)).toEqual(['','no ask time']);
+ expect(rows.map(unknownWhy)).toEqual(['','','no ask time']);
 });
 
 test('a blocked lane with a real update time sorts before a returned ask with no time, and shows that wait',()=>{
@@ -125,8 +128,25 @@ test('the List and Ask age bars share one name: Age before 5.5 days, Overdue fro
  const ago=(days:number)=>new Date(Date.now()-days*86400000).toISOString(),noop=()=>{};
  const board={...fleet,stationLanes:[lane('week','needs you','',ago(6.6)),lane('edge','needs you','',ago(5.5)),lane('under','needs you','',ago(5.5-1/1440))]};
  const bars=(html:string)=>[...html.matchAll(/<span class="agebar"([^>]*)>(.*?)<\/span>/g)].map(([,attrs,segs])=>[attrs.trim(),(segs.match(/class="od"/g)||[]).length]);
- const list=renderToStaticMarkup(createElement(ListStation,{fleet:board,mate:'',setMate:noop,ticked:new Set<string>(),tick:noop,selected:'',select:noop,openLane:noop,decide:noop}));
+ const list=renderToStaticMarkup(createElement(ListStation,{fleet:board,hidden:new Set<string>(),setHidden:noop,ticked:new Set<string>(),tick:noop,selected:'',select:noop,openLane:noop,decide:noop}));
  const want=[['role="img" aria-label="Overdue"',2],['role="img" aria-label="Overdue"',1],['role="img" aria-label="Age"',0]];
  expect(bars(list)).toEqual(want);
  expect([6.6,5.5,5.5-1/1440].flatMap(days=>bars(renderToStaticMarkup(createElement(AgeBar,{minutes:days*1440}))))).toEqual(want);
+});
+
+test('the List labels each column over its own values, groups by second mate and hides only the groups whose pill is off',()=>{
+ const noop=()=>{},html=(hidden:Set<string>)=>renderToStaticMarkup(createElement(ListStation,{fleet,hidden,setHidden:noop,ticked:new Set<string>(),tick:noop,selected:'',select:noop,openLane:noop,decide:noop}));
+ const sections=(markup:string)=>[...markup.matchAll(/<section aria-label="([^"]+)"/g)].map(m=>m[1]);
+ const all=html(new Set());
+ expect(sections(all)).toEqual(['build','design']);
+ for(const label of ['Waiting on you','Lane','Asks','Oldest ask'])expect(all).toContain(`>${label}</span>`);
+ expect(all).not.toContain('Showing');
+ expect(all).toContain('Squares: one per day waited · orange: overdue');
+ expect(all).toContain('Quick ask: Example?');
+ const omitted=renderToStaticMarkup(createElement(ListStation,{fleet:{...fleet,stationLanes:[{...lane('mixed','needs you','build','2026-01-10T11:00:00Z'),invalidAsks:2}]},hidden:new Set<string>(),setHidden:noop,ticked:new Set<string>(),tick:noop,selected:'',select:noop,openLane:noop,decide:noop}));
+ expect(omitted).toContain('title="2 malformed asks omitted · Example?"');
+ const off=html(new Set(['build']));
+ expect(sections(off)).toEqual(['design']);
+ expect(off).toContain('aria-pressed="false"');
+ expect(off).toContain('Showing 1 of 2 lanes');
 });
