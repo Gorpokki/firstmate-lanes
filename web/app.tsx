@@ -630,7 +630,7 @@ function App() {
 		[, setFailedReads] = useState(0);
 	const [station, setStation] = useState<Station>("list"),
 		[back, setBack] = useState<Station>("list"),
-		[mate, setMate] = useState(""),
+		[hiddenMates, setHiddenMates] = useState<ReadonlySet<string>>(new Set()),
 		[selected, setSelected] = useState("");
 	const [checked, setChecked] = useState<Set<string>>(new Set());
 	const [have, setHave] = useState<string[]>([]);
@@ -792,8 +792,8 @@ function App() {
 				{station === "list" && (
 					<ListStation
 						fleet={fleet}
-						mate={mate}
-						setMate={setMate}
+						hidden={hiddenMates}
+						setHidden={setHiddenMates}
 						ticked={checked}
 						tick={tick}
 						selected={selected}
@@ -831,7 +831,7 @@ function App() {
 					fleet={fleet}
 					meshes={meshes}
 					selectedLaneIds={checked.size ? [...checked] : undefined}
-					hiddenSelected={hiddenTicked(fleet, checked, mate)}
+					hiddenSelected={hiddenTicked(fleet, checked, hiddenMates)}
 					onBack={() => setStation("list")}
 					onOpenLane={openLane}
 					onAnswered={(ids) =>

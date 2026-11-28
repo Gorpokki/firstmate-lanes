@@ -5,7 +5,7 @@ export type Fleet={updatedAt:string;stationLanes:Lane[];hiddenAsks:number;autono
 export const states=['needs you','waiting','working','done','holding'];
 export type Station='ask'|'list'|'fleet'|'lane';
 export const stateColors:Record<string,string>={'needs you':'#E5484D',waiting:'#F5C842',working:'#6FA3FF',done:'#3DBE5A',holding:'#8C8C8C'};
-// The List: one row per lane that needs you, by its oldest ask. A lane whose oldest ask is quick is in Quick; the rest, a block with no ask too, is in To read.
+// The List: one row per lane that needs you, by its oldest ask, grouped by second mate; every group shows until its pill hides it.
 // The mate filter scopes the List only: each pill counts that second mate's lanes that need you.
 export const NO_MATE='no second mate';
 export const mateOf=(lane:Lane)=>lane.secondMate||NO_MATE;
@@ -19,15 +19,18 @@ export const returnedWords=(n:number)=>`${plural(n,'ask')} not in the ask form w
 export const returnedOnly=(lane:Lane)=>lane.asks.length===0&&lane.returnedSince!==undefined;
 // Why a row's wait is unknown: what it waits from has no time. Empty when the wait is known.
 export const unknownWhy=({age}:ListRow)=>Number.isFinite(age)?'':'no ask time';
-export const listQuestion=({lane,ask}:ListRow)=>ask?ask.question||ask.topic||ask.key:returnedOnly(lane)?returnedWords(lane.invalidAsks??0):/^blocked\b/i.test(lane.now)?lane.now:`Blocked: ${lane.now||'the crew cannot clear it'}`;
-export function listRows(fleet:Fleet,mate='',now=Date.now()) {
- const need=fleetOrder(fleet).filter(l=>l.state==='needs you'),counts=new Map<string,number>();
- for(const lane of need)counts.set(mateOf(lane),(counts.get(mateOf(lane))??0)+1);
- const rows:ListRow[]=need.filter(l=>!mate||mateOf(l)===mate).map(lane=>{const ask=lane.asks.toSorted(oldestFirst)[0],since=knownWait(lane);return {lane,ask,age:Number.isFinite(since)?Math.max(0,(now-since)/60000):NaN};});
- return {quick:rows.filter(r=>r.ask?.effort==='quick'),read:rows.filter(r=>r.ask?.effort!=='quick'),mates:[...counts].toSorted((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))};
+export const listQuestion=({lane,ask}:ListRow)=>ask?ask.question||ask.topic||ask.key:returnedOnly(lane)?`${plural(lane.invalidAsks??0,'malformed ask')} returned`:/^blocked\b/i.test(lane.now)?lane.now:`Blocked: ${lane.now||'the crew cannot clear it'}`;
+export function listRows(fleet:Fleet,hidden:ReadonlySet<string>=new Set(),now=Date.now()) {
+ const byMate=new Map<string,ListRow[]>();
+ for(const lane of fleetOrder(fleet).filter(l=>l.state==='needs you')){
+  const ask=lane.asks.toSorted(oldestFirst)[0],since=knownWait(lane),rows=byMate.get(mateOf(lane))??[];
+  rows.push({lane,ask,age:Number.isFinite(since)?Math.max(0,(now-since)/60000):NaN});byMate.set(mateOf(lane),rows);
+ }
+ const groups=[...byMate].toSorted((a,b)=>b[1].length-a[1].length||a[0].localeCompare(b[0]));
+ return {groups:groups.filter(([m])=>!hidden.has(m)),mates:groups.map(([m,rows]):[string,number]=>[m,rows.length])};
 }
 // Ticked lanes that the mate filter hides from the List: they stay ticked and go into the sitting.
-export const hiddenTicked=(fleet:Fleet,ticked:ReadonlySet<string>,mate:string)=>mate?fleet.stationLanes.filter(l=>ticked.has(l.id)&&l.state==='needs you'&&mateOf(l)!==mate).length:0;
+export const hiddenTicked=(fleet:Fleet,ticked:ReadonlySet<string>,hidden:ReadonlySet<string>)=>fleet.stationLanes.filter(l=>ticked.has(l.id)&&l.state==='needs you'&&hidden.has(mateOf(l))).length;
 export const keepNeedingTicks=(fleet:Fleet,ticked:ReadonlySet<string>)=>new Set([...ticked].filter(id=>fleet.stationLanes.some(l=>l.id===id&&l.state==='needs you')));
 // The keys a focused control keeps: a text field all of them, a tick box space, a button, link or summary enter and space.
 type Focused={tagName?:string;type?:string;isContentEditable?:boolean}|null;
