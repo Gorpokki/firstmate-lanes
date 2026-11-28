@@ -573,7 +573,8 @@ function Frame(p: FrameProps) {
 				flipMotion={p.flipMotion}
 			/>
 			<main className="main">
-				{p.station !== "ask" && (
+				{/* the Ask and Lane stations show only their ask or lane, not the board's counts */}
+				{p.station !== "ask" && p.station !== "lane" && (
 					<Summary
 						fleet={p.fleet}
 						go={p.go}

@@ -29,14 +29,23 @@ function Links({links,waits}:{links:[string,Link][];waits?:string}){
   <span className="linkpop">{links.map(([kind,link])=><a key={link.url} href={link.url} target="_blank" rel="noreferrer"><small>{kind}</small>{link.title} ▸</a>)}{waits&&<span><small>waits on your answer</small>{waits}</span>}</span>
  </span>;
 }
-// The ask's lane beside it: the same holo as the Lane station, its state and its own last word.
-function ShipBox({lane,meshes,onOpenLane}:{lane:Lane;meshes?:ShipMesh[];onOpenLane?:(id:string)=>void}){
- const ship=assignedShip(lane.id,meshes),source=lane.sourceState?.toLowerCase()||'',updated=minutesSince(lane.updatedAt||'');
+// The ask's lane beside it: the same holo as the Lane station, and nothing else.
+function ShipBox({lane,meshes}:{lane:Lane;meshes?:ShipMesh[]}){
+ const ship=assignedShip(lane.id,meshes),source=lane.sourceState?.toLowerCase()||'';
  return <div className="shipbox">
   <Holo mesh={ship?.mesh} state={lane.state} name={ship?.name||'No admitted ship'} options={{blocks:/blocked|block/.test(source),fragments:/failed|failure|error/.test(source)?1:0}}/>
-  <div className="lstate"><i style={{background:stateColors[lane.state]}}/>{lane.state!=='needs you'&&<b>{lane.state}</b>}{onOpenLane?<button className="link" onClick={()=>onOpenLane(lane.id)} title="Open the lane: its ship and its asks">{lane.asks.length===1?'open the lane':plural(lane.asks.length,'ask')} ▸<K k="enter"/></button>:<span>{plural(lane.asks.length,'ask')}</span>}</div>
-  {lane.now&&<div className="last"><span className="nowlab">{"Crew's last word"}{Number.isFinite(updated)?` · ${ageWords(updated)} ago`:''}</span><p className="now">{lane.now}</p></div>}
  </div>;
+}
+// What is not needed to answer, folded under the ask: the lane's state and asks, the crew's last word, the crew text and the links.
+function Context({lane,raw,links,waits,onOpenLane,flipRaw}:{lane:Lane;raw:boolean;links:[string,Link][];waits?:string;onOpenLane?:(id:string)=>void;flipRaw:()=>void}){
+ const updated=minutesSince(lane.updatedAt||'');
+ return <details className="ctx"><summary>{lane.now?`crew's last word${Number.isFinite(updated)?` · ${ageWords(updated)} ago`:''}`:'lane details'}</summary>
+  {lane.now&&<p className="now">{lane.now}</p>}
+  <div className="lstate"><i style={{background:stateColors[lane.state]}}/>{lane.state!=='needs you'&&<b>{lane.state}</b>}{onOpenLane?<button className="link" onClick={()=>onOpenLane(lane.id)} title="Open the lane: its ship and its asks">{lane.asks.length===1?'open the lane':plural(lane.asks.length,'ask')} ▸<K k="enter"/></button>:<span>{plural(lane.asks.length,'ask')}</span>}
+   <button className="link go" aria-expanded={raw} onClick={flipRaw}>crew text {raw?'▾':'▸'}<K k="d"/></button>
+   {(links.length>0||!!waits)&&<Links links={links} waits={waits}/>}
+  </div>
+ </details>;
 }
 type CardProps={item:SittingItem;lane:Lane;lead:boolean;raw:boolean;hinted:boolean;meshes?:ShipMesh[];ownRef:React.RefObject<HTMLInputElement>;onOpenLane?:(id:string)=>void;choose:(i:number)=>void;own:(text:string)=>void;skip:()=>void;defer:()=>void;grill:()=>void;flipRaw:()=>void};
 // One ask: its lane, how long it has waited, the question, why it matters, the choices. A choice is kept here; the sitting sends them.
@@ -67,13 +76,12 @@ function Card({item,lane,lead,raw,hinted,meshes,ownRef,onOpenLane,choose,own,ski
    <div className="hint">
     <button className="link way" title="No answer from you: the crew goes on with its own best judgment" onClick={skip}>skip: crew decides<K k="s"/></button>
     <button className="link way" title="You want to answer this ask, but not now: it comes back in a later sitting" onClick={defer}>defer: ask me later<K k="w"/></button>
-    <button className="link go" aria-expanded={raw} onClick={flipRaw}>crew text {raw?'▾':'▸'}<K k="d"/></button>
     <button className="link faint" title="Asks the crew to talk this ask through with you before you choose" onClick={grill}>ask for a grill<K k="g"/></button>
-    {(links.length>0||!!ask.waits_on_this)&&<Links links={links} waits={ask.waits_on_this}/>}
     <span className="tip">{!choices.length?(ask.form==='discussion'?'A discussion ask: ask for a grill, or type your own answer.':'No choices came with this ask.'):hinted?hintWords(choices.length):''}</span>
    </div>
+   <Context lane={lane} raw={raw} links={links} waits={ask.waits_on_this} onOpenLane={onOpenLane} flipRaw={flipRaw}/>
   </div>
-  <ShipBox lane={lane} meshes={meshes} onOpenLane={onOpenLane}/>
+  <ShipBox lane={lane} meshes={meshes}/>
  </section>;
 }
 // The sitting's answers in plain words, under the card: the lane, its question, what was answered.
@@ -206,7 +214,6 @@ const CSS=`
 .ask .hint{display:flex;flex-wrap:wrap;align-items:center;gap:4px 26px;color:#CDBFAE;font-size:15.5px;margin-top:auto}
 .ask .hint .link,.ask .link.act{color:#CDBFAE;background:none;border:1.5px solid #5E5560;border-radius:999px;padding:7px 16px}
 .ask .hint .link.way{color:var(--text);border:1px solid #8A7F8C}
-.ask .hint .link.go{border-color:transparent;padding-left:4px;padding-right:4px;background:linear-gradient(#5E5560,#5E5560) no-repeat 0 calc(100% + 4px)/100% 1px;background-origin:content-box}
 .ask .link.faint{opacity:.84}
 .ask .link.act.send{color:var(--text);border:1px solid var(--text)}
 .ask .hint .tip{flex-basis:100%;min-height:1.3em}
@@ -217,13 +224,14 @@ const CSS=`
 .ask .linkpop a{color:#D9CDBD;text-decoration:underline;text-underline-offset:4px;text-decoration-color:#6B6170}
 .ask .linkpop small{display:block;color:var(--dim);font:600 11.5px/1.5 var(--lab);letter-spacing:.08em;text-transform:uppercase}
 .ask .shipbox{flex:0 0 42%;min-width:0;display:flex;flex-direction:column;gap:12px;position:relative}
-.ask .shipbox>section>div:last-of-type{opacity:.45}
-.ask .shipbox:hover>section>div:last-of-type,.ask .shipbox:focus-within>section>div:last-of-type{opacity:1}
-.ask .lstate{display:flex;align-items:center;gap:9px;color:var(--dim);font-size:16px}
+.ask .ctx>summary{cursor:pointer;list-style:none;width:max-content;color:var(--dim);font:600 14px/1 var(--lab);letter-spacing:.08em;text-transform:uppercase;padding:6px 0}
+.ask .ctx>summary::-webkit-details-marker{display:none}
+.ask .ctx>summary::after{content:" ▸"}.ask .ctx[open]>summary::after{content:" ▾"}.ask .ctx>summary:hover{color:var(--text)}
+.ask .ctx[open]{display:flex;flex-direction:column;gap:12px}
+.ask .shipbox .shipname{display:none}
+.ask .lstate{display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px;color:var(--dim);font-size:16px}
 .ask .lstate i{width:11px;height:11px;border-radius:50%;flex:none}
 .ask .lstate b{color:var(--text);font:600 14px/1 var(--lab);letter-spacing:.08em;text-transform:uppercase}
-.ask .last{display:flex;flex-direction:column;gap:9px}
-.ask .nowlab{font:600 14px/1 var(--lab);letter-spacing:.1em;text-transform:uppercase;color:#B8AB9B}
 .ask p.now{margin:0;color:var(--dim);font-size:16.5px;text-wrap:balance}
 .ask .sitrow{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 16px;padding:10px 0 0;border-top:1px solid var(--line);min-height:44px}
 .ask .sit{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;color:var(--dim);font-size:16px;padding-left:35px}
@@ -255,7 +263,7 @@ const CSS=`
 .ask .answers li.a-skip .aa,.ask .answers li.a-grill .aa{color:#B8AB9B}
 @media (prefers-reduced-motion:reduce){.ask .card{animation:none}}
 @media (max-width:760px){
-.ask .stage,.frame.v-ask .ask .stage{display:flex;padding:4px 0 120px;gap:8px}
+.ask .stage,.frame.v-ask .ask .stage{display:flex;padding:4px 0 180px;gap:8px}
 .ask .card{gap:8px 11px;position:relative;flex-wrap:wrap}
 .ask .cbar{flex-basis:5px}
 .ask .cmain{gap:8px;flex:1 1 0}
@@ -265,7 +273,7 @@ const CSS=`
 .ask .shipbox pre{font-size:6px!important}
 /* a small ship at the top right: the card's top row is at least as tall as the ship, so the question starts below it */
 .ask .shipbox canvas.ship{height:46px}
-.ask .shipbox>section>:not(:first-child),.ask .lstate,.ask .last{display:none}
+.ask .shipbox>section>:not(:first-child){display:none}
 .ask .ctop{padding-right:116px;min-height:46px;gap:6px 10px;line-height:1.2}
 .ask .who{font-size:18px}
 .ask .age{font-size:15px;flex-wrap:wrap;gap:2px 10px}
@@ -281,8 +289,7 @@ const CSS=`
 .ask .ownans input{min-width:0}
 .ask .hint{font-size:15px;gap:10px 18px}
 .ask .link{padding:15px 0}
-.ask .hint .link:not(.go),.ask .link.act{padding:11px 12px;line-height:1}
-.ask .hint .link.go{border:none;border-radius:0;padding:6px 0;background:linear-gradient(#5E5560,#5E5560) no-repeat 0 calc(100% + 5px)/100% 1px;background-origin:content-box}
+.ask .hint .link,.ask .link.act{padding:11px 12px;line-height:1}
 .ask .answers{padding-left:16px}
 .ask .answers li{grid-template-columns:1fr}
 .ask .sitrow{position:fixed;left:0;right:0;bottom:calc(73px + env(safe-area-inset-bottom));z-index:5;background:#000;margin:0;padding:6px 14px 2px;gap:0 12px;align-items:center;justify-content:flex-start}

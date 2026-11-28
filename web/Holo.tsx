@@ -17,7 +17,7 @@ const isBlocked=(sourceState:string|undefined,options:HoloProps['options'])=>opt
 // How far a lane's hull is built, by its state: blocked and failed builds stop at half.
 export const buildOf=(state:string,blocked:boolean,failed:boolean,progress?:number)=>blocked||failed?.5:progress??(state==='done'?1:state==='needs you'||state==='working'?.72:state==='waiting'?.48:.35);
 const fieldKey=(event:KeyboardEvent)=>event.metaKey||event.ctrlKey||event.altKey||(event.target instanceof HTMLElement&&!!event.target.closest('input,textarea,select,[contenteditable=true]'));
-const spaceToggles=(event:KeyboardEvent)=>event.code==='Space'&&!event.repeat&&!fieldKey(event)&&!(event.target instanceof HTMLElement&&event.target.closest('button'));
+const spaceToggles=(event:KeyboardEvent)=>event.code==='Space'&&!event.repeat&&!fieldKey(event)&&!(event.target instanceof HTMLElement&&event.target.closest('button,summary'));
 // the ship's colours: a light tone of its state colour; the unbuilt hull's wire and fill in darker tones of it
 export const shipHex=(hex:string)=>'#'+[1,3,5].map((i,k)=>Math.round(parseInt(hex.slice(i,i+2),16)*.6+[255,230,204][k]*.4).toString(16).padStart(2,'0')).join('');
 const shade=(hex:string,k:number)=>'#'+[1,3,5].map(i=>Math.round(parseInt(shipHex(hex).slice(i,i+2),16)*k).toString(16).padStart(2,'0')).join('');
@@ -131,9 +131,9 @@ function useGestures(canvas:React.RefObject<HTMLCanvasElement|null>,pose:React.M
  };
  return {handlers,zoomBy,tilt,reset};
 }
-// the ship's controls, the same under every holo
+// the ship's controls, the same under every holo: folded under "ship view" until opened; v and space work while folded
 function ShipTools({view,spinning,setSpinning,zoomBy,tilt,fit}:{view:ShipView;spinning:boolean;setSpinning:(f:(on:boolean)=>boolean)=>void;zoomBy:(k:number)=>void;tilt:(by:number)=>void;fit:()=>void}){
- return <div className="tools">
+ return <details className="shiptools"><summary>ship view</summary><div className="tools">
   <span className="seg2" role="group" aria-label="Ship view">{MODES.map(([m,label])=><button key={m} type="button" className={view.mode===m?'on':''} aria-pressed={view.mode===m} onClick={()=>setShipView({mode:m})}>{label}</button>)}</span><kbd>v</kbd>
   <span className="seg2" role="group" aria-label="Hull not built yet" title="How the hull that is not built yet is drawn">{INNERS.map(([m,label])=><button key={m} type="button" className={view.inner===m?'on':''} aria-pressed={view.inner===m} onClick={()=>setShipView({inner:m})}>{label}</button>)}</span>
   <span className="seg2 cam" role="group" aria-label="Zoom and tilt">
@@ -142,7 +142,7 @@ function ShipTools({view,spinning,setSpinning,zoomBy,tilt,fit}:{view:ShipView;sp
   </span>
   <button type="button" className="link" aria-label={spinning?'Stop ship spin':'Start ship spin'} onClick={()=>setSpinning(on=>!on)}>{spinning?'stop the spin':'spin'}<kbd>space</kbd></button>
   <span className="hint">drag turns and tilts · wheel zooms · double click resets</span>
- </div>;
+ </div></details>;
 }
 const PHASE_WORD:Record<BlastPhase,string>={stress:'failing: stress',rupture:'failing: rupture',debris:'failed: debris drifting',settled:'failed'};
 function caption(phase:BlastPhase|null,blasting:boolean,failed:boolean,blocked:boolean){
