@@ -155,11 +155,12 @@ async function longHistory(browser){
   for(let i=0;i<40&&!(await find.count());i++){await page.keyboard.press('/');await sleep(100);}
   await find.fill('long-run');
   await page.keyboard.press('Enter');
+  await page.locator('.lane details.fold > summary').filter({hasText:'status log'}).click(); // the log is folded until opened
   await page.locator('.log ol li').first().waitFor();
   const log=()=>page.evaluate(()=>({label:document.querySelector('.log .nowlab').textContent,lines:document.querySelectorAll('.log ol li').length,strip:document.querySelectorAll('.log .logstrip i').length,newest:document.querySelector('.log ol li .tx').textContent.slice(0,20)}));
   const newest=await log();
  // Stop the ship and advance a minute to include the next fleet reading without a minute of wall time.
-  await page.getByRole('button',{name:'Stop ship spin'}).click();
+  await stopSpin(page);
   await sleep(1000);
   await page.evaluate(()=>{window.__longTasks.length=0;});
  const nextReading=page.waitForResponse(response=>new URL(response.url()).pathname==='/fleet.json');
@@ -181,6 +182,8 @@ async function longHistory(browser){
  }finally{await page.close();server.stop();}
 }
 
+// the ship's controls are folded under "ship view"; open every fold, then stop the spin
+const stopSpin=async page=>{await page.evaluate(()=>document.querySelectorAll('details.shiptools').forEach(d=>{d.open=true;}));await page.getByRole('button',{name:'Stop ship spin'}).click();};
 const results=[],check=(name,ok,detail)=>{results.push({name,ok,detail});console.log(`${ok?'pass':'FAIL'}  ${name}  ${JSON.stringify(detail)}`);};
 
 async function openShipyard(page,base){
@@ -264,7 +267,7 @@ try{
 
  const idle=await measure(page,cdp,requests,windowMs,async()=>{
   await page.getByRole('button',{name:'Pause',exact:true}).click();
-  await page.getByRole('button',{name:'Stop ship spin'}).click();
+  await stopSpin(page);
   await sleep(200);
  });
  report.measurements.idle=idle;
@@ -292,7 +295,7 @@ try{
  report.measurements.shipyardCombined={...combined,...rates};
  check('shipyard with drones and the side ship spinning stays within the frame budgets',[rates.panelFramesPerSecond,rates.yardFramesPerSecond].every(fps=>fps>=limits.minActiveFramesPerSecond&&fps<=limits.maxActiveFramesPerSecond),rates);
  check('shipyard with drones and the side ship spinning stays within the script budget',rates.scriptMsPerSecond<=limits.activeScriptMsPerSecond,rates);
- await page.getByRole('button',{name:'Stop ship spin'}).click();
+ await stopSpin(page);
  await sleep(500);
  const yardBox=await page.locator('canvas[aria-label^="Shipyard:"]').boundingBox();
  const dragYard=async ms=>{

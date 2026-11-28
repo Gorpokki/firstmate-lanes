@@ -23,7 +23,7 @@ const logColor=(verb:string)=>stateColors[verb]??stateColors[VERB_STATE[verb]??'
 type LogPage={total:number;from:number;until?:string;lines:{at:string;state:string;text:string}[]};
 // The server gives no more lines than this in one page; "newer" steps by it.
 const LOG_PAGE=100;
-// The lane's status log under its ship, one page at a time: one bar per line in a strip (oldest at the left), then the
+// The lane's status log, folded under the crew's last word, one page at a time: one bar per line in a strip (oldest at the left), then the
 // lines, newest first. The newest page follows the lane; an older page stays as it was read.
 function LaneLog({lane}:{lane:Lane}){
  const [request,setRequest]=useState({before:0}); // the page ends before request.before; 0 is the newest page
@@ -173,7 +173,7 @@ function useLaneAnswers(lane:Lane,onConfirm:LaneProps['onConfirm']){
  const send=async()=>{if(!onConfirm||sending||!ready)return;setSending(true);setError('');try{const results=await onConfirm(items.map(item=>answers[item.ref]));setDelivery(old=>[...(old??[]),...results]);}catch(e){setError(e instanceof Error?e.message:'Could not send answers.');}finally{setSending(false);}};
  return {answers,deferred,delivery,sending,error,ready,isLocked,sentTo,left:unansweredCount(items,answers),sendCount:items.length,batchKeys:items.map(item=>item.ref),after:pending.length-items.length,save,defer,send,undo:(ask:Ask)=>{if(!isLocked(ask))setAnswers(old=>undoAnswer(old,ask.key));}};
 }
-/** One lane: its ship, large, with its name, build and status log; beside it the lane's asks, answered in place. */
+/** One lane: its ship, large and alone on the left; beside it the lane's asks, answered in place, then its last word and status log, folded. */
 export function LaneStation({lane,mesh,shipName,onBack,onConfirm}:LaneProps){
  const [la,setLa]=useState(0),[idx,setIdx]=useState(false),ownRef=useRef<HTMLInputElement>(null);
  const count=lane.asks.length,index=Math.min(la,Math.max(0,count-1)),ask=lane.asks[index],batch=useLaneAnswers(lane,onConfirm);
@@ -184,7 +184,6 @@ export function LaneStation({lane,mesh,shipName,onBack,onConfirm}:LaneProps){
  return <div className="lane" aria-label={`Lane ${lane.name}`}>
   <div className="holo">
    <Holo mesh={mesh} state={lane.state} sourceState={lane.sourceState} name={shipName||'No admitted ship'} turnKeys/>
-   <LaneLog lane={lane}/>
   </div>
   <div className="side">
    {onBack&&<div><button type="button" className="link" onClick={onBack}>‹ back<kbd>esc</kbd></button></div>}
@@ -193,7 +192,8 @@ export function LaneStation({lane,mesh,shipName,onBack,onConfirm}:LaneProps){
    <div className="state"><i style={{background:stateColors[lane.state]}}/><b>{lane.state}</b><span>{laneWords(lane)}</span></div>
    {ask?<LaneAsk key={ask.key} lane={lane} ask={ask} index={index} count={count} answer={batch.answers[ask.key]} locked={batch.isLocked(ask)} sent={batch.sentTo(ask)} save={save} defer={defer} undo={undo} openIndex={()=>setIdx(true)} ownRef={ownRef}/>:<p className="now big">{lane.invalidAsks?returnedWords(lane.invalidAsks):'Nothing needs you on this lane.'}</p>}
    <LaneBatch lane={lane} answers={batch.answers} batchKeys={batch.batchKeys} left={batch.left} after={batch.after} sendCount={batch.sendCount} deferred={batch.deferred.length} ready={batch.ready} sending={batch.sending} delivery={batch.delivery} error={batch.error} canSend={!!onConfirm} send={batch.send}/>
-   {lane.now&&<div className="last"><span className="nowlab">Crew's last word</span><p className="now">{lane.now}</p></div>}
+   {lane.now&&<details className="fold"><summary>crew's last word</summary><p className="now">{lane.now}</p></details>}
+   <details className="fold"><summary>status log</summary><LaneLog lane={lane}/></details>
   </div>
   {idx&&<LaneIndex lane={lane} current={index} open={i=>{setLa(i);setIdx(false);}} close={()=>setIdx(false)}/>}
  </div>;
