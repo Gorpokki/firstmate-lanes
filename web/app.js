@@ -92,6 +92,9 @@ Error generating stack: `+l.message+`
 .ask .linkpop a{color:#D9CDBD;text-decoration:underline;text-underline-offset:4px;text-decoration-color:#6B6170}
 .ask .linkpop small{display:block;color:var(--dim);font:600 11.5px/1.5 var(--lab);letter-spacing:.08em;text-transform:uppercase}
 .ask .shipbox{flex:0 0 42%;min-width:0;display:flex;flex-direction:column;gap:12px;position:relative}
+/* the ship fills the card's height: folding the ship view controls gives their room to the ship, opening them takes it back */
+.ask .shipbox .holo-view{flex:1}
+.ask .shipbox canvas.ship{flex:1 1 0;height:auto;min-height:220px}
 .ask .ctx>summary{cursor:pointer;list-style:none;width:max-content;color:var(--dim);font:600 14px/1 var(--lab);letter-spacing:.08em;text-transform:uppercase;padding:6px 0}
 .ask .ctx>summary::-webkit-details-marker{display:none}
 .ask .ctx>summary::after{content:" ▸"}.ask .ctx[open]>summary::after{content:" ▾"}.ask .ctx>summary:hover{color:var(--text)}
@@ -140,7 +143,7 @@ Error generating stack: `+l.message+`
 .ask .shipbox>section{min-height:0!important;gap:0!important}
 .ask .shipbox pre{font-size:6px!important}
 /* a small ship at the top right: the card's top row is at least as tall as the ship, so the question starts below it */
-.ask .shipbox canvas.ship{height:46px}
+.ask .shipbox canvas.ship{flex:none;height:46px;min-height:0}
 .ask .shipbox>section>:not(:first-child){display:none}
 .ask .ctop{padding-right:116px;min-height:46px;gap:6px 10px;line-height:1.2}
 .ask .who{font-size:18px}
